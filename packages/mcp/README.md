@@ -258,6 +258,40 @@ OpenDexter uses the generated wallet for future local payments. This is optional
 
 ---
 
+## Make your API discoverable — `audition`
+
+If you *sell* an x402 API, `audition` is how you get it into the OpenDexter
+catalog. It is the seller-side command — every other command above is for
+buyers.
+
+```bash
+npx @dexterai/opendexter audition "https://your-x402-api.com"
+```
+
+This is not a linter. OpenDexter discovers every paid route on your server,
+runs a **real paid test** against each one, scores the live response, and
+synthesizes the agent-callable Skill an agent will actually use to call you.
+You get back, per route:
+
+- the **quality score** from a real paid call (not a metadata guess)
+- the **verdict** — what an agent asked for and what came back
+- **`fixInstructions`** for anything that scored low
+- the **synthesized Skill** + MCP tool definition built from your live endpoint
+
+A high-scoring audition lists your API in the catalog automatically.
+
+```bash
+# agent-driven onboarding: machine-readable output a coding agent parses
+npx @dexterai/opendexter audition "https://your-x402-api.com" --json
+```
+
+The `--json` form is the path designed for a coding agent: paste the
+onboarding prompt from <https://x402gle.com/docs/discoverable>, and your agent
+runs `audition`, reads the result, fixes your OpenAPI, and re-auditions until
+every route passes — you never leave your editor.
+
+---
+
 ## CLI
 
 Every tool is also available as a standalone command:
@@ -271,6 +305,7 @@ npx @dexterai/opendexter check "https://x402.dexter.cash/api/v2-test"
 npx @dexterai/opendexter access "https://x402.quicknode.com/base-mainnet"
 npx @dexterai/opendexter settings --max-amount 2.50
 npx @dexterai/opendexter fetch "https://x402.dexter.cash/api/v2-test" --method POST
+npx @dexterai/opendexter audition "https://your-x402-api.com" --json
 ```
 
 ---
