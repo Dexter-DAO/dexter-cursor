@@ -57,6 +57,12 @@ export async function cliAudition(
     for (const r of data.routes ?? []) {
       const tag = r.score != null ? `[${r.score}]` : "[—]";
       console.log(`\n  ${tag} ${r.url}`);
+      // Score history — show the re-audition delta when there's a prior run.
+      if (typeof r.previousScore === "number" && typeof r.delta === "number") {
+        const sign = r.delta > 0 ? `+${r.delta}` : `${r.delta}`;
+        const arrow = r.delta > 0 ? "▲" : r.delta < 0 ? "▼" : "■";
+        console.log(`      ${arrow} ${r.previousScore} → ${r.score} (${sign} since last audition)`);
+      }
       if (r.verdict) console.log(`      ${r.verdict}`);
       if (r.fixInstructions) console.log(`      fix: ${r.fixInstructions}`);
       if (r.synthesizedSkill) console.log(`      ✓ agent-callable Skill synthesized`);
