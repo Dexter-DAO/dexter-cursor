@@ -66,6 +66,7 @@ export async function cliAudition(
       if (r.verdict) console.log(`      ${r.verdict}`);
       if (r.fixInstructions) console.log(`      fix: ${r.fixInstructions}`);
       if (r.synthesizedSkill) console.log(`      ✓ agent-callable Skill synthesized`);
+      if (r.shareUrl) console.log(`      share: ${r.shareUrl}`);
     }
     console.log("");
   } catch (err: any) {
