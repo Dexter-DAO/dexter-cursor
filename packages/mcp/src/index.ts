@@ -108,6 +108,25 @@ async function main() {
       },
     )
     .command(
+      "audition <url>",
+      "Audition an x402 API for the OpenDexter catalog — real paid test, quality score, synthesized agent Skill",
+      (y) =>
+        y
+          .positional("url", { type: "string", demandOption: true })
+          .option("json", {
+            type: "boolean",
+            default: false,
+            description: "Machine-readable output (for agents driving the audition)",
+          }),
+      async (args) => {
+        const { cliAudition } = await import("./tools/audition.js");
+        await cliAudition(args.url!, {
+          json: args.json,
+          dev: args.dev,
+        });
+      },
+    )
+    .command(
       "settings",
       "Read or update OpenDexter spending policy",
       (y) =>
