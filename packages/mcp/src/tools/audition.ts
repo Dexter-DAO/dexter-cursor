@@ -55,8 +55,18 @@ export async function cliAudition(
     console.log(`  ${s.registered ?? 0}/${s.total ?? 0} paid routes tested` +
       (s.avgScore != null ? `  ·  average score ${s.avgScore}/100` : ""));
     for (const r of data.routes ?? []) {
-      const tag = r.score != null ? `[${r.score}]` : "[—]";
-      console.log(`\n  ${tag} ${r.url}`);
+      // An incomplete run produced no score — say so honestly, never show a
+      // borrowed number. incompleteReason is OpenDexter-side (e.g. test
+      // wallet unfunded), not a fault in the merchant's API.
+      if (r.auditOutcome === "incomplete" || r.score == null) {
+        console.log(`\n  [skipped] ${r.url}`);
+        console.log(
+          `      Audition did not complete — ${r.incompleteReason ?? "no score produced"}.`,
+        );
+        console.log(`      This is an OpenDexter-side issue, not your API. Retry shortly.`);
+        continue;
+      }
+      console.log(`\n  [${r.score}] ${r.url}`);
       // Score history — show the re-audition delta when there's a prior run.
       if (typeof r.previousScore === "number" && typeof r.delta === "number") {
         const sign = r.delta > 0 ? `+${r.delta}` : `${r.delta}`;
