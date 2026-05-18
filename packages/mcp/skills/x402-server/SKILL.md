@@ -323,3 +323,10 @@ console.log(formatModelPricing('gpt-4o'));  // human-readable pricing
 | `BASE_MAINNET_NETWORK` | `eip155:8453` |
 | `USDC_MINT` | Solana USDC mint address |
 | `USDC_BASE` | Base USDC contract address |
+
+## Next: get it discovered
+
+A paywalled API can take payment, but no agent will pay it until an agent can
+*find* it. Once the endpoint returns a valid 402, the next step is getting it
+into the OpenDexter / x402gle catalog — see the **x402-discoverable** skill
+(`npx @dexterai/opendexter audition <url> --json`).

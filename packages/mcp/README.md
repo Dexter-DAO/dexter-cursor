@@ -36,7 +36,7 @@ Supports **Cursor**, **Claude Code**, **Codex**, **VS Code**, **Windsurf**, and 
 
 The installer creates two wallets (Solana + EVM) at `~/.dexterai-mcp/wallet.json` and writes the MCP config for your client. Fund either address with USDC and your agent can start paying for APIs from your own machine.
 
-**Claude Code** gets full plugin support: the installer registers 6 skills (opendexter, x402-client, x402-server, x402-react, x402-protocol, x402-debugging) as a native Claude Code plugin alongside the MCP server. Your agent gets both live tools and deep SDK knowledge in a single install.
+**Claude Code** gets full plugin support: the installer registers 8 skills (opendexter, x402-client, x402-server, x402-discoverable, x402-react, x402-protocol, x402-debugging, instinct-advertiser) as a native Claude Code plugin alongside the MCP server. Your agent gets both live tools and deep SDK knowledge in a single install.
 
 ## Fastest Start
 
