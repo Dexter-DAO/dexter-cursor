@@ -1,6 +1,6 @@
 {
   "name": "@dexterai/opendexter",
-  "version": "1.13.6",
+  "version": "1.13.7",
   "description": "OpenDexter - x402 search and discovery layer for AI agents. Search the OpenDexter catalog, check pricing, and pay with automatic USDC settlement.",
   "type": "module",
   "main": "dist/index.js",
@@ -34,7 +34,7 @@
     "@dexterai/dextercard": "^0.5.0",
     "@dexterai/mcp-instructions": "^2.0.0",
     "@dexterai/x402": "^3.7.7",
-    "@dexterai/x402-core": "^1.4.2",
+    "@dexterai/x402-core": "^1.4.3",
     "@dexterai/x402-mcp-tools": "^0.3.7",
     "@modelcontextprotocol/ext-apps": "^1.2.2",
     "@modelcontextprotocol/sdk": "^1.17.4",
