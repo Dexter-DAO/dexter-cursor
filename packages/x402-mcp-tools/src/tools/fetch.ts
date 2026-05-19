@@ -307,7 +307,18 @@ export async function x402Fetch(
 
       const paidRes = payResult.response;
       const data = await parseResponse(paidRes);
-      const settlement = extractSettlement(paidRes);
+      // payAndFetch reports settlement on the PayResult itself (amountPaid,
+      // network, txSignature) — authoritative. Fall back to the response's
+      // PAYMENT-RESPONSE header for any extra receipt detail.
+      const headerSettlement = extractSettlement(paidRes);
+      const settlement: Record<string, unknown> = {
+        amountPaid: payResult.amountPaid,
+        network: payResult.network?.caip2 ?? payResult.network?.bare,
+        ...(payResult.txSignature ? { transaction: payResult.txSignature } : {}),
+        ...(headerSettlement && typeof headerSettlement === "object"
+          ? (headerSettlement as Record<string, unknown>)
+          : {}),
+      };
 
       const { getSponsoredRecommendations, fireImpressionBeacon } = await import(
         "@dexterai/x402/client"
@@ -325,12 +336,11 @@ export async function x402Fetch(
         fireImpressionBeacon(paidRes).catch(() => {});
       }
 
+      // payResult.ok === true means payAndFetch completed settlement.
       const result: Record<string, unknown> = {
         status: paidRes.status,
         data,
-        payment: settlement
-          ? { settled: true, details: settlement }
-          : { settled: false },
+        payment: { settled: true, details: settlement },
       };
 
       if (sponsoredRecs?.length) {
