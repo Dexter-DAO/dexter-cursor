@@ -42,12 +42,30 @@ export interface FetchToolOpts extends ToolBaseOpts {
    */
   getMaxAmountUsdc?: GetMaxAmountUsdc;
   /**
+   * Optional rolling-budget hook. Returns, at call time, the 24h budget
+   * ceiling, the spend witnessed so far in that window, and a recorder the
+   * fetch path calls after a successful settlement. Consumers that own a
+   * spend ledger (the npm CLI / MCP server) supply this; x402-mcp-tools
+   * stays storage-agnostic. Omit it entirely to disable the budget.
+   */
+  getBudgetRuntime?: () => BudgetRuntime;
+  /**
    * Optional descriptive label used in the registrar's tool description
    * to differentiate the wallet-bound and walletless modes. Defaults to
    * a generic message; consumers can override (e.g., "Configure
    * DEXTER_PRIVATE_KEY..." for the npm CLI).
    */
   walletlessHint?: string;
+}
+
+/** Rolling-budget hooks supplied by a consumer that owns a spend ledger. */
+export interface BudgetRuntime {
+  /** Rolling 24h ceiling in USDC. 0 = budget disabled. */
+  dailyBudgetUsdc: number;
+  /** Witnessed x402 spend in the trailing 24h, in USDC. */
+  spentLast24hUsdc: number;
+  /** Called after a successful settlement so the ledger grows. */
+  recordSpend: (usdc: number, url: string) => void;
 }
 
 export interface AccessToolOpts extends ToolBaseOpts {

@@ -25,6 +25,8 @@ export interface ComposeAllToolsOpts {
   capabilityPath?: string;
   /** Per-call USDC cap callback for fetch's policy enforcement. */
   getMaxAmountUsdc?: FetchToolOpts["getMaxAmountUsdc"];
+  /** Rolling 24h budget hooks for fetch's velocity guard. */
+  getBudgetRuntime?: FetchToolOpts["getBudgetRuntime"];
   /** Optional walletless hint surfaced in fetch's description. */
   walletlessHint?: FetchToolOpts["walletlessHint"];
   /** Optional tip surfaced by x402_wallet when no wallet is configured. */
@@ -73,6 +75,7 @@ export function composeAllTools(server: McpServer, opts: ComposeAllToolsOpts): v
       metas: opts.metas,
       wallet: opts.wallet,
       getMaxAmountUsdc: opts.getMaxAmountUsdc,
+      getBudgetRuntime: opts.getBudgetRuntime,
       walletlessHint: opts.walletlessHint,
     });
   }

@@ -52,8 +52,28 @@ async function buildMultipartFormData(multipart: MultipartInput): Promise<FormDa
   return form;
 }
 
+/**
+ * Format a USD amount for an agent-facing message. x402 prices are routinely
+ * sub-cent ($0.001, $0.005) — `.toFixed(2)` would round $0.005 to "$0.01" and
+ * $0.001 to "$0.00", misreporting the very numbers a spend cap turns on. Show
+ * up to 6 decimals, trimmed of trailing zeros.
+ */
+function fmtUsd(n: number): string {
+  if (!Number.isFinite(n)) return "$?";
+  const s = n.toFixed(6).replace(/\.?0+$/, "");
+  return `$${s || "0"}`;
+}
+
 function extractPriceUsdc(accept: Record<string, unknown>): number | null {
-  const amount = Number(accept.amount || 0);
+  // x402 v2 names the price field `amount`; x402 v1 names it
+  // `maxAmountRequired`. Reading only `amount` made every v1 endpoint
+  // evaluate as $0 — which silently disabled the spend cap for the entire
+  // v1 (body-challenge) category, web-search/scrape included. Read both.
+  const rawAmount = accept.amount ?? accept.maxAmountRequired;
+  // A genuinely-absent price is `null` (unknown), NOT 0 — a 0 would sail
+  // through any cap. Only treat an explicit numeric/string value as a price.
+  if (rawAmount == null || rawAmount === "") return null;
+  const amount = Number(rawAmount);
   const extra =
     accept.extra && typeof accept.extra === "object"
       ? (accept.extra as Record<string, unknown>)
@@ -74,11 +94,13 @@ export async function evaluatePaymentRequirements(
   wallet: WalletAdapter,
   requirements: Record<string, unknown> | null,
   effectiveMaxAmount: number,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; priceUsdc: number | null } | { ok: false; error: string }> {
   const accepts = Array.isArray(requirements?.accepts)
     ? (requirements.accepts as Array<Record<string, unknown>>)
     : [];
-  if (accepts.length === 0) return { ok: true };
+  // No accepts[] — nothing priced to evaluate (e.g. an identity-only / SIWX
+  // challenge). Let it through; price is unknown.
+  if (accepts.length === 0) return { ok: true, priceUsdc: null };
 
   const evaluated = await Promise.all(
     accepts.map(async (accept) => {
@@ -95,13 +117,13 @@ export async function evaluatePaymentRequirements(
   if (withinPolicy.length === 0) {
     const prices = evaluated
       .filter((row) => row.priceUsdc != null)
-      .map((row) => `$${row.priceUsdc!.toFixed(2)} on ${row.network}`)
+      .map((row) => `${fmtUsd(row.priceUsdc!)} on ${row.network}`)
       .join(", ");
     return {
       ok: false,
       error:
         `Payment policy blocked this call. Available options: ${prices}. ` +
-        `Current maxAmountUsdc is $${effectiveMaxAmount.toFixed(2)}.`,
+        `Current maxAmountUsdc is ${fmtUsd(effectiveMaxAmount)}.`,
     };
   }
 
@@ -112,13 +134,16 @@ export async function evaluatePaymentRequirements(
     const balances = withinPolicy
       .map(
         (row) =>
-          `${row.network}: have $${row.availableUsdc.toFixed(2)}, need $${row.priceUsdc!.toFixed(2)}`,
+          `${row.network}: have ${fmtUsd(row.availableUsdc)}, need ${fmtUsd(row.priceUsdc!)}`,
       )
       .join("; ");
     return { ok: false, error: `Insufficient balance for this call. ${balances}` };
   }
 
-  return { ok: true };
+  // Report the cheapest funded, in-policy price — that is what this call will
+  // actually cost, and the rolling-budget gate needs it.
+  const priceUsdc = Math.min(...funded.map((row) => row.priceUsdc!));
+  return { ok: true, priceUsdc };
 }
 
 async function parseResponse(res: Response): Promise<unknown> {
@@ -161,7 +186,18 @@ function parse402(body: unknown): {
 }
 
 interface RuntimeFetchOpts {
+  /** Per-call spend cap in USDC — no single paid call may exceed this. */
   maxAmountUsdc: number;
+  /**
+   * Optional rolling-budget hook. The caller (the mcp package, which owns the
+   * spend ledger) supplies these; x402-mcp-tools stays storage-agnostic.
+   *  - dailyBudgetUsdc: the rolling 24h ceiling. 0/undefined = no budget.
+   *  - spentLast24hUsdc: witnessed spend in the trailing 24h.
+   *  - recordSpend: called after a successful settlement so the ledger grows.
+   */
+  dailyBudgetUsdc?: number;
+  spentLast24hUsdc?: number;
+  recordSpend?: (usdc: number, url: string) => void;
 }
 
 export async function x402Fetch(
@@ -243,6 +279,27 @@ export async function x402Fetch(
       );
       if (!policyCheck.ok) {
         return { status: 402, error: policyCheck.error, requirements };
+      }
+
+      // Rolling-budget gate. The per-call cap above only asks "is THIS call
+      // too big" — it cannot stop a loop of small in-cap calls draining the
+      // wallet. The budget does: if this call's price would push witnessed
+      // 24h spend over dailyBudgetUsdc, refuse before paying.
+      const budget = runtime.dailyBudgetUsdc ?? 0;
+      const callPrice = policyCheck.priceUsdc;
+      if (budget > 0 && callPrice != null) {
+        const spent = runtime.spentLast24hUsdc ?? 0;
+        if (spent + callPrice > budget) {
+          return {
+            status: 402,
+            error:
+              `Rolling budget blocked this call. This call costs ` +
+              `${fmtUsd(callPrice)}; ${fmtUsd(spent)} of the ` +
+              `${fmtUsd(budget)} 24h budget is already spent through ` +
+              `this tool. Raise dailyBudgetUsdc or wait for the window to roll.`,
+            requirements,
+          };
+        }
       }
 
       const signers = wallet.getPaymentSigners();
@@ -337,6 +394,19 @@ export async function x402Fetch(
       }
 
       // payResult.ok === true means payAndFetch completed settlement.
+      // Record the witnessed spend so the rolling budget sees it next call.
+      // amountPaid is authoritative (atomic units from the PayResult); fall
+      // back to the policy-check price if the SDK did not surface it.
+      if (runtime.recordSpend) {
+        const paidAtomic = Number(payResult.amountPaid);
+        const paidUsdc = Number.isFinite(paidAtomic) && paidAtomic > 0
+          ? paidAtomic / 1e6
+          : (policyCheck.priceUsdc ?? 0);
+        if (paidUsdc > 0) {
+          try { runtime.recordSpend(paidUsdc, params.url); } catch {}
+        }
+      }
+
       const result: Record<string, unknown> = {
         status: paidRes.status,
         data,
@@ -450,6 +520,9 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
   }) => {
     try {
       const effectiveMax = args.maxAmountUsdc ?? getMaxAmountUsdc();
+      // Resolve the rolling-budget hooks fresh per call (live settings + a
+      // current ledger read). Absent hook = budget disabled.
+      const budget = opts.getBudgetRuntime?.();
       const result = await x402Fetch(
         {
           url: args.url,
@@ -459,7 +532,16 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
           multipart: args.multipart,
         },
         wallet,
-        { maxAmountUsdc: effectiveMax },
+        {
+          maxAmountUsdc: effectiveMax,
+          ...(budget
+            ? {
+                dailyBudgetUsdc: budget.dailyBudgetUsdc,
+                spentLast24hUsdc: budget.spentLast24hUsdc,
+                recordSpend: budget.recordSpend,
+              }
+            : {}),
+        },
       );
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],

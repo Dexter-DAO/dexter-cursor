@@ -14,6 +14,7 @@ import { loadOrCreateWallet } from "../wallet/index.js";
 import { createNpmWalletAdapter } from "../wallet/adapter.js";
 import { createNpmCardsAdapter } from "../cards-adapter.js";
 import { loadSettings } from "../settings.js";
+import { recordSpend, spentLast24h } from "../spend-ledger.js";
 import { registerSettingsTool } from "../tools/settings.js";
 import { registerCardLoginTools } from "../tools/card-login.js";
 import { registerWidgetResources } from "../resources/widgets.js";
@@ -63,6 +64,13 @@ export async function startServer(opts: ServerOptions): Promise<void> {
     // callback (rather than passing the value once) lets users update
     // ~/.dexterai-mcp/settings.json without restarting the server.
     getMaxAmountUsdc: () => loadSettings().maxAmountUsdc,
+    // Rolling 24h budget — the velocity guard a per-call cap cannot provide.
+    // Resolved fresh per call: live settings + a current spend-ledger read.
+    getBudgetRuntime: () => ({
+      dailyBudgetUsdc: loadSettings().dailyBudgetUsdc,
+      spentLast24hUsdc: spentLast24h(),
+      recordSpend,
+    }),
     walletlessHint:
       "Configure DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (Base/Polygon/etc) for automatic settlement.",
     noWalletTip:

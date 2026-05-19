@@ -2,6 +2,7 @@ import { x402Fetch } from "@dexterai/x402-mcp-tools";
 import { loadOrCreateWallet } from "../wallet/index.js";
 import { createNpmWalletAdapter } from "../wallet/adapter.js";
 import { loadSettings } from "../settings.js";
+import { recordSpend, spentLast24h } from "../spend-ledger.js";
 
 /**
  * CLI entrypoint for the `opendexter fetch` and `opendexter pay`
@@ -18,11 +19,17 @@ export async function cliFetch(
   try {
     const wallet = await loadOrCreateWallet();
     const adapter = wallet ? createNpmWalletAdapter(wallet) : null;
-    const effectiveMax = opts.maxAmountUsdc ?? loadSettings().maxAmountUsdc;
+    const settings = loadSettings();
+    const effectiveMax = opts.maxAmountUsdc ?? settings.maxAmountUsdc;
     const result = await x402Fetch(
       { url, method: opts.method, body: opts.body },
       adapter,
-      { maxAmountUsdc: effectiveMax },
+      {
+        maxAmountUsdc: effectiveMax,
+        dailyBudgetUsdc: settings.dailyBudgetUsdc,
+        spentLast24hUsdc: spentLast24h(),
+        recordSpend,
+      },
     );
     console.log(JSON.stringify(result, null, 2));
   } catch (err: any) {

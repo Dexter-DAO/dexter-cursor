@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dexterity CLI — cinematic reveal</title>
+<style>
+  body{margin:0;background:#141414;font-family:system-ui,-apple-system,sans-serif;color:#d8d8d8}
+  .wrap{max-width:960px;margin:0 auto;padding:24px}
+  h2{color:#e8e8e8;font-weight:600}
+  .note{color:#999;font-size:14px;line-height:1.5}
+  .term{background:#0D0D0D;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;
+        box-shadow:0 20px 60px rgba(0,0,0,.5);margin:20px 0}
+  .bar{background:#1a1a1a;padding:8px 14px;display:flex;gap:7px;align-items:center;border-bottom:1px solid #2a2a2a}
+  .dot{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .bar .t{color:#666;font-size:12px;margin-left:8px;font-family:monospace}
+  pre{margin:0;padding:24px 26px;font-family:'SF Mono',Menlo,Consolas,monospace;
+      font-size:11px;line-height:1.4;background:#0D0D0D;white-space:pre}
+  .ctrl{display:flex;gap:10px;align-items:center;margin:14px 0}
+  button{background:#ff6b00;color:#0D0D0D;border:0;border-radius:6px;padding:9px 18px;
+         font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  button.alt{background:#2a2a2a;color:#d8d8d8}
+  .row{opacity:0}
+  /* line fades */
+  @keyframes fadein{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+  /* wordmark gradient wipe: a bright band sweeps L->R revealing each row */
+  .wm{position:relative;display:inline-block}
+  .wm .base{color:#3a2410}
+  .wm .lit{position:absolute;left:0;top:0;width:0;overflow:hidden;white-space:pre}
+  @keyframes wipe{to{width:100%}}
+  .cursor{background:#ffb42c;color:#0D0D0D;animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2>Dexterity CLI — cinematic reveal (v1, playing)</h2>
+  <p class="note">
+    Press <strong>Replay</strong> to watch it again. ~2s staged reveal:
+    prompt → wordmark gradient-wipe (left→right) → tagline → status lines tick in with their dots
+    resolving → Next + commands. This is the <em>first-run</em> show; repeat runs get an abbreviated
+    version (no wipe, instant). The browser preview is faithful — the terminal build matches this within
+    what ANSI repaint can do.
+  </p>
+
+  <div class="ctrl">
+    <button onclick="play()">▶ Replay</button>
+    <span class="note" style="margin:0">cinematic — ~2.0s</span>
+  </div>
+
+  <div class="term">
+    <div class="bar">
+      <span class="dot" style="background:#ff5f57"></span>
+      <span class="dot" style="background:#febc2e"></span>
+      <span class="dot" style="background:#28c840"></span>
+      <span class="t">~ — dexterity</span>
+    </div>
+    <pre id="screen"></pre>
+  </div>
+
+  <p class="note" id="verdict">
+    <strong style="color:#ffb42c">Watching for:</strong> does the gradient-wipe on the wordmark feel
+    premium? Is ~2s right, or trim it? Should the status dots visibly resolve
+    (<span style="color:#febc2e">●</span> checking → <span style="color:#28c840">●</span> ready), or just appear?
+  </p>
+</div>
+
+<script>
+const WM = [
+  ['#d13f00','  ██████╗ ███████╗██╗  ██╗████████╗███████╗██████╗ ██╗████████╗██╗   ██╗'],
+  ['#e85400','  ██╔══██╗██╔════╝╚██╗██╔╝╚══██╔══╝██╔════╝██╔══██╗██║╚══██╔══╝╚██╗ ██╔╝'],
+  ['#ff6b00','  ██║  ██║█████╗   ╚███╔╝    ██║   █████╗  ██████╔╝██║   ██║    ╚████╔╝ '],
+  ['#ff8c1a','  ██║  ██║██╔══╝   ██╔██╗    ██║   ██╔══╝  ██╔══██╗██║   ██║     ╚██╔╝  '],
+  ['#ffa622','  ██████╔╝███████╗██╔╝ ██╗   ██║   ███████╗██║  ██║██║   ██║      ██║   '],
+  ['#ffb42c','  ╚═════╝ ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝   ╚═╝      ╚═╝   '],
+];
+const screen = document.getElementById('screen');
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+async function play(){
+  screen.innerHTML='';
+  // 1. prompt
+  screen.innerHTML = '<span style="color:#555">$ </span><span style="color:#e8e8e8">dexterity</span>\n\n';
+  await sleep(380);
+
+  // 2. wordmark — gradient wipe row by row
+  const wmWrap = document.createElement('span');
+  screen.appendChild(wmWrap);
+  for(const [color,text] of WM){
+    const line = document.createElement('span');
+    line.className='wm';
+    line.innerHTML =
+      '<span class="base">'+esc(text)+'</span>'+
+      '<span class="lit" style="color:'+color+'">'+esc(text)+'</span>';
+    wmWrap.appendChild(line);
+    wmWrap.appendChild(document.createTextNode('\n'));
+    const lit = line.querySelector('.lit');
+    lit.style.animation='wipe .5s ease-out forwards';
+    await sleep(105);
+  }
+  await sleep(360);
+
+  // 3. tagline
+  await addLine('\n<span style="color:#555">   formerly OpenDexter</span>   <span style="color:#444">·</span>   <span style="color:#666">x402 gateway for AI agents</span>   <span style="color:#444">·</span>   <span style="color:#888">USDC in. API out.</span>\n', 420);
+
+  // 4. divider
+  await addLine('\n  <span style="color:#2a2a2a">──────────────────────────────────────────────────────────────────────</span>\n\n', 160);
+
+  // 5. status lines — dots resolve checking -> ready
+  await statusLine('wallet', '#febc2e','checking…', 240, '#28c840','ready  ', '<span style="color:#555">2 rails · Solana + EVM</span>');
+  await statusLine('balance','#febc2e','checking…', 240, '#febc2e','$0.00  ', '<span style="color:#555">fund a rail to start paying</span>');
+  await statusLine('clients','#febc2e','checking…', 240, '#28c840','4      ', '<span style="color:#555">Cursor · Claude Code · VS Code · Gemini</span>');
+
+  // 6. divider + next + commands
+  await addLine('\n  <span style="color:#2a2a2a">──────────────────────────────────────────────────────────────────────</span>\n\n', 200);
+  await addLine('  <span style="color:#ffb42c">▸ Next</span>  <span style="color:#d8d8d8">Fund a rail, then</span> <span style="color:#ff8c1a">dexterity search &lt;what-you-need&gt;</span>\n\n', 260);
+  await addLine('  <span style="color:#555">Commands</span>\n'+
+    '    <span style="color:#ff8c1a">search</span>  <span style="color:#666">find a paid API</span>          <span style="color:#ff8c1a">wallet</span>  <span style="color:#666">addresses &amp; balance</span>\n'+
+    '    <span style="color:#ff8c1a">check</span>   <span style="color:#666">inspect price, no pay</span>     <span style="color:#ff8c1a">fetch</span>   <span style="color:#666">call &amp; pay an endpoint</span>\n', 220);
+
+  // 7. cursor
+  const c=document.createElement('span');
+  c.innerHTML='\n<span style="color:#555">$ </span><span class="cursor">&nbsp;</span>';
+  c.style.animation='fadein .3s ease forwards';
+  screen.appendChild(c);
+}
+
+async function addLine(html, wait){
+  const s=document.createElement('span');
+  s.className='row';
+  s.innerHTML=html;
+  s.style.animation='fadein .4s ease forwards';
+  screen.appendChild(s);
+  await sleep(wait);
+}
+
+async function statusLine(label,dot1,txt1,wait,dot2,txt2,rest){
+  const s=document.createElement('span');
+  s.className='row';
+  s.style.animation='fadein .3s ease forwards';
+  s.innerHTML='  <span style="color:'+dot1+'">●</span> <span style="color:#888">'+label.padEnd(11)+'</span><span style="color:#666">'+txt1+'</span>\n';
+  screen.appendChild(s);
+  await sleep(wait);
+  // resolve
+  s.innerHTML='  <span style="color:'+dot2+'">●</span> <span style="color:#888">'+label.padEnd(11)+'</span><span style="color:#d8d8d8">'+txt2+'</span> '+rest+'\n';
+  await sleep(110);
+}
+
+play();
+</script>
+</body>
+</html>

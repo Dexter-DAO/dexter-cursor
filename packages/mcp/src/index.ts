@@ -130,14 +130,21 @@ async function main() {
       "settings",
       "Read or update OpenDexter spending policy",
       (y) =>
-        y.option("max-amount", {
-          type: "number",
-          description: "Set the default max amount allowed per paid call (USDC)",
-        }),
+        y
+          .option("max-amount", {
+            type: "number",
+            description: "Per-call spend cap (USDC) — no single call may exceed it",
+          })
+          .option("daily-budget", {
+            type: "number",
+            description:
+              "Rolling 24h spend budget (USDC) — the velocity guard. 0 disables it.",
+          }),
       async (args) => {
         const { cliSettings } = await import("./tools/settings.js");
         await cliSettings({
           maxAmountUsdc: args["max-amount"],
+          dailyBudgetUsdc: args["daily-budget"],
         });
       },
     )

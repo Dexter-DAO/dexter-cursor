@@ -1,0 +1,67 @@
+<div style="max-width:960px;margin:0 auto;font-family:system-ui,-apple-system,sans-serif">
+
+  <h2 style="color:#e8e8e8;font-weight:600">Dexterity CLI — <code style="color:#ff8c1a">search</code> results</h2>
+  <p style="color:#999;font-size:14px;line-height:1.5">
+    The screen users hit most after setup. This establishes the result-list visual
+    language that <code style="color:#ff8c1a">wallet</code>, <code style="color:#ff8c1a">check</code>,
+    <code style="color:#ff8c1a">fetch</code> all inherit. Showing two layout options.
+  </p>
+
+  <!-- OPTION A — ranked cards -->
+  <div style="background:#0D0D0D;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.45);margin:18px 0">
+    <div style="background:#1a1a1a;padding:8px 14px;color:#666;font-size:12px;font-family:monospace;border-bottom:1px solid #2a2a2a">OPTION A — ranked cards</div>
+    <pre style="margin:0;padding:22px 26px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.5;color:#d8d8d8;background:#0D0D0D">
+<span style="color:#555">$ </span><span style="color:#e8e8e8">dexterity search "current bitcoin price"</span>
+
+  <span style="color:#666">3 strong matches</span>  <span style="color:#444">·</span>  <span style="color:#555">searched 48,000 paid APIs</span>
+
+  <span style="color:#ff8c1a">┃</span> <span style="color:#e8e8e8">CoinGecko Price</span>          <span style="color:#28c840">●●●●●</span> <span style="color:#666">98</span>     <span style="color:#ffb42c">$0.001</span>
+  <span style="color:#ff8c1a">┃</span> <span style="color:#666">api.coingecko.com/x402/price</span>           <span style="color:#555">· 2,481 calls · Base</span>
+  <span style="color:#ff8c1a">┃</span> <span style="color:#777">Spot price, market cap, 24h volume for any token.</span>
+
+  <span style="color:#444">┃</span> <span style="color:#e8e8e8">Pyth Realtime Feed</span>       <span style="color:#28c840">●●●●</span><span style="color:#333">●</span> <span style="color:#666">86</span>     <span style="color:#ffb42c">$0.002</span>
+  <span style="color:#444">┃</span> <span style="color:#666">hermes.pyth.network/x402/btc</span>           <span style="color:#555">· 912 calls · Solana</span>
+  <span style="color:#444">┃</span> <span style="color:#777">Sub-second oracle price, on-chain verifiable.</span>
+
+  <span style="color:#444">┃</span> <span style="color:#e8e8e8">CryptoCompare</span>            <span style="color:#28c840">●●●</span><span style="color:#333">●●</span> <span style="color:#666">71</span>     <span style="color:#ffb42c">$0.005</span>
+  <span style="color:#444">┃</span> <span style="color:#666">min-api.cryptocompare.com/x402</span>         <span style="color:#555">· 304 calls · Base</span>
+  <span style="color:#444">┃</span> <span style="color:#777">OHLCV history + current price, 70+ exchanges.</span>
+
+  <span style="color:#2a2a2a">──────────────────────────────────────────────────────────────────</span>
+  <span style="color:#ffb42c">▸</span> <span style="color:#d8d8d8">dexterity check</span> <span style="color:#ff8c1a">api.coingecko.com/x402/price</span>  <span style="color:#555">— inspect before paying</span>
+
+<span style="color:#555">$ </span><span style="background:#ffb42c;color:#0D0D0D">&nbsp;</span>
+</pre>
+  </div>
+
+  <!-- OPTION B — dense table -->
+  <div style="background:#0D0D0D;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.45);margin:18px 0">
+    <div style="background:#1a1a1a;padding:8px 14px;color:#666;font-size:12px;font-family:monospace;border-bottom:1px solid #2a2a2a">OPTION B — dense table (Bloomberg-style)</div>
+    <pre style="margin:0;padding:22px 26px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.6;color:#d8d8d8;background:#0D0D0D">
+<span style="color:#555">$ </span><span style="color:#e8e8e8">dexterity search "current bitcoin price"</span>
+
+  <span style="color:#666">3 strong matches  ·  searched 48,000 paid APIs</span>
+
+  <span style="color:#555"> #  PROVIDER             SCORE   PRICE    CHAIN    CALLS</span>
+  <span style="color:#2a2a2a">  ──────────────────────────────────────────────────────────</span>
+  <span style="color:#ff8c1a"> 1</span>  <span style="color:#e8e8e8">CoinGecko Price</span>      <span style="color:#28c840">98</span>      <span style="color:#ffb42c">$0.001</span>   <span style="color:#888">Base</span>     <span style="color:#666">2,481</span>
+  <span style="color:#666"> 2</span>  <span style="color:#e8e8e8">Pyth Realtime Feed</span>   <span style="color:#28c840">86</span>      <span style="color:#ffb42c">$0.002</span>   <span style="color:#888">Solana</span>   <span style="color:#666">912</span>
+  <span style="color:#666"> 3</span>  <span style="color:#e8e8e8">CryptoCompare</span>        <span style="color:#9acd32">71</span>      <span style="color:#ffb42c">$0.005</span>   <span style="color:#888">Base</span>     <span style="color:#666">304</span>
+
+  <span style="color:#555">  pick one →</span>  <span style="color:#d8d8d8">dexterity check</span> <span style="color:#ff8c1a">&lt;provider&gt;</span>
+
+<span style="color:#555">$ </span><span style="background:#ffb42c;color:#0D0D0D">&nbsp;</span>
+</pre>
+  </div>
+
+  <p style="color:#999;font-size:13px;line-height:1.6">
+    <strong style="color:#ffb42c">Which result style?</strong><br>
+    <strong>A — ranked cards:</strong> top result accented with a bright orange bar, dot-rating
+    quality score, room for a description line. Scannable, more "designed."<br>
+    <strong>B — dense table:</strong> more results per screen, columnar, institutional. Less warm,
+    very fast to scan. Closer to Bloomberg.<br>
+    My lean: <strong>A</strong> — the description line genuinely helps a user pick, and the accented
+    top result guides the eye. B if you expect users to compare many results at once.
+  </p>
+
+</div>

@@ -85,6 +85,7 @@ export type {
   SearchToolOpts,
   CheckToolOpts,
   FetchToolOpts,
+  BudgetRuntime,
   AccessToolOpts,
   WalletToolOpts,
   CardToolOpts,
