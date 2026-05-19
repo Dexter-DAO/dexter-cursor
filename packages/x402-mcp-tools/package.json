@@ -37,7 +37,7 @@
   "license": "MIT",
   "dependencies": {
     "@dexterai/dextercard": "^0.5.0",
-    "@dexterai/x402": "^3.2.1",
+    "@dexterai/x402": "^3.7.6",
     "@dexterai/x402-core": "^1.4.0",
     "@modelcontextprotocol/sdk": "^1.17.4",
     "@x402/core": "^2.6.0",

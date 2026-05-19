@@ -256,15 +256,26 @@ export async function x402Fetch(
         };
       }
 
-      const { wrapFetch } = await import("@dexterai/x402/client");
-      const x402FetchFn = wrapFetch(fetch, {
-        walletPrivateKey: signers.solanaPrivateKey,
-        evmPrivateKey: signers.evmPrivateKey,
-      });
+      // payAndFetch is the SDK's version-agnostic payment seam — it probes
+      // once, detects x402 v1 (challenge in the body) vs v2 (challenge in
+      // the PAYMENT-REQUIRED header), handles Sign-In-With-X transparently,
+      // and pays via the matching strategy. Routing through it (rather than
+      // the v2-only wrapFetch) is what makes the CLI able to pay v1 servers.
+      const { payAndFetch, createKeypairWallet, createEvmKeypairWallet } =
+        await import("@dexterai/x402/client");
 
-      // wrapFetch does a fresh probe + paid retry internally and reuses the
-      // body. Multipart bodies are single-use streams, so rebuild a fresh
-      // FormData for this call path.
+      // Build the WalletSet payAndFetch expects, from whatever keys the
+      // adapter exposes — same factories wrapFetch used internally.
+      const walletSet: Record<string, unknown> = {};
+      if (signers.solanaPrivateKey) {
+        walletSet.solana = await createKeypairWallet(signers.solanaPrivateKey);
+      }
+      if (signers.evmPrivateKey) {
+        walletSet.evm = await createEvmKeypairWallet(signers.evmPrivateKey);
+      }
+
+      // payAndFetch does its own probe + paid retry. Multipart bodies are
+      // single-use streams, so rebuild a fresh FormData for this call path.
       const paidFetchOpts: RequestInit = { ...fetchOpts };
       if (isMultipart) {
         try {
@@ -274,7 +285,27 @@ export async function x402Fetch(
         }
       }
 
-      const paidRes = await x402FetchFn(params.url, paidFetchOpts);
+      const payResult = await payAndFetch(
+        params.url,
+        paidFetchOpts,
+        walletSet as never,
+        {},
+      );
+
+      if (!payResult.ok) {
+        // A typed, expected failure — never a thrown error. SIW-X endpoints
+        // surface here too (the v1/v2 strategies don't recognise an
+        // identity-only challenge as payable).
+        return {
+          status: 402,
+          error: `Payment failed: ${payResult.reason}${
+            payResult.detail ? ` — ${payResult.detail}` : ""
+          }`,
+          requirements,
+        };
+      }
+
+      const paidRes = payResult.response;
       const data = await parseResponse(paidRes);
       const settlement = extractSettlement(paidRes);
 
