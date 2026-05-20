@@ -3,9 +3,9 @@ import { Keypair, Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http, erc20Abi } from "viem";
-import { type Chain, base, polygon, arbitrum, optimism, avalanche } from "viem/chains";
+import { type Chain, base, polygon, arbitrum, optimism, avalanche, bsc, skaleBase } from "viem/chains";
 import bs58 from "bs58";
-import { DATA_DIR, WALLET_FILE, SOLANA_RPC_URL, EVM_RPC_URLS, EVM_USDC_ADDRESSES, CHAIN_NAMES } from "../config.js";
+import { DATA_DIR, WALLET_FILE, SOLANA_RPC_URL, EVM_RPC_URLS, EVM_USDC_ADDRESSES, CHAIN_NAMES, usdcDecimalsForChain } from "../config.js";
 
 export interface WalletInfo {
   solanaPrivateKey?: string;
@@ -35,6 +35,8 @@ const VIEM_CHAINS: Record<string, Chain> = {
   "eip155:42161": arbitrum,
   "eip155:10": optimism,
   "eip155:43114": avalanche,
+  "eip155:56": bsc,
+  "eip155:1187947933": skaleBase,
 };
 
 function generateEvmWallet(): { evmPrivateKey: string; evmAddress: string } {
@@ -199,7 +201,11 @@ export async function getEvmUsdcBalance(
       functionName: "balanceOf",
       args: [address as `0x${string}`],
     });
-    return Number(raw) / 1e6;
+    // Per-chain decimals — BSC USDC is 18, every other chain we touch is 6.
+    // The old hardcoded /1e6 would have under-reported a $5 BSC balance as
+    // $0.000000000000005. See config.ts::usdcDecimalsForChain.
+    const decimals = usdcDecimalsForChain(chainId);
+    return Number(raw) / Math.pow(10, decimals);
   } catch {
     return 0;
   }

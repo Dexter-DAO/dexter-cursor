@@ -17,6 +17,9 @@ export const EVM_RPC_URLS: Record<string, string> = {
   "eip155:42161": process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc",
   "eip155:10": process.env.OPTIMISM_RPC_URL || "https://mainnet.optimism.io",
   "eip155:43114": process.env.AVALANCHE_RPC_URL || "https://api.avax.network/ext/bc/C/rpc",
+  "eip155:56": process.env.BSC_RPC_URL || "https://bsc-dataseed1.binance.org",
+  // SKALE Europa-Base — zero-gas chain, SKALE's own RPC is canonical.
+  "eip155:1187947933": process.env.SKALE_BASE_RPC_URL || "https://skale-base.skalenodes.com/v1/base",
 };
 
 export const EVM_USDC_ADDRESSES: Record<string, `0x${string}`> = {
@@ -25,15 +28,44 @@ export const EVM_USDC_ADDRESSES: Record<string, `0x${string}`> = {
   "eip155:42161": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
   "eip155:10": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
   "eip155:43114": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+  "eip155:56": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+  // SKALE Europa-Base uses a non-Circle USDC contract — distinct from every
+  // other EVM chain's canonical 0x833589… / 0xaf88… / etc. The bake-off
+  // audit caught a hardcoded /1e6 elsewhere in the codebase that would
+  // also have under-reported BSC balances by 12 decimal places — see
+  // usdcDecimalsForChain below.
+  "eip155:1187947933": "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
 };
 
-export const CHAIN_NAMES: Record<string, { name: string; family: "svm" | "evm"; tier: "first" | "second" }> = {
+/**
+ * USDC decimals per chain. Almost everywhere is 6; BSC is the outlier
+ * at 18. Hardcoding /1e6 is a quiet way to silently under-report a BSC
+ * balance or BSC spend by 12 orders of magnitude. Use this lookup.
+ */
+export const EVM_USDC_DECIMALS: Record<string, number> = {
+  "eip155:8453": 6,
+  "eip155:137": 6,
+  "eip155:42161": 6,
+  "eip155:10": 6,
+  "eip155:43114": 6,
+  "eip155:56": 18,
+  "eip155:1187947933": 6,
+};
+
+export function usdcDecimalsForChain(chainId: string | undefined): number {
+  if (!chainId) return 6;
+  return EVM_USDC_DECIMALS[chainId] ?? 6;
+}
+
+export const CHAIN_NAMES: Record<string, { name: string; family: "svm" | "evm"; tier: "first" | "second"; zeroGas?: boolean }> = {
   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": { name: "Solana", family: "svm", tier: "first" },
   "eip155:8453": { name: "Base", family: "evm", tier: "first" },
   "eip155:137": { name: "Polygon", family: "evm", tier: "second" },
   "eip155:42161": { name: "Arbitrum", family: "evm", tier: "second" },
   "eip155:10": { name: "Optimism", family: "evm", tier: "second" },
   "eip155:43114": { name: "Avalanche", family: "evm", tier: "second" },
+  "eip155:56": { name: "BNB Chain", family: "evm", tier: "second" },
+  "eip155:1187947933": { name: "SKALE Europa-Base", family: "evm", tier: "second", zeroGas: true },
 };
 
 export const SUPPORTED_CHAIN_LABELS = [
@@ -43,6 +75,8 @@ export const SUPPORTED_CHAIN_LABELS = [
   "Arbitrum",
   "Optimism",
   "Avalanche",
+  "BNB Chain",
+  "SKALE Europa-Base",
 ] as const;
 
 /**

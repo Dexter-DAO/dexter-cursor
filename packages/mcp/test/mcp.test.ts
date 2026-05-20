@@ -390,7 +390,9 @@ describe("payment policy gate", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toContain("Payment policy blocked");
-      expect(result.error).toContain("$0.10"); // surfaces the cap
+      // fmtUsd intentionally trims trailing zeros so sub-cent prices
+      // ($0.001, $0.005) render honestly. $0.10 thus renders as "$0.1".
+      expect(result.error).toContain("$0.1");
     }
   });
 

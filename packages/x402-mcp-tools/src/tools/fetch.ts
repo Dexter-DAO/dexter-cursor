@@ -397,10 +397,18 @@ export async function x402Fetch(
       // Record the witnessed spend so the rolling budget sees it next call.
       // amountPaid is authoritative (atomic units from the PayResult); fall
       // back to the policy-check price if the SDK did not surface it.
+      //
+      // Per-chain decimals: BSC USDC is 18, every other supported chain is 6.
+      // Hardcoding /1e6 would have silently under-reported a $5 BSC spend as
+      // $0.000000000000005, also breaking the rolling-budget check. Inline
+      // lookup keeps the fix self-contained in this tool — when more chains
+      // join the family, add them here too.
       if (runtime.recordSpend) {
         const paidAtomic = Number(payResult.amountPaid);
+        const network = payResult.network?.caip2 ?? payResult.network?.bare ?? "";
+        const decimals = network === "eip155:56" || network === "bsc" ? 18 : 6;
         const paidUsdc = Number.isFinite(paidAtomic) && paidAtomic > 0
-          ? paidAtomic / 1e6
+          ? paidAtomic / Math.pow(10, decimals)
           : (policyCheck.priceUsdc ?? 0);
         if (paidUsdc > 0) {
           try { runtime.recordSpend(paidUsdc, params.url); } catch {}
