@@ -18,7 +18,8 @@ export const EVM_RPC_URLS: Record<string, string> = {
   "eip155:10": process.env.OPTIMISM_RPC_URL || "https://mainnet.optimism.io",
   "eip155:43114": process.env.AVALANCHE_RPC_URL || "https://api.avax.network/ext/bc/C/rpc",
   "eip155:56": process.env.BSC_RPC_URL || "https://bsc-dataseed1.binance.org",
-  // SKALE Europa-Base — zero-gas chain, SKALE's own RPC is canonical.
+  // SKALE — zero-gas chain (eip155:1187947933 is the Europa-Base instance
+  // we use). SKALE's own RPC is canonical; no Quicknode endpoint exists.
   "eip155:1187947933": process.env.SKALE_BASE_RPC_URL || "https://skale-base.skalenodes.com/v1/base",
 };
 
@@ -29,10 +30,10 @@ export const EVM_USDC_ADDRESSES: Record<string, `0x${string}`> = {
   "eip155:10": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
   "eip155:43114": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
   "eip155:56": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-  // SKALE Europa-Base uses a non-Circle USDC contract — distinct from every
-  // other EVM chain's canonical 0x833589… / 0xaf88… / etc. The bake-off
-  // audit caught a hardcoded /1e6 elsewhere in the codebase that would
-  // also have under-reported BSC balances by 12 decimal places — see
+  // SKALE uses a non-Circle USDC contract — distinct from every other
+  // EVM chain's canonical 0x833589… / 0xaf88… / etc. The bake-off audit
+  // caught a hardcoded /1e6 elsewhere in the codebase that would also
+  // have under-reported BSC balances by 12 decimal places — see
   // usdcDecimalsForChain below.
   "eip155:1187947933": "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
 };
@@ -65,7 +66,7 @@ export const CHAIN_NAMES: Record<string, { name: string; family: "svm" | "evm"; 
   "eip155:10": { name: "Optimism", family: "evm", tier: "second" },
   "eip155:43114": { name: "Avalanche", family: "evm", tier: "second" },
   "eip155:56": { name: "BNB Chain", family: "evm", tier: "second" },
-  "eip155:1187947933": { name: "SKALE Europa-Base", family: "evm", tier: "second", zeroGas: true },
+  "eip155:1187947933": { name: "SKALE", family: "evm", tier: "second", zeroGas: true },
 };
 
 export const SUPPORTED_CHAIN_LABELS = [
@@ -76,7 +77,7 @@ export const SUPPORTED_CHAIN_LABELS = [
   "Optimism",
   "Avalanche",
   "BNB Chain",
-  "SKALE Europa-Base",
+  "SKALE",
 ] as const;
 
 /**
