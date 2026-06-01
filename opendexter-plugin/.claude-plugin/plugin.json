@@ -2,7 +2,7 @@
   "name": "opendexter",
   "displayName": "OpenDexter — x402 Payments",
   "version": "1.1.0",
-  "description": "Search, pay, and build with x402 — the open protocol for machine-to-machine payments. Ships with OpenDexter MCP for instant access to 5,000+ paid APIs, plus deep SDK knowledge for building x402 clients, servers, and React apps.",
+  "description": "Search, pay, and build with x402 — the open protocol for machine-to-machine payments. Ships with OpenDexter MCP, the full index of the agent economy, plus deep SDK knowledge for building x402 clients, servers, and React apps.",
   "author": {
     "name": "Dexter",
     "email": "dev@dexter.cash"
