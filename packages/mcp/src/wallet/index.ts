@@ -25,7 +25,11 @@ export interface LoadedWallet {
   status?: "env" | "existing" | "migrated" | "created";
 }
 
-export type ChainBalances = Record<string, { name: string; usdc: number }>;
+// usdc is `null` when the chain's balance could NOT be verified (RPC error,
+// rate-limit, timeout) — distinct from a verified 0. A null must never be
+// summed into a spendable total or rendered as "$0", or a transient RPC blip
+// makes a funded wallet look empty and can wrongly block a payment.
+export type ChainBalances = Record<string, { name: string; usdc: number | null }>;
 
 const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
@@ -156,40 +160,45 @@ function keypairFromString(key: string): Keypair {
 export async function getSolanaBalance(
   address: string,
   rpcUrl?: string,
-): Promise<{ sol: number; usdc: number }> {
+): Promise<{ sol: number | null; usdc: number | null }> {
   try {
     const connection = new Connection(rpcUrl || SOLANA_RPC_URL, "confirmed");
     const pubkey = new PublicKey(address);
 
+    // null = couldn't verify (RPC failure), NOT a confirmed zero.
     const [solBalance, usdcBalance] = await Promise.all([
-      connection.getBalance(pubkey).catch(() => 0),
+      connection.getBalance(pubkey).then(b => b / 1e9).catch(() => null),
       getUsdcBalance(connection, pubkey),
     ]);
 
-    return { sol: solBalance / 1e9, usdc: usdcBalance };
+    return { sol: solBalance, usdc: usdcBalance };
   } catch (err: any) {
-    console.error(`[dexter-mcp] RPC error fetching balance: ${err.message}`);
-    return { sol: 0, usdc: 0 };
+    console.error(`[dexter-mcp] RPC error fetching Solana balance: ${err.message}`);
+    return { sol: null, usdc: null };
   }
 }
 
-async function getUsdcBalance(connection: Connection, owner: PublicKey): Promise<number> {
+// Returns null when the balance could not be read (RPC error). A genuinely
+// empty token account resolves to 0 (the getTokenAccountBalance path), while
+// a missing ATA throws and is also reported as null — we cannot tell "no
+// account" from "RPC down" here, and the safe reading is "unverified".
+async function getUsdcBalance(connection: Connection, owner: PublicKey): Promise<number | null> {
   try {
     const ata = await getAssociatedTokenAddress(USDC_MINT, owner);
     const info = await connection.getTokenAccountBalance(ata);
     return Number(info.value.uiAmount ?? 0);
   } catch {
-    return 0;
+    return null;
   }
 }
 
 export async function getEvmUsdcBalance(
   address: string,
   chainId: string,
-): Promise<number> {
+): Promise<number | null> {
   const viemChain = VIEM_CHAINS[chainId];
   const usdcAddress = EVM_USDC_ADDRESSES[chainId];
-  if (!viemChain || !usdcAddress) return 0;
+  if (!viemChain || !usdcAddress) return null;
   try {
     const client = createPublicClient({
       chain: viemChain,
@@ -207,11 +216,15 @@ export async function getEvmUsdcBalance(
     const decimals = usdcDecimalsForChain(chainId);
     return Number(raw) / Math.pow(10, decimals);
   } catch {
-    return 0;
+    // RPC error / rate-limit / timeout — NOT a zero balance. Return null so
+    // the caller can flag the chain "unavailable" instead of reporting $0.
+    return null;
   }
 }
 
-export async function getAllBalances(wallet: WalletInfo): Promise<{ totalUsdc: number; chains: ChainBalances }> {
+export async function getAllBalances(
+  wallet: WalletInfo,
+): Promise<{ totalUsdc: number; chains: ChainBalances; degraded: boolean; unavailableChains: string[] }> {
   const chains: ChainBalances = {};
 
   const solPromise = wallet.solanaAddress
@@ -230,8 +243,17 @@ export async function getAllBalances(wallet: WalletInfo): Promise<{ totalUsdc: n
 
   await Promise.all([solPromise, ...evmPromises]);
 
-  const totalUsdc = Object.values(chains).reduce((sum, c) => sum + c.usdc, 0);
-  return { totalUsdc, chains };
+  // Sum only VERIFIED chains. A chain whose read failed (usdc === null) is
+  // excluded from the spendable total and listed in unavailableChains, with
+  // degraded=true so a consumer knows the total is a floor, not the truth.
+  const unavailableChains = Object.entries(chains)
+    .filter(([, c]) => c.usdc === null)
+    .map(([caip2]) => caip2);
+  const totalUsdc = Object.values(chains).reduce(
+    (sum, c) => sum + (c.usdc ?? 0),
+    0,
+  );
+  return { totalUsdc, chains, degraded: unavailableChains.length > 0, unavailableChains };
 }
 
 export async function showWalletInfo(opts: { dev: boolean }): Promise<void> {
@@ -241,7 +263,7 @@ export async function showWalletInfo(opts: { dev: boolean }): Promise<void> {
     process.exit(1);
   }
 
-  const { totalUsdc, chains } = await getAllBalances(wallet.info);
+  const { totalUsdc, chains, degraded, unavailableChains } = await getAllBalances(wallet.info);
 
   const result: Record<string, unknown> = {
     address: wallet.info.solanaAddress || wallet.info.evmAddress || null,
@@ -252,25 +274,38 @@ export async function showWalletInfo(opts: { dev: boolean }): Promise<void> {
       Object.entries(chains).map(([caip2, data]) => [
         caip2,
         {
-          available: String(Math.round(data.usdc * 1e6)),
+          // A chain whose read failed reports available:null + unavailable:true
+          // rather than "0", so a transient RPC error can't masquerade as an
+          // empty balance.
+          available: data.usdc === null ? null : String(Math.round(data.usdc * 1e6)),
+          ...(data.usdc === null ? { unavailable: true } : {}),
           name: data.name,
           tier: caip2 === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" || caip2 === "eip155:8453" ? "first" : "second",
         },
       ]),
     ),
     balances: {
+      // usdc/availableAtomic are the VERIFIED total (errored chains excluded).
+      // `degraded` flags that the real total may be higher than shown.
       usdc: totalUsdc,
       fundedAtomic: String(Math.round(totalUsdc * 1e6)),
       spentAtomic: "0",
       availableAtomic: String(Math.round(totalUsdc * 1e6)),
+      degraded,
+      ...(degraded ? { unavailableChains } : {}),
     },
     supportedNetworks: Object.keys(chains).length > 0
       ? Object.keys(chains).map((caip2) => CHAIN_NAMES[caip2]?.name?.toLowerCase() || caip2)
       : ["solana", "base", "polygon", "arbitrum", "optimism", "avalanche"],
     walletFile: WALLET_FILE,
   };
-  if (totalUsdc === 0) {
+  // Only suggest depositing when the wallet is VERIFIABLY empty — never when
+  // the total is 0 merely because every chain read failed (that would tell a
+  // funded user to deposit money they already have).
+  if (totalUsdc === 0 && !degraded) {
     result.tip = `Deposit USDC to ${wallet.info.solanaAddress || "your Solana wallet"}${wallet.info.evmAddress ? ` or ${wallet.info.evmAddress}` : ""} to start paying for x402 APIs.`;
+  } else if (totalUsdc === 0 && degraded) {
+    result.tip = `Could not verify balances on ${unavailableChains.length} chain(s) (RPC unavailable). Retry before assuming the wallet is empty.`;
   }
 
   console.log(JSON.stringify(result, null, 2));

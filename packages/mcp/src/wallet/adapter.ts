@@ -57,12 +57,25 @@ export function createNpmWalletAdapter(wallet: LoadedWallet): WalletAdapter {
       // v1 endpoint's balance check silently reads $0 — which would falsely
       // block a funded wallet on the entire v1 category.
       const resolved = resolveNetwork(network);
+
+      // A balance read can now return null = "couldn't verify" (RPC error),
+      // distinct from a verified 0. This gate decides whether to ATTEMPT a
+      // payment, and the documented harm is false-blocking a funded wallet.
+      // So: retry once, and if still unverified, return Infinity so the gate
+      // lets the call proceed — an unverified balance must never masquerade as
+      // $0. If funds truly are short the on-chain settlement fails and surfaces
+      // a real receipt; a false block leaves money stranded with no recourse.
+      const verifyOrPass = async (read: () => Promise<number | null>): Promise<number> => {
+        let v = await read();
+        if (v === null) v = await read(); // single retry — RPC blips are transient
+        return v === null ? Number.POSITIVE_INFINITY : v;
+      };
+
       if (resolved.family === "svm" && wallet.info.solanaAddress) {
-        const { usdc } = await getSolanaBalance(wallet.info.solanaAddress);
-        return usdc;
+        return verifyOrPass(async () => (await getSolanaBalance(wallet.info.solanaAddress!)).usdc);
       }
       if (resolved.family === "evm" && resolved.caip2 && wallet.info.evmAddress) {
-        return await getEvmUsdcBalance(wallet.info.evmAddress, resolved.caip2);
+        return verifyOrPass(() => getEvmUsdcBalance(wallet.info.evmAddress!, resolved.caip2!));
       }
       return 0;
     },

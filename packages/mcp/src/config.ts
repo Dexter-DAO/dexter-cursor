@@ -3,23 +3,34 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname as pathDirname } from "node:path";
+import { EVM_RPC_URLS as SDK_EVM_RPC_URLS, SOLANA_RPC_URLS as SDK_SOLANA_RPC_URLS } from "@dexterai/x402/utils";
 
 export const DATA_DIR = join(homedir(), ".dexterai-mcp");
 export const WALLET_FILE = join(DATA_DIR, "wallet.json");
 
 export const DEXTER_API_PROD = process.env.DEXTER_API_URL || "https://x402.dexter.cash";
 export const DEXTER_API_DEV = "http://127.0.0.1:3030";
-export const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || "https://api.dexter.cash/api/solana/rpc";
+export const SOLANA_RPC_URL =
+  process.env.SOLANA_RPC_URL ||
+  SDK_SOLANA_RPC_URLS["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] ||
+  "https://api.dexter.cash/api/solana/rpc";
 
+// RPC endpoints come from the SDK's single source of truth (@dexterai/x402),
+// the SAME map the payment path resolves against — so balance reads and
+// payments can never drift onto different endpoints again. Mainnet EVM chains
+// route through Dexter's chain-keyed proxy (api.dexter.cash/api/evm/<chain>/rpc),
+// which fronts QuickNode with fallbacks; public RPCs rate-limit balance reads
+// and the throttle used to surface as a false $0. Per-chain env vars still win
+// as an override layer. SKALE has no Dexter proxy (canonical zero-gas RPC).
 export const EVM_RPC_URLS: Record<string, string> = {
-  "eip155:8453": process.env.BASE_RPC_URL || "https://mainnet.base.org",
-  "eip155:137": process.env.POLYGON_RPC_URL || "https://polygon-rpc.com",
-  "eip155:42161": process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc",
-  "eip155:10": process.env.OPTIMISM_RPC_URL || "https://mainnet.optimism.io",
-  "eip155:43114": process.env.AVALANCHE_RPC_URL || "https://api.avax.network/ext/bc/C/rpc",
-  "eip155:56": process.env.BSC_RPC_URL || "https://bsc-dataseed1.binance.org",
+  "eip155:8453": process.env.BASE_RPC_URL || SDK_EVM_RPC_URLS["eip155:8453"],
+  "eip155:137": process.env.POLYGON_RPC_URL || SDK_EVM_RPC_URLS["eip155:137"],
+  "eip155:42161": process.env.ARBITRUM_RPC_URL || SDK_EVM_RPC_URLS["eip155:42161"],
+  "eip155:10": process.env.OPTIMISM_RPC_URL || SDK_EVM_RPC_URLS["eip155:10"],
+  "eip155:43114": process.env.AVALANCHE_RPC_URL || SDK_EVM_RPC_URLS["eip155:43114"],
+  "eip155:56": process.env.BSC_RPC_URL || SDK_EVM_RPC_URLS["eip155:56"],
   // SKALE — zero-gas chain (eip155:1187947933 is the Europa-Base instance
-  // we use). SKALE's own RPC is canonical; no Quicknode endpoint exists.
+  // we use). SKALE's own RPC is canonical; no Quicknode/proxy endpoint exists.
   "eip155:1187947933": process.env.SKALE_BASE_RPC_URL || "https://skale-base.skalenodes.com/v1/base",
 };
 

@@ -1,5 +1,6 @@
 /**
- * Shared MCP server instructions for OpenDexter / Dexter x402 Gateway.
+ * Shared MCP server instructions for OpenDexter (the agent-facing server name;
+ * historically "Dexter x402 Gateway" until the 2026-06 brand alignment).
  *
  * Single source of truth consumed by BOTH:
  *   - The hosted remote server at open.dexter.cash/mcp
@@ -27,12 +28,12 @@
  * Consumed via:
  *   import { SERVER_INSTRUCTIONS } from '@dexterai/mcp-instructions';
  *   const server = new McpServer(
- *     { name: 'Dexter x402 Gateway', version: VERSION },
+ *     { name: 'OpenDexter', version: VERSION },
  *     { instructions: SERVER_INSTRUCTIONS },
  *   );
  */
 
-export const SERVER_INSTRUCTIONS = `You are connected to the Dexter x402 Gateway, an MCP server for discovering and paying for x402 APIs and for provisioning a Dextercard. This is your operating procedure for these tools. Follow it.
+export const SERVER_INSTRUCTIONS = `You are connected to OpenDexter, an MCP server for discovering and paying for x402 APIs and for provisioning a Dextercard. This is your operating procedure for these tools. Follow it.
 
 # The one rule that prevents every common failure
 
@@ -66,6 +67,13 @@ Anything about a Dextercard (status, get a card, freeze it, link a wallet, sign 
 # The x402 tools
 
 x402_search — Semantic search over the marketplace. Pass the user's natural-language intent verbatim ("ETH price feed", "generate an image", "translate text"). Do NOT pre-filter by chain or category; the ranker expands and ranks internally. Returns two tiers: strongResults (high-confidence) and relatedResults (adjacent). Present strong results first, with price and quality score. Quality score bands: 90-100 excellent, 75-89 good, 50-74 mediocre, under 50 untested. Testnet and unverified resources are hidden by default; pass testnets:true or unverified:true only if the user explicitly wants them.
+
+  Honesty signals on the response — READ THESE before paying:
+    • Each result has serviceProfile. When non-null it carries input_semantics (per-field meaning, NOT just type) and good_response_looks_like. This is structured truth derived from the provider's OpenAPI. Trust it over the prose description if they conflict.
+    • A null serviceProfile on a strong-banded result means the ranker judged it from marketing text alone. The result may still be correct, but the confidence is structurally lower than the band suggests.
+    • The response includes confidence: { profileCoverage, topMatchProfileBacked, triangulatableAlternates }. Read it.
+    • When triangulate is PRESENT on the response, the top match has no structured input semantics AND a profile-backed alternate exists. The query is at high risk of returning a confidently-wrong answer if it's ambiguous (e.g. a token name that could match multiple tokens, a partial symbol, a vague proper noun). Before paying the top match: call one of triangulate.alternateResourceIds first, confirm the answers agree, then proceed. If the query is unambiguous (an exact contract address, a unique ID), you can skip this and pay the top match directly.
+    • When triangulate is ABSENT, the top match is either profile-backed or no usable alternate exists — proceed normally.
 
 x402_check — Probes an endpoint without paying. Returns per-chain pricing, the input/output body schema when the endpoint publishes one, and an authMode: paid, siwx, apiKey, apiKey+paid, unprotected, or unknown. Use the authMode to pick the next tool: paid -> x402_fetch; siwx -> x402_access; unprotected -> a normal call, no payment needed.
 

@@ -38,7 +38,7 @@ export async function startServer(opts: ServerOptions): Promise<void> {
   }
 
   const server = new McpServer(
-    { name: "Dexter x402 Gateway", version: VERSION },
+    { name: "OpenDexter", version: VERSION },
     { instructions: SERVER_INSTRUCTIONS },
   );
 

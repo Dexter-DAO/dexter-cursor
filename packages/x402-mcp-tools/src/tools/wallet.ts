@@ -36,12 +36,16 @@ export function registerWalletTool(server: McpServer, opts: WalletToolOpts): voi
 
       try {
         const info = wallet.getInfo();
-        const { totalUsdc, chains } = await wallet.getAllBalances();
+        const { totalUsdc, chains, degraded, unavailableChains } = await wallet.getAllBalances();
+        // A chain whose read failed (usdc === null) reports available:null +
+        // unavailable:true rather than "0" — a transient RPC error must never
+        // be indistinguishable from an empty balance.
         const chainBalances = Object.fromEntries(
           Object.entries(chains).map(([caip2, chain]) => [
             caip2,
             {
-              available: String(Math.round(chain.usdc * 1e6)),
+              available: chain.usdc === null ? null : String(Math.round(chain.usdc * 1e6)),
+              ...(chain.usdc === null ? { unavailable: true } : {}),
               name: chain.name,
               tier:
                 caip2 === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" || caip2 === "eip155:8453"
@@ -50,6 +54,10 @@ export function registerWalletTool(server: McpServer, opts: WalletToolOpts): voi
             },
           ]),
         );
+        const isDegraded = degraded ?? Object.values(chains).some((c) => c.usdc === null);
+        const unavailable =
+          unavailableChains ??
+          Object.entries(chains).filter(([, c]) => c.usdc === null).map(([caip2]) => caip2);
         const data: Record<string, unknown> = {
           address: info.solanaAddress || info.evmAddress || null,
           solanaAddress: info.solanaAddress ?? null,
@@ -57,10 +65,14 @@ export function registerWalletTool(server: McpServer, opts: WalletToolOpts): voi
           network: "multichain",
           chainBalances,
           balances: {
+            // Verified total only (failed chains excluded). `degraded` flags
+            // that the real balance may be higher than shown.
             usdc: totalUsdc,
             fundedAtomic: String(Math.round(totalUsdc * 1e6)),
             spentAtomic: "0",
             availableAtomic: String(Math.round(totalUsdc * 1e6)),
+            degraded: isDegraded,
+            ...(isDegraded ? { unavailableChains: unavailable } : {}),
           },
           supportedNetworks:
             Object.keys(chainBalances).length > 0
@@ -70,10 +82,15 @@ export function registerWalletTool(server: McpServer, opts: WalletToolOpts): voi
         if (info.descriptor) {
           data.walletDescriptor = info.descriptor;
         }
-        if (totalUsdc === 0) {
+        // Only advise depositing when the wallet is VERIFIABLY empty — not when
+        // the total is 0 merely because reads failed (that would tell a funded
+        // user to deposit funds they already hold).
+        if (totalUsdc === 0 && !isDegraded) {
           data.tip = `Deposit USDC to ${
             info.solanaAddress || "your Solana wallet"
           }${info.evmAddress ? ` or ${info.evmAddress}` : ""} to start paying.`;
+        } else if (totalUsdc === 0 && isDegraded) {
+          data.tip = `Could not verify balances on ${unavailable.length} chain(s) (RPC unavailable). Retry before assuming the wallet is empty.`;
         }
         return {
           content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],

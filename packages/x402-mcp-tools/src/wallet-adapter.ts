@@ -50,8 +50,19 @@ export interface WalletInfo {
  * the hosted servers and ChatGPT widgets already consume.
  */
 export interface WalletBalances {
+  /** Sum of VERIFIED chains only. Chains whose balance read failed are
+   *  excluded (see `degraded`) — never silently counted as 0. */
   totalUsdc: number;
-  chains: Record<string, { name: string; usdc: number }>;
+  /** Per-chain balance. `usdc: null` means the read failed (RPC error /
+   *  rate-limit), distinct from a verified 0. Consumers must not render a
+   *  null as "$0" or sum it into spendable funds. */
+  chains: Record<string, { name: string; usdc: number | null }>;
+  /** True when one or more chains could not be verified — `totalUsdc` is then
+   *  a floor, not the full balance. Optional for backward compatibility with
+   *  adapters that predate this field. */
+  degraded?: boolean;
+  /** CAIP-2 ids of the chains that could not be verified this read. */
+  unavailableChains?: string[];
 }
 
 /**
