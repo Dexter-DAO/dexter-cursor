@@ -27,7 +27,13 @@ export function registerSearchTool(server: McpServer, opts: SearchToolOpts): voi
       "Returns two tiers: strong matches (high-confidence capability hits) and related matches " +
       "(adjacent services that cleared the similarity floor but not the strong threshold). " +
       "Handles synonyms and alternate phrasings internally — pass the user's natural-language " +
-      "intent directly. Use x402_fetch to call any result.",
+      "intent directly. Use x402_fetch to call any result. " +
+      "Each result carries `serviceProfile` (structured input semantics + good-response shape) " +
+      "when the catalog has OpenAPI-derived behavioral truth for it; null otherwise. The response " +
+      "also includes `confidence` (profileCoverage + topMatchProfileBacked) and, when actionable, " +
+      "`triangulate` (a recommendation to cross-check with a profile-backed alternate before paying " +
+      "the top match). Treat the presence of `triangulate` as load-bearing: it means the top result " +
+      "is ranked on marketing text alone and an ambiguous query could yield a confidently-wrong answer.",
     {
       query: z
         .string()
