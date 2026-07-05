@@ -36,12 +36,19 @@ import { consentLinkFor } from "./connect.js";
 const USDC_DECIMALS = 6;
 
 /** Definitive dead-grant error prefixes from tabFromGrant — safe to mark
- *  the stored record dead on (transient RPC errors never match these). */
+ *  the stored record dead on (transient RPC errors never match these). All
+ *  are deterministic verdicts about the STORED grant, so retrying
+ *  construction every call would just re-throw the same error and burn RPC. */
 const DEAD_GRANT_ERRORS = [
   "tab_session_not_live",
   "tab_session_pubkey_mismatch",
   "tab_grant_params_stale",
   "tab_exhausted",
+  // The SDK's definitive wrong-key verdict: the custodied secret does not
+  // sign for params.sessionPubkey (a corrupted/mis-stored record). It can
+  // never construct — mark dead so `tab connect --rekey` is the next step,
+  // not a per-call re-throw.
+  "tab_session_key_mismatch",
 ];
 
 export interface TabLaneDeps {
@@ -134,10 +141,13 @@ function explainRefusal(reason: string, detail: string | undefined, sellerUrl: s
         `whose first voucher (chain frontier + this call) exceeds the ` +
         `seller's per-voucher bound — sellers cap single-voucher increments ` +
         `to limit over-delivery on resumed sessions. Do NOT retry: the same ` +
-        `voucher will be refused again. Settle and reopen the tab ` +
-        `(\`opendexter tab close ${sellerUrl}\` then ` +
-        `\`opendexter tab connect ${sellerUrl}\`), or pass --no-tab to pay ` +
-        `this call exact.`
+        `voucher will be refused again. Recover by opening a FRESH tab with a ` +
+        `new key — \`opendexter tab connect ${sellerUrl} --rekey\` (or ` +
+        `\`opendexter tab remove ${sellerUrl}\` then ` +
+        `\`opendexter tab connect ${sellerUrl}\`); reopening is a new grant ` +
+        `on a new channel that resumes cleanly over the chain frontier. To ` +
+        `pay just this one call without a tab: \`opendexter fetch ${sellerUrl} ` +
+        `--no-tab\` (CLI) or the tab:false arg on x402_fetch.`
       );
     case "non_monotonic":
       return (
@@ -159,14 +169,15 @@ function explainRefusal(reason: string, detail: string | undefined, sellerUrl: s
       return (
         `The seller refused the tab voucher: session_expired — the tab's ` +
         `consented expiry has passed. Open a fresh tab: ` +
-        `\`opendexter tab connect ${sellerUrl}\`.`
+        `\`opendexter tab connect ${sellerUrl} --rekey\`.`
       );
     default:
       return (
         `The seller refused the tab voucher: ${reason}` +
         (detail ? ` (${detail})` : "") +
         `. Not retried — inspect the reason; \`opendexter tab connect ` +
-        `${sellerUrl}\` opens a fresh tab, --no-tab pays exact.`
+        `${sellerUrl} --rekey\` opens a fresh tab, \`--no-tab\` (or the ` +
+        `x402_fetch tab:false arg) pays this call exact.`
       );
   }
 }

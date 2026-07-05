@@ -29,6 +29,10 @@ function usd(atomic: string | undefined): string | null {
   const n = BigInt(atomic);
   const whole = n / 1_000_000n;
   const cents = ((n % 1_000_000n) / 10_000n).toString().padStart(2, "0");
+  // TODO(backlog): 2-decimal display truncates sub-cent amounts ($0.001 →
+  // "$0.00"). Fine for customer-zero ($0.01/req) and every display-only use
+  // here; revisit with a 6-decimal trimmed formatter if a seller ever prices
+  // in sub-cents. Never becomes load-bearing for math — atomic strings are.
   return `${whole}.${cents}`;
 }
 

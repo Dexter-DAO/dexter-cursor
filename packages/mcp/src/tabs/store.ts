@@ -20,7 +20,14 @@
  * facilitator's /tab/settle; it is never read back as a counter.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { DATA_DIR } from "../config.js";
 
@@ -92,7 +99,18 @@ export function saveTabs(tabs: TabRecord[], dir?: string): void {
   const base = dir ?? DATA_DIR;
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const payload: TabsFile = { version: 1, tabs };
-  writeFileSync(fileFor(dir), JSON.stringify(payload, null, 2) + "\n", { mode: 0o600 });
+  const file = fileFor(dir);
+  // Atomic write: this file holds custodied session SECRETS + unsettled
+  // settle receipts. A torn writeFileSync (crash / disk-full mid-write)
+  // would leave truncated JSON that loadTabs' corrupt-file branch silently
+  // discards — losing every key at once. Write a temp file, then rename:
+  // rename is atomic on POSIX, so a reader sees either the whole old file or
+  // the whole new one, never a half. 0600 is set at temp creation AND
+  // re-asserted after (a pre-existing temp could carry looser perms).
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(tmp, JSON.stringify(payload, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(tmp, 0o600);
+  renameSync(tmp, file);
 }
 
 /** One grant per counterparty: upsert REPLACES any existing record. */

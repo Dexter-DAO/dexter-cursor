@@ -28,6 +28,7 @@ import type {
 
 import {
   loadTabs,
+  saveTabs,
   upsertTab,
   findTab,
   removeTab,
@@ -37,7 +38,8 @@ import { findSessionByAgentKey } from "../src/tabs/chain.js";
 import { createTabLane, resetTabLaneCacheForTests } from "../src/tabs/lane.js";
 import { consentLinkFor, cliTabConnect } from "../src/tabs/connect.js";
 import { cliTabClose } from "../src/tabs/cli.js";
-import { x402Fetch } from "../../x402-mcp-tools/src/tools/fetch.js";
+import { x402Fetch, registerFetchTool } from "../../x402-mcp-tools/src/tools/fetch.js";
+import { readdirSync } from "node:fs";
 
 // ── Fixtures ────────────────────────────────────────────────────────────
 
@@ -302,6 +304,16 @@ describe("tabs/store — custody file", () => {
     require("node:fs").writeFileSync(file, "{corrupt", { mode: 0o600 });
     expect(loadTabs(dir)).toEqual([]);
   });
+
+  it("writes atomically: 0600, no lingering temp file, whole-file replace", () => {
+    saveTabs([makeGrant().record], dir);
+    saveTabs([makeGrant().record, makeGrant({ counterparty: "So11111111111111111111111111111111111111112" }).record], dir);
+    // No .tmp-* residue from the rename, and perms held on the final file.
+    const entries = readdirSync(dir);
+    expect(entries.filter((f) => f.includes(".tmp"))).toEqual([]);
+    expect(statSync(join(dir, "tabs.json")).mode & 0o777).toBe(0o600);
+    expect(loadTabs(dir)).toHaveLength(2);
+  });
 });
 
 describe("tabs/chain — poll by (sessionPubkey, counterparty)", () => {
@@ -421,6 +433,65 @@ describe("tabs/connect — consent handoff", () => {
     expect(active.vaultPda).toBe(g.vault.toBase58());
     expect(active.params).toEqual(g.record.params);
     expect(active.sessionPubkey).toBe(pending.sessionPubkey); // same custodied key
+  });
+
+  it("an ACTIVE tab is left untouched on a plain re-run, and the recovery hint names --rekey", async () => {
+    const g = makeGrant();
+    upsertTab(g.record, dir);
+    const lines: string[] = [];
+    await cliTabConnect(SELLER_URL, {
+      wait: false, dataDir: dir,
+      connection: fakeConnection(new Map(), [[]]) as unknown as Connection,
+      log: (s: string) => lines.push(s),
+    });
+    // Unchanged: no new key minted, no status churn.
+    expect(findTab(COUNTERPARTY, dir)!.sessionPubkey).toBe(g.record.sessionPubkey);
+    expect(lines.join("\n")).toContain(`opendexter tab connect ${SELLER_URL} --rekey`);
+  });
+
+  it("--rekey over an ACTIVE tab mints a FRESH key and re-issues consent (the cumulative_exceeds_cap recovery)", async () => {
+    const g = makeGrant();
+    upsertTab(g.record, dir);
+    const lines: string[] = [];
+    await cliTabConnect(SELLER_URL, {
+      wait: false, rekey: true, dataDir: dir,
+      connection: fakeConnection(new Map(), [[]]) as unknown as Connection,
+      log: (s: string) => lines.push(s),
+    });
+    const rec = findTab(COUNTERPARTY, dir)!;
+    expect(rec.status).toBe("pending"); // back to awaiting the human tap
+    expect(rec.sessionPubkey).not.toBe(g.record.sessionPubkey); // FRESH key
+    expect(loadTabs(dir)).toHaveLength(1); // replaced in place
+    expect(lines.join("\n")).toContain(consentLinkFor(SELLER_URL, rec.sessionPubkey));
+  });
+
+  it("--rekey warns before discarding an unsettled voucher receipt (mirrors `tab remove`)", async () => {
+    const g = makeGrant();
+    upsertTab({ ...g.record, lastVoucherHeader: "aGVsZG9uLXJlY2VpcHQ=" }, dir);
+    const lines: string[] = [];
+    await cliTabConnect(SELLER_URL, {
+      wait: false, rekey: true, dataDir: dir,
+      connection: fakeConnection(new Map(), [[]]) as unknown as Connection,
+      log: (s: string) => lines.push(s),
+    });
+    const out = lines.join("\n");
+    expect(out).toMatch(/UNSETTLED voucher receipt/i);
+    expect(out).toContain(`opendexter tab close ${SELLER_URL}`);
+    // The new key was still minted (the warning informs, it doesn't block).
+    expect(findTab(COUNTERPARTY, dir)!.sessionPubkey).not.toBe(g.record.sessionPubkey);
+  });
+
+  it("re-connecting over a DEAD record warns before discarding a held receipt", async () => {
+    const g = makeGrant({ status: "dead", deadReason: "tab_session_not_live" });
+    upsertTab({ ...g.record, lastVoucherHeader: "aGVsZG9uLXJlY2VpcHQ=" }, dir);
+    const lines: string[] = [];
+    await cliTabConnect(SELLER_URL, {
+      wait: false, dataDir: dir,
+      connection: fakeConnection(new Map(), [[]]) as unknown as Connection,
+      log: (s: string) => lines.push(s),
+    });
+    expect(lines.join("\n")).toMatch(/UNSETTLED voucher receipt/i);
+    expect(findTab(COUNTERPARTY, dir)!.status).toBe("pending"); // fresh grant minted
   });
 });
 
@@ -552,6 +623,10 @@ describe("tabs/lane — tab-first payment", () => {
     expect(result.error).toMatch(/cumulative_exceeds_cap/);
     expect(result.error).toMatch(/resume/i); // names the resume nuance
     expect(result.error).toMatch(/do not.*retry/i);
+    // The remediation command must actually RECOVER: --rekey (or remove +
+    // connect), never the old close+connect no-op loop that bricked the tab.
+    expect(result.error).toMatch(/--rekey/);
+    expect(result.error).not.toMatch(/tab close .* then .*tab connect/);
     expect(result.tab).toMatchObject({ rail: "tab", used: false, refusalReason: "cumulative_exceeds_cap" });
     // The grant is NOT marked dead — its cap has headroom; only the seller's
     // per-voucher resume bound was hit.
@@ -576,6 +651,22 @@ describe("tabs/lane — tab-first payment", () => {
     const rec = findTab(g.record.counterparty, dir)!;
     expect(rec.status).toBe("dead");
     expect(rec.deadReason).toMatch(/tab_session_not_live/);
+  });
+
+  it("a wrong-key record (tab_session_key_mismatch) is marked dead, not retried every call", async () => {
+    // A corrupted record: the stored secret does not sign for its pubkey.
+    // tabFromGrant throws tab_session_key_mismatch BEFORE any I/O — the lane
+    // must mark it dead so the next call skips construction entirely.
+    const g = makeGrant();
+    const other = makeGrant();
+    upsertTab({ ...g.record, sessionSecretKey: other.record.sessionSecretKey }, dir);
+    const conn = chainFor(g, sessionAccountData(g));
+    const lane = createTabLane(laneDeps(conn));
+    const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
+    expect(out.done).toBe(false);
+    const rec = findTab(g.record.counterparty, dir)!;
+    expect(rec.status).toBe("dead");
+    expect(rec.deadReason).toMatch(/tab_session_key_mismatch/);
   });
 
   it("skips the lane when the per-call policy cap is below the seller's price (falls through; exact path enforces the same cap)", async () => {
@@ -636,6 +727,47 @@ describe("x402Fetch seam — tab lane hook", () => {
     const result = await x402Fetch({ url: SELLER_URL, method: "GET" }, null, { maxAmountUsdc: 5 });
     expect(result.status).toBe(402);
     expect("tab" in result).toBe(false);
+  });
+});
+
+describe("x402_fetch tool — per-call tab opt-out (the real escape hatch)", () => {
+  /** Capture the handler registerFetchTool wires onto the MCP server. */
+  function registerAndCapture(getTabLane: () => any) {
+    let handler: ((args: any) => Promise<any>) | null = null;
+    const fakeServer = {
+      tool: (name: string, _d: string, _s: unknown, h: (args: any) => Promise<any>) => {
+        if (name === "x402_fetch") handler = h;
+      },
+    };
+    registerFetchTool(fakeServer as any, {
+      apiBaseUrl: "https://x402.dexter.cash",
+      metas: { fetch: {} } as any,
+      wallet: null,
+      getMaxAmountUsdc: () => 5,
+      getTabLane,
+    });
+    if (!handler) throw new Error("x402_fetch handler not registered");
+    return handler as (args: any) => Promise<any>;
+  }
+
+  it("tab:false makes the tool NOT consult the lane (exact escape hatch)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => live402Response()));
+    const laneSpy = vi.fn(async () => ({ done: true, result: { status: 200, data: { via: "tab" } } }));
+    const handler = registerAndCapture(() => laneSpy);
+    const res = await handler({ url: SELLER_URL, method: "GET", tab: false });
+    expect(laneSpy).not.toHaveBeenCalled();
+    // Walletless + no lane → canonical 402 requirements, no tab result.
+    expect(res.structuredContent.status).toBe(402);
+    expect("tab" in res.structuredContent).toBe(false);
+  });
+
+  it("tab omitted (default) DOES consult the lane", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => live402Response()));
+    const laneSpy = vi.fn(async () => ({ done: true, result: { status: 200, data: { via: "tab" } } }));
+    const handler = registerAndCapture(() => laneSpy);
+    const res = await handler({ url: SELLER_URL, method: "GET" });
+    expect(laneSpy).toHaveBeenCalledOnce();
+    expect(res.structuredContent).toEqual({ status: 200, data: { via: "tab" } });
   });
 });
 

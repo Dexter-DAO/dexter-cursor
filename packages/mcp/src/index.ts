@@ -260,6 +260,12 @@ async function main() {
             type: "number",
             default: 10,
             description: "connect: minutes to poll for the passkey approval",
+          })
+          .option("rekey", {
+            type: "boolean",
+            default: false,
+            description:
+              "connect: force a fresh session key over an existing tab (recovery for cumulative_exceeds_cap)",
           }),
       async (args) => {
         switch (args.subcommand) {
@@ -269,6 +275,7 @@ async function main() {
             await cliTabConnect(args.target, {
               wait: args.wait,
               timeoutMs: args.timeout * 60 * 1000,
+              rekey: args.rekey,
               dev: args.dev,
             });
             break;

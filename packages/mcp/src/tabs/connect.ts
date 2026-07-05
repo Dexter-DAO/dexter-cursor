@@ -44,12 +44,22 @@ export interface TabConnectOpts {
   pollIntervalMs?: number;
   timeoutMs?: number;
   dev?: boolean;
+  /**
+   * Force a fresh session key even when an ACTIVE tab already exists. This
+   * is the recovery path when a long-lived tab has outgrown the seller's
+   * per-voucher resume window (cumulative_exceeds_cap): a new grant on a new
+   * channel resumes cleanly over the chain frontier. Replaces the record in
+   * place after the human re-approves.
+   */
+  rekey?: boolean;
   /** Test seams. */
   dataDir?: string;
   connection?: Connection;
   log?: (line: string) => void;
 }
 
+// TODO(backlog): see cli.ts::usd — 2-decimal display truncates sub-cent
+// amounts. Display-only; atomic strings carry the load-bearing values.
 function usd(atomic: string): string {
   const n = BigInt(atomic);
   const whole = n / 1_000_000n;
@@ -119,17 +129,31 @@ export async function cliTabConnect(url: string, opts: TabConnectOpts = {}): Pro
   const existing = findTab(counterparty, dir);
 
   let record: TabRecord;
-  if (existing && existing.status === "active") {
+  if (existing && existing.status === "active" && !opts.rekey) {
     log(`A tab with this seller is already open (cap $${usd(existing.params!.maxAmountAtomic)}, `);
     log(`expires ${new Date(existing.params!.expiresAtUnix * 1000).toISOString()}).`);
     log(`Paid calls to it already ride the tab. \`opendexter tab list\` shows its state.`);
+    log(`If it keeps refusing vouchers (cumulative_exceeds_cap), open a fresh one:`);
+    log(`  opendexter tab connect ${url} --rekey`);
     return;
-  } else if (existing && existing.status === "pending") {
+  } else if (existing && existing.status === "pending" && !opts.rekey) {
     // Re-run while awaiting approval: SAME custodied key, no key churn —
     // the link the human may already have open stays valid.
     record = existing;
   } else {
-    // Fresh key (also the path for re-connecting a dead tab: upsert replaces).
+    // Fresh key. Three arrivals here:
+    //  - no record, or a DEAD record (natural re-connect);
+    //  - --rekey over an ACTIVE or pending record (the cumulative_exceeds_cap
+    //    recovery path: a new grant on a new channel).
+    // In every case upsert REPLACES in place. Warn loudly before discarding
+    // an unsettled receipt — the same disclosure `tab remove` prints.
+    if (existing?.lastVoucherHeader) {
+      log(
+        `Note: the existing tab holds an UNSETTLED voucher receipt. Re-keying ` +
+          `discards it (the new key cannot settle the old channel). Settle it ` +
+          `first if you want it on-chain: \`opendexter tab close ${url}\`.`,
+      );
+    }
     const kp = nacl.sign.keyPair();
     record = {
       status: "pending",

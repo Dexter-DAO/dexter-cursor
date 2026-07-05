@@ -578,6 +578,15 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
       .positive()
       .optional()
       .describe("Optional per-call spend cap override in USDC."),
+    tab: z
+      .boolean()
+      .optional()
+      .describe(
+        "Whether to pay via an open spend-tab when the seller offers scheme " +
+          "'tab' and one is connected (default true). Set false to force the " +
+          "one-shot exact payment for THIS call — the escape hatch when a tab " +
+          "is refusing vouchers and you just need the single call to go through.",
+      ),
     multipart: z
       .object({
         fields: z
@@ -625,6 +634,7 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
     body?: string;
     headers?: Record<string, string>;
     maxAmountUsdc?: number;
+    tab?: boolean;
     multipart?: MultipartInput;
   }) => {
     try {
@@ -633,8 +643,9 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
       // current ledger read). Absent hook = budget disabled.
       const budget = opts.getBudgetRuntime?.();
       // Resolve the tab lane fresh per call too — a tab approved while the
-      // server is running becomes payable without a restart.
-      const tabLane = opts.getTabLane?.() ?? null;
+      // server is running becomes payable without a restart. `tab: false` is
+      // the per-call opt-out (the exact-payment escape hatch).
+      const tabLane = args.tab === false ? null : (opts.getTabLane?.() ?? null);
       const result = await x402Fetch(
         {
           url: args.url,
