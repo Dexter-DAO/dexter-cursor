@@ -27,6 +27,8 @@ export interface ComposeAllToolsOpts {
   getMaxAmountUsdc?: FetchToolOpts["getMaxAmountUsdc"];
   /** Rolling 24h budget hooks for fetch's velocity guard. */
   getBudgetRuntime?: FetchToolOpts["getBudgetRuntime"];
+  /** Tab-lane hook for fetch's tab-first payment path (see types.ts). */
+  getTabLane?: FetchToolOpts["getTabLane"];
   /** Optional walletless hint surfaced in fetch's description. */
   walletlessHint?: FetchToolOpts["walletlessHint"];
   /** Optional tip surfaced by x402_wallet when no wallet is configured. */
@@ -76,6 +78,7 @@ export function composeAllTools(server: McpServer, opts: ComposeAllToolsOpts): v
       wallet: opts.wallet,
       getMaxAmountUsdc: opts.getMaxAmountUsdc,
       getBudgetRuntime: opts.getBudgetRuntime,
+      getTabLane: opts.getTabLane,
       walletlessHint: opts.walletlessHint,
     });
   }

@@ -206,7 +206,7 @@ async function main() {
     )
     .command(
       "fetch <url>",
-      "Fetch an x402-protected resource with automatic payment",
+      "Fetch an x402-protected resource with automatic payment (tab-first when a tab is open with the seller)",
       (y) =>
         y
           .positional("url", { type: "string", demandOption: true })
@@ -218,15 +218,79 @@ async function main() {
             type: "number",
             description: "Optional per-call spend cap override in USDC",
           })
-          .option("body", { type: "string", description: "JSON request body" }),
+          .option("body", { type: "string", description: "JSON request body" })
+          .option("tab", {
+            type: "boolean",
+            default: true,
+            description:
+              "Pay via an open tab when the seller offers one (--no-tab forces exact)",
+          }),
       async (args) => {
         const { cliFetch } = await import("./tools/fetch.js");
         await cliFetch(args.url!, {
           method: args.method,
           body: args.body,
           maxAmountUsdc: args["max-amount"],
+          noTab: args.tab === false,
           dev: args.dev,
         });
+      },
+    )
+    .command(
+      "tab <subcommand> [target]",
+      "Open, inspect, settle, or remove spend-tabs with x402 sellers",
+      (y) =>
+        y
+          .positional("subcommand", {
+            type: "string",
+            choices: ["connect", "list", "close", "remove"] as const,
+            demandOption: true,
+          })
+          .positional("target", {
+            type: "string",
+            description: "Seller URL (connect/close/remove) or counterparty pubkey (close/remove)",
+          })
+          .option("wait", {
+            type: "boolean",
+            default: true,
+            description:
+              "connect: poll the chain for the passkey approval (--no-wait prints the link and exits)",
+          })
+          .option("timeout", {
+            type: "number",
+            default: 10,
+            description: "connect: minutes to poll for the passkey approval",
+          }),
+      async (args) => {
+        switch (args.subcommand) {
+          case "connect": {
+            if (!args.target) throw new Error("tab connect requires a seller URL");
+            const { cliTabConnect } = await import("./tabs/connect.js");
+            await cliTabConnect(args.target, {
+              wait: args.wait,
+              timeoutMs: args.timeout * 60 * 1000,
+              dev: args.dev,
+            });
+            break;
+          }
+          case "list": {
+            const { cliTabList } = await import("./tabs/cli.js");
+            await cliTabList();
+            break;
+          }
+          case "close": {
+            if (!args.target) throw new Error("tab close requires a seller URL or counterparty");
+            const { cliTabClose } = await import("./tabs/cli.js");
+            await cliTabClose(args.target);
+            break;
+          }
+          case "remove": {
+            if (!args.target) throw new Error("tab remove requires a seller URL or counterparty");
+            const { cliTabRemove } = await import("./tabs/cli.js");
+            await cliTabRemove(args.target);
+            break;
+          }
+        }
       },
     )
     .command(
@@ -281,13 +345,20 @@ async function main() {
             type: "number",
             description: "Optional per-call spend cap override in USDC",
           })
-          .option("body", { type: "string", description: "JSON request body" }),
+          .option("body", { type: "string", description: "JSON request body" })
+          .option("tab", {
+            type: "boolean",
+            default: true,
+            description:
+              "Pay via an open tab when the seller offers one (--no-tab forces exact)",
+          }),
       async (args) => {
         const { cliFetch } = await import("./tools/fetch.js");
         await cliFetch(args.url!, {
           method: args.method,
           body: args.body,
           maxAmountUsdc: args["max-amount"],
+          noTab: args.tab === false,
           dev: args.dev,
         });
       },

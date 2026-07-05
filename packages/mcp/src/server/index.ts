@@ -15,6 +15,7 @@ import { createNpmWalletAdapter } from "../wallet/adapter.js";
 import { createNpmCardsAdapter } from "../cards-adapter.js";
 import { loadSettings } from "../settings.js";
 import { recordSpend, spentLast24h } from "../spend-ledger.js";
+import { createTabLane } from "../tabs/lane.js";
 import { registerSettingsTool } from "../tools/settings.js";
 import { registerCardLoginTools } from "../tools/card-login.js";
 import { registerWidgetResources } from "../resources/widgets.js";
@@ -55,6 +56,22 @@ export async function startServer(opts: ServerOptions): Promise<void> {
   };
   const metas = buildToolMetas(widgetUris);
 
+  // Tab-first payment: 402s whose accepts include scheme 'tab' pay by
+  // voucher when ~/.dexterai-mcp/tabs.json custodies an ACTIVE grant for
+  // the seller (opened via `opendexter tab connect` + one passkey tap on
+  // dexter.cash). One lane for the server's lifetime — its in-process tab
+  // cache turns call 2..N into pure-local voucher signatures; the grant
+  // store is re-read per call, so a tab approved while the server runs
+  // becomes payable without a restart.
+  const tabLane = createTabLane({
+    getMaxAmountUsdc: () => loadSettings().maxAmountUsdc,
+    getBudgetRuntime: () => ({
+      dailyBudgetUsdc: loadSettings().dailyBudgetUsdc,
+      spentLast24hUsdc: spentLast24h(),
+      recordSpend,
+    }),
+  });
+
   composeAllTools(server, {
     apiBaseUrl: getApiBase(opts.dev),
     capabilityPath: CAPABILITY_PATH,
@@ -71,6 +88,7 @@ export async function startServer(opts: ServerOptions): Promise<void> {
       spentLast24hUsdc: spentLast24h(),
       recordSpend,
     }),
+    getTabLane: () => tabLane,
     walletlessHint:
       "Configure DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (Base/Polygon/etc) for automatic settlement.",
     noWalletTip:

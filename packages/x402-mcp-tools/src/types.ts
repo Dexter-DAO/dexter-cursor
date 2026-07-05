@@ -56,7 +56,49 @@ export interface FetchToolOpts extends ToolBaseOpts {
    * DEXTER_PRIVATE_KEY..." for the npm CLI).
    */
   walletlessHint?: string;
+  /**
+   * Optional tab-lane hook, resolved fresh per call. Consumers that custody
+   * granted session keys (the npm CLI's `~/.dexterai-mcp/tabs.json`) supply
+   * this; x402-mcp-tools stays custody- and storage-agnostic. When the hook
+   * is present, x402_fetch offers every 402 to the lane BEFORE the generic
+   * exact path — the lane decides whether a stored tab covers the seller.
+   */
+  getTabLane?: () => TabLaneHook | null | undefined;
 }
+
+/** The request slice a tab lane needs to re-issue the call with a voucher. */
+export interface TabLaneRequest {
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+/**
+ * Tab-lane outcome contract:
+ *  - `done: true`  — the lane produced the FINAL result for this call
+ *    (a voucher-paid response, or a loud tab error that must not be
+ *    papered over by an exact payment). x402Fetch returns it verbatim.
+ *  - `done: false` — the lane is not handling this call; the ordinary
+ *    exact path proceeds unchanged. An optional `note` is attached to the
+ *    eventual result under `tab` so tab availability / skip reasons are
+ *    never silent (no-silent-fallbacks).
+ */
+export type TabLaneOutcome =
+  | { done: true; result: Record<string, unknown> }
+  | { done: false; note?: Record<string, unknown> };
+
+/**
+ * A consumer-supplied tab lane. Receives the request and the parsed 402
+ * requirements (`{ accepts, x402Version, resource }` — null when the 402
+ * body carried no accepts) and decides per the TabLaneOutcome contract.
+ * Expected failures must come back as outcomes, not throws; a throw is
+ * caught and surfaced as a loud note while the exact path continues.
+ */
+export type TabLaneHook = (
+  request: TabLaneRequest,
+  requirements: Record<string, unknown> | null,
+) => Promise<TabLaneOutcome>;
 
 /** Rolling-budget hooks supplied by a consumer that owns a spend ledger. */
 export interface BudgetRuntime {

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
-import type { FetchToolOpts } from "../types.js";
+import type { FetchToolOpts, TabLaneHook } from "../types.js";
 import type { WalletAdapter } from "../wallet-adapter.js";
 
 const MULTIPART_MAX_BYTES = 200 * 1024 * 1024;
@@ -198,6 +198,14 @@ interface RuntimeFetchOpts {
   dailyBudgetUsdc?: number;
   spentLast24hUsdc?: number;
   recordSpend?: (usdc: number, url: string) => void;
+  /**
+   * Optional tab lane (see TabLaneHook in types.ts). Offered every parsed
+   * 402 BEFORE the generic exact path. `done:true` outcomes are final;
+   * `done:false` notes ride the eventual result under `tab` so a skipped
+   * or unavailable tab is never silent. Multipart calls skip the lane —
+   * a voucher re-issue cannot replay a consumed FormData stream.
+   */
+  tabLane?: TabLaneHook | null;
 }
 
 export async function x402Fetch(
@@ -269,6 +277,38 @@ export async function x402Fetch(
 
   const { requirements } = parse402(body402);
 
+  // ── Tab lane (before any exact payment) ─────────────────────────────
+  // The consumer-custodied tab lane gets first look at every parsed 402.
+  // A `done:true` outcome IS the result (voucher-paid, or a loud tab error
+  // that must not be papered over by paying exact). A `done:false` outcome
+  // falls through to the exact path exactly as before, with its optional
+  // note riding the final result under `tab` — a skipped tab is loud,
+  // never silent. A lane crash must never take down the paid path.
+  let tabNote: Record<string, unknown> | undefined;
+  if (runtime.tabLane && !isMultipart) {
+    try {
+      const outcome = await runtime.tabLane(
+        {
+          url: params.url,
+          method: params.method || "GET",
+          headers: requestHeaders,
+          body: typeof fetchOpts.body === "string" ? fetchOpts.body : undefined,
+        },
+        requirements,
+      );
+      if (outcome.done) return outcome.result;
+      tabNote = outcome.note;
+    } catch (err: any) {
+      tabNote = {
+        rail: "tab",
+        used: false,
+        error: `tab lane failed: ${err?.message ?? String(err)}`,
+      };
+    }
+  }
+  const withTab = (r: Record<string, unknown>): Record<string, unknown> =>
+    tabNote ? { ...r, tab: tabNote } : r;
+
   // Mode 1: Wallet auto-pay
   if (wallet) {
     try {
@@ -278,7 +318,7 @@ export async function x402Fetch(
         runtime.maxAmountUsdc,
       );
       if (!policyCheck.ok) {
-        return { status: 402, error: policyCheck.error, requirements };
+        return withTab({ status: 402, error: policyCheck.error, requirements });
       }
 
       // Rolling-budget gate. The per-call cap above only asks "is THIS call
@@ -290,7 +330,7 @@ export async function x402Fetch(
       if (budget > 0 && callPrice != null) {
         const spent = runtime.spentLast24hUsdc ?? 0;
         if (spent + callPrice > budget) {
-          return {
+          return withTab({
             status: 402,
             error:
               `Rolling budget blocked this call. This call costs ` +
@@ -298,19 +338,19 @@ export async function x402Fetch(
               `${fmtUsd(budget)} 24h budget is already spent through ` +
               `this tool. Raise dailyBudgetUsdc or wait for the window to roll.`,
             requirements,
-          };
+          });
         }
       }
 
       const signers = wallet.getPaymentSigners();
       if (!signers.solanaPrivateKey && !signers.evmPrivateKey) {
-        return {
+        return withTab({
           status: 402,
           error:
             "Wallet does not expose private keys for auto-pay. " +
             "Settle the payment externally and retry, or configure a wallet that supports auto-pay.",
           requirements,
-        };
+        });
       }
 
       // payAndFetch is the SDK's version-agnostic payment seam — it probes
@@ -350,19 +390,80 @@ export async function x402Fetch(
       );
 
       if (!payResult.ok) {
+        // `payment_unconfirmed` is NOT a plain payment failure: the payment
+        // authorization was already sent to the merchant and MAY have settled
+        // on-chain — the merchant just never answered in time. Surfacing it as
+        // "Payment failed" would read as safe-to-retry, and a retry signs a
+        // fresh authorization and can pay a second time. Give it its own
+        // shape: an explicit money-moved, do-not-retry signal.
+        if (payResult.reason === "payment_unconfirmed") {
+          return withTab({
+            status: 402,
+            error:
+              "Payment unconfirmed — the payment was sent and may have " +
+              "settled on-chain, but the merchant did not respond in time. " +
+              "DO NOT retry this call: a retry can pay a second time. " +
+              "Check the wallet / chain for a settled transaction before " +
+              "deciding what to do." +
+              (payResult.detail ? ` (${payResult.detail})` : ""),
+            payment: { settled: "unconfirmed", retrySafe: false },
+            requirements,
+          });
+        }
         // A typed, expected failure — never a thrown error. SIW-X endpoints
         // surface here too (the v1/v2 strategies don't recognise an
-        // identity-only challenge as payable).
-        return {
+        // identity-only challenge as payable). These reasons all mean no
+        // money moved (or the merchant rejected the payload) — retry-safe.
+        return withTab({
           status: 402,
           error: `Payment failed: ${payResult.reason}${
             payResult.detail ? ` — ${payResult.detail}` : ""
           }`,
           requirements,
-        };
+        });
       }
 
-      const paidRes = payResult.response;
+      // ok:true with paid:false — the endpoint returned a non-402 directly,
+      // no payment was made. Reaching here is unexpected (we already saw a
+      // 402 on the probe above) but the discriminated union requires the
+      // branch; handle it rather than mis-reading payment fields off it.
+      if (!payResult.paid) {
+        return withTab({
+          status: payResult.response.status,
+          data: await parseResponse(payResult.response),
+        });
+      }
+
+      // ok:true, paid:true — but `response` can still be undefined: the
+      // payment was confirmed settled on-chain yet the merchant never
+      // answered before the deadline. Money moved, no data came back.
+      // parseResponse(undefined) would throw — handle it as its own result.
+      if (!payResult.response) {
+        const network =
+          payResult.network?.caip2 ?? payResult.network?.bare;
+        return withTab({
+          status: 402,
+          error:
+            "Payment settled on-chain, but the merchant returned no " +
+            "response before the deadline. The money was spent and the " +
+            "call produced no data. DO NOT retry: the payment already " +
+            "went through.",
+          payment: {
+            settled: true,
+            retrySafe: false,
+            details: {
+              amountPaid: payResult.amountPaid,
+              network,
+              ...(payResult.txSignature
+                ? { transaction: payResult.txSignature }
+                : {}),
+            },
+          },
+          requirements,
+        });
+      }
+
+      const paidRes: Response = payResult.response;
       const data = await parseResponse(paidRes);
       // payAndFetch reports settlement on the PayResult itself (amountPaid,
       // network, txSignature) — authoritative. Fall back to the response's
@@ -428,19 +529,19 @@ export async function x402Fetch(
           .join("; ")}. Call with x402_fetch if relevant.`;
       }
 
-      return result;
+      return withTab(result);
     } catch (err: any) {
-      return { status: 402, error: `Payment failed: ${err.message}`, requirements };
+      return withTab({ status: 402, error: `Payment failed: ${err.message}`, requirements });
     }
   }
 
   // No signing wallet: return canonical x402 requirements only.
-  return {
+  return withTab({
     status: 402,
     message:
       "Payment required. Provide payment-signature manually or configure a wallet for automatic settlement.",
     requirements,
-  };
+  });
 }
 
 export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void {
@@ -531,6 +632,9 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
       // Resolve the rolling-budget hooks fresh per call (live settings + a
       // current ledger read). Absent hook = budget disabled.
       const budget = opts.getBudgetRuntime?.();
+      // Resolve the tab lane fresh per call too — a tab approved while the
+      // server is running becomes payable without a restart.
+      const tabLane = opts.getTabLane?.() ?? null;
       const result = await x402Fetch(
         {
           url: args.url,
@@ -549,6 +653,7 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
                 recordSpend: budget.recordSpend,
               }
             : {}),
+          ...(tabLane ? { tabLane } : {}),
         },
       );
       return {
