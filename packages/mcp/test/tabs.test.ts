@@ -512,28 +512,37 @@ describe("tabs/lane — tab-first payment", () => {
     expect(out).toEqual({ done: false });
   });
 
-  it("tab accept + no stored grant → falls through with a consent note naming the connect command", async () => {
+  it("tab accept + no stored grant → mints a pending key (custody 0600 FIRST) and returns the in-band offer", async () => {
     const lane = createTabLane(laneDeps(fakeConnection() as unknown as Connection));
     const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
     expect(out.done).toBe(false);
-    expect((out as { note?: Record<string, unknown> }).note).toMatchObject({
-      rail: "tab",
-      used: false,
-      connect: `opendexter tab connect ${SELLER_URL}`,
+    // The key was custodied before the offer left the lane.
+    const rec = findTab(COUNTERPARTY, dir)!;
+    expect(rec.status).toBe("pending");
+    expect(bs58.decode(rec.sessionSecretKey)).toHaveLength(64);
+    expect(statSync(join(dir, "tabs.json")).mode & 0o777).toBe(0o600);
+    const offer = (out as { offer?: Record<string, unknown> }).offer!;
+    expect(offer).toMatchObject({
+      mode: "tab_available",
+      connectUrl: consentLinkFor(SELLER_URL, rec.sessionPubkey),
+      priceUsdcPerCall: 0.01,
     });
+    // Pubkey-only in the outcome — the secret never leaves the file.
+    expect(JSON.stringify(out)).not.toContain(rec.sessionSecretKey);
   });
 
-  it("tab accept + PENDING grant → note carries the approve link (the human's tap is the gate)", async () => {
+  it("tab accept + PENDING grant (approval not on chain yet) → tab_pending offer with the SAME key's link", async () => {
     const g = makeGrant({ status: "pending", vaultPda: undefined, params: undefined });
     upsertTab(g.record, dir);
     const lane = createTabLane(laneDeps(fakeConnection() as unknown as Connection));
     const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
     expect(out.done).toBe(false);
-    expect((out as { note?: Record<string, unknown> }).note).toMatchObject({
-      rail: "tab",
-      used: false,
-      approveUrl: consentLinkFor(SELLER_URL, g.record.sessionPubkey),
+    expect((out as { offer?: Record<string, unknown> }).offer).toMatchObject({
+      mode: "tab_pending",
+      connectUrl: consentLinkFor(SELLER_URL, g.record.sessionPubkey),
     });
+    // No key churn while awaiting approval.
+    expect(findTab(COUNTERPARTY, dir)!.sessionPubkey).toBe(g.record.sessionPubkey);
   });
 
   it("ACTIVE grant: pays by voucher through the REAL seller middleware, resumes over the chain frontier, persists the settle receipt", async () => {

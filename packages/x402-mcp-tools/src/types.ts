@@ -75,6 +75,27 @@ export interface TabLaneRequest {
 }
 
 /**
+ * Materials for the in-band tab offer, supplied by a consumer lane that
+ * custodies session keys. The lane mints and persists the session key
+ * (0600, atomic) BEFORE returning these — the link carries only the
+ * public key. x402Fetch composes the agent-facing offer from them, so the
+ * relay copy lives in one place and every consumer says the same words.
+ */
+export interface TabOfferMaterials {
+  /**
+   * tab_available — the seller takes tabs and no grant exists yet; the
+   *   link opens the consent page for a freshly minted session key.
+   * tab_pending — a grant for this seller is awaiting the human's passkey
+   *   approval; the link re-opens the SAME consent page (same key).
+   */
+  mode: "tab_available" | "tab_pending";
+  /** The dexter.cash consent link. Carries the session PUBLIC key only. */
+  connectUrl: string;
+  /** Seller price per call in USDC, when parseable from the tab accept. */
+  priceUsdcPerCall?: number;
+}
+
+/**
  * Tab-lane outcome contract:
  *  - `done: true`  — the lane produced the FINAL result for this call
  *    (a voucher-paid response, or a loud tab error that must not be
@@ -82,11 +103,14 @@ export interface TabLaneRequest {
  *  - `done: false` — the lane is not handling this call; the ordinary
  *    exact path proceeds unchanged. An optional `note` is attached to the
  *    eventual result under `tab` so tab availability / skip reasons are
- *    never silent (no-silent-fallbacks).
+ *    never silent (no-silent-fallbacks). An optional `offer` carries the
+ *    in-band tab invitation: x402Fetch attaches it alongside the paid
+ *    result when an exact rail exists, and returns it AS the response for
+ *    a tab-only seller (there the offer is the only way forward).
  */
 export type TabLaneOutcome =
   | { done: true; result: Record<string, unknown> }
-  | { done: false; note?: Record<string, unknown> };
+  | { done: false; note?: Record<string, unknown>; offer?: TabOfferMaterials };
 
 /**
  * A consumer-supplied tab lane. Receives the request and the parsed 402

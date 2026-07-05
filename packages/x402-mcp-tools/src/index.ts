@@ -89,6 +89,7 @@ export type {
   TabLaneHook,
   TabLaneOutcome,
   TabLaneRequest,
+  TabOfferMaterials,
   AccessToolOpts,
   WalletToolOpts,
   CardToolOpts,

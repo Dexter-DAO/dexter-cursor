@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
-import type { FetchToolOpts, TabLaneHook } from "../types.js";
+import type { FetchToolOpts, TabLaneHook, TabOfferMaterials } from "../types.js";
 import type { WalletAdapter } from "../wallet-adapter.js";
 
 const MULTIPART_MAX_BYTES = 200 * 1024 * 1024;
@@ -172,6 +172,94 @@ function extractSettlement(res: Response): unknown {
   }
 }
 
+/**
+ * A tab-only seller offers no rail the exact path could pay: every accept
+ * in the 402 is scheme 'tab'. For such a seller the in-band tab offer is
+ * the call's whole answer; for a dual-rail seller it rides alongside the
+ * exact result instead.
+ */
+function isTabOnly(requirements: Record<string, unknown> | null): boolean {
+  const accepts = Array.isArray(requirements?.accepts)
+    ? (requirements!.accepts as Array<Record<string, unknown>>)
+    : [];
+  return accepts.length > 0 && accepts.every((a) => a.scheme === "tab");
+}
+
+/**
+ * The in-band tab offer as a call's WHOLE response (tab-only seller, or
+ * any case where nothing exact-payable exists). Mirrors the open MCP's
+ * `vault_required` funnel: mode + link + human-relayable message + model
+ * instructions + a retry echo that preserves the exact call across the
+ * consent detour.
+ */
+function buildTabOfferResponse(
+  offer: TabOfferMaterials,
+  params: { url: string; method: string; body?: string },
+  requirements: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const pending = offer.mode === "tab_pending";
+  return {
+    status: 402,
+    mode: offer.mode,
+    connect_url: offer.connectUrl,
+    ...(offer.priceUsdcPerCall != null
+      ? { price_per_call_usdc: offer.priceUsdcPerCall }
+      : {}),
+    // Human-relayable copy. Written to be handed to the user verbatim.
+    message: pending
+      ? "Your tab with this seller is waiting for your approval. Open the " +
+        "link, approve with your passkey, and I'll run this call again."
+      : "This seller runs tabs. Open one and your next calls here stream " +
+        "against it with one approval, under a limit you set. Open the " +
+        "link, approve with your passkey, and I'll run this call again.",
+    instructions: pending
+      ? "The tab needs the human's approval before this call can pay. " +
+        "Relay message and connect_url to the user, then re-run this " +
+        "exact call (see retry) once they approve."
+      : "Relay message and connect_url to the user. After they approve, " +
+        "re-run this exact call (see retry). The retried call finds the " +
+        "open tab and pays on it. If the approval has not landed yet, the " +
+        "retry answers with mode tab_pending.",
+    // Preserve the original intent so the agent can retry the SAME call.
+    retry: {
+      tool: "x402_fetch",
+      url: params.url,
+      method: params.method || "GET",
+      body: params.body ?? null,
+    },
+    requirements,
+  };
+}
+
+/**
+ * The in-band tab offer ATTACHED to a dual-rail result. The call already
+ * ran on the exact rail (paid, or failed on its own terms) — this field is
+ * the invitation only. No retry echo here, deliberately: telling the model
+ * to re-run a call that already completed could pay twice.
+ */
+function buildAttachedTabOffer(offer: TabOfferMaterials): Record<string, unknown> {
+  const pending = offer.mode === "tab_pending";
+  return {
+    mode: offer.mode,
+    connect_url: offer.connectUrl,
+    ...(offer.priceUsdcPerCall != null
+      ? { price_per_call_usdc: offer.priceUsdcPerCall }
+      : {}),
+    message: pending
+      ? "A tab with this seller is waiting for your approval. Open the " +
+        "link and approve with your passkey; calls after that ride the " +
+        "tab automatically."
+      : "This seller also runs tabs. Approve one once and paid calls to " +
+        "this seller stream against it automatically, under a limit you " +
+        "set. Open the link and approve with your passkey to set one up.",
+    instructions:
+      "This is an invitation, separate from the result above. Do not " +
+      "re-run the call. If the user wants a tab with this seller, show " +
+      "them connect_url; calls after their approval ride the tab " +
+      "automatically.",
+  };
+}
+
 function parse402(body: unknown): {
   requirements: Record<string, unknown> | null;
   firstAccept: Record<string, unknown> | null;
@@ -283,8 +371,12 @@ export async function x402Fetch(
   // that must not be papered over by paying exact). A `done:false` outcome
   // falls through to the exact path exactly as before, with its optional
   // note riding the final result under `tab` — a skipped tab is loud,
-  // never silent. A lane crash must never take down the paid path.
+  // never silent. An `offer` is the in-band tab invitation: for a
+  // dual-rail seller it rides the exact result under `tab_offer` (the
+  // call is never blocked on consent); for a tab-only seller it IS the
+  // response. A lane crash must never take down the paid path.
   let tabNote: Record<string, unknown> | undefined;
+  let tabOffer: TabOfferMaterials | undefined;
   if (runtime.tabLane && !isMultipart) {
     try {
       const outcome = await runtime.tabLane(
@@ -298,6 +390,7 @@ export async function x402Fetch(
       );
       if (outcome.done) return outcome.result;
       tabNote = outcome.note;
+      tabOffer = outcome.offer;
     } catch (err: any) {
       tabNote = {
         rail: "tab",
@@ -306,8 +399,18 @@ export async function x402Fetch(
       };
     }
   }
-  const withTab = (r: Record<string, unknown>): Record<string, unknown> =>
-    tabNote ? { ...r, tab: tabNote } : r;
+  if (tabOffer && isTabOnly(requirements)) {
+    return buildTabOfferResponse(
+      tabOffer,
+      { url: params.url, method: params.method || "GET", body: params.body },
+      requirements,
+    );
+  }
+  const withTab = (r: Record<string, unknown>): Record<string, unknown> => {
+    let out = tabNote ? { ...r, tab: tabNote } : r;
+    if (tabOffer) out = { ...out, tab_offer: buildAttachedTabOffer(tabOffer) };
+    return out;
+  };
 
   // Mode 1: Wallet auto-pay
   if (wallet) {

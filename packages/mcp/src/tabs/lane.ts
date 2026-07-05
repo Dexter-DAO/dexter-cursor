@@ -12,12 +12,29 @@
  * Consent is structural: the lane can only ever spend through a session key
  * the human passkey-approved on dexter.cash (the program verifies the
  * passkey ceremony inside the register tx — the CLI cannot mint spending
- * authority, only ask for it via `opendexter tab connect`).
+ * authority, only ask for it).
+ *
+ * THE IN-BAND OFFER (T2b): the consent flow comes TO the user inside their
+ * agent, the same way the open MCP's vault_required funnel does. When the
+ * seller offers scheme 'tab' and no grant exists, the lane mints + persists
+ * a session key (0600, atomic, BEFORE the link leaves the process) and
+ * returns offer materials; x402Fetch composes the agent-facing shape —
+ * attached alongside the exact result for a dual-rail seller (the call is
+ * never blocked on consent), or as the whole response for a tab-only
+ * seller. While the grant is pending, each call makes ONE bounded chain
+ * read: the moment the human approves, the very next call rides the tab.
+ * `opendexter tab connect` remains the power-user path; it is never
+ * required.
+ *
+ * OFFER SUPPRESSION: the relayable offer is shown once per (process,
+ * seller) — in-memory, most-recent only, cleared on restart. Later calls
+ * carry a terse `tab` note instead (no-silent-fallbacks). Tab-only sellers
+ * are exempt: there the offer is the call's only possible answer.
  *
  * FAILURE DOCTRINE (who falls through, who errors loudly):
  *  - No grant / pending grant / policy cap below price / dead session
- *    → fall through to exact WITH a note. No voucher was signed; paying
- *    exact is safe and is what the pre-tab CLI did.
+ *    → fall through to exact WITH a note (or the offer above). No voucher
+ *    was signed; paying exact is safe and is what the pre-tab CLI did.
  *  - Voucher SIGNED and the seller refused it (second 402), or the wire
  *    failed after dispatch → FINAL loud error, never a quiet exact retry.
  *    A signed voucher is a bearer claim; the refusal reasons are surfaced
@@ -27,11 +44,18 @@
 
 import { Connection } from "@solana/web3.js";
 import bs58 from "bs58";
-import type { TabLaneHook, TabLaneRequest, BudgetRuntime } from "@dexterai/x402-mcp-tools";
+import type {
+  TabLaneHook,
+  TabLaneOutcome,
+  TabLaneRequest,
+  TabOfferMaterials,
+  BudgetRuntime,
+} from "@dexterai/x402-mcp-tools";
 import type { Tab, SignedVoucher } from "@dexterai/x402/tab";
 import { SOLANA_RPC_URL } from "../config.js";
 import { findTab, updateTab, type TabRecord } from "./store.js";
-import { consentLinkFor } from "./connect.js";
+import { consentLinkFor, mintPendingTab } from "./connect.js";
+import { findSessionByAgentKey } from "./chain.js";
 
 const USDC_DECIMALS = 6;
 
@@ -75,8 +99,81 @@ export interface TabLaneDeps {
  */
 const openTabs = new Map<string, Tab>();
 
+/**
+ * Sellers whose in-band tab offer was already relayed this process, keyed
+ * by counterparty. In-memory and most-recent only, by design: a restart
+ * re-offers once, and later calls in the same process carry a terse note
+ * instead of repeating the invitation. Tab-only sellers bypass this — the
+ * offer is their only possible answer.
+ */
+const offeredTabs = new Set<string>();
+
 export function resetTabLaneCacheForTests(): void {
   openTabs.clear();
+  offeredTabs.clear();
+}
+
+/** One bounded chain read while a grant is pending — never a poll loop
+ *  inside a tool call. On timeout the call treats the grant as still
+ *  pending; the next call reads again. */
+const GRANT_CHECK_TIMEOUT_MS = 4_000;
+
+async function bounded<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("grant_check_timeout")), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Every accept in the 402 is scheme 'tab' — no exact rail exists. */
+function isTabOnly(requirements: Record<string, unknown> | null): boolean {
+  const accepts = Array.isArray(requirements?.accepts)
+    ? (requirements!.accepts as Array<Record<string, unknown>>)
+    : [];
+  return accepts.length > 0 && accepts.every((a) => a.scheme === "tab");
+}
+
+/**
+ * Return the in-band offer for a record awaiting consent — or, when the
+ * offer was already relayed this process and an exact rail exists, the
+ * terse suppression note (the invitation shows once, the fallback stays
+ * loud).
+ */
+function offerOutcome(
+  mode: TabOfferMaterials["mode"],
+  record: TabRecord,
+  priceUsdc: number,
+  requirements: Record<string, unknown> | null,
+): TabLaneOutcome {
+  const connectUrl = consentLinkFor(record.sellerUrl, record.sessionPubkey);
+  if (!isTabOnly(requirements) && offeredTabs.has(record.counterparty)) {
+    return {
+      done: false,
+      note: {
+        rail: "tab",
+        used: false,
+        reason:
+          "a tab with this seller is awaiting the human's approval (offer already shown this session) — paid exact instead",
+        approveUrl: connectUrl,
+      },
+    };
+  }
+  offeredTabs.add(record.counterparty);
+  return {
+    done: false,
+    offer: {
+      mode,
+      connectUrl,
+      ...(Number.isFinite(priceUsdc) ? { priceUsdcPerCall: priceUsdc } : {}),
+    },
+  };
 }
 
 function atomicToUsdc(atomic: string, decimals = USDC_DECIMALS): number {
@@ -211,37 +308,9 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
     const tabAccept = findTabAccept(requirements);
     if (!tabAccept) return { done: false }; // seller doesn't take tabs — nothing to say
 
-    const record = findTab(tabAccept.payTo, dir);
-
-    // ── No usable grant: fall through to exact, loudly ────────────────
-    if (!record || record.status === "dead") {
-      return {
-        done: false,
-        note: {
-          rail: "tab",
-          used: false,
-          reason: record
-            ? `stored tab is dead (${record.deadReason ?? "unknown"}) — paid exact instead`
-            : "this seller takes tabs, but no tab is open — falling back to the exact path",
-          connect: `opendexter tab connect ${request.url}`,
-        },
-      };
-    }
-    if (record.status === "pending") {
-      return {
-        done: false,
-        note: {
-          rail: "tab",
-          used: false,
-          reason:
-            "a tab with this seller is awaiting the human's passkey approval — falling back to the exact path",
-          approveUrl: consentLinkFor(record.sellerUrl, record.sessionPubkey),
-          resume: `opendexter tab connect ${request.url}`,
-        },
-      };
-    }
-
     // ── Policy gates (same caps the exact path enforces) ──────────────
+    // Hoisted above the grant lookup: they gate paying AND offering — an
+    // offer for a tab the per-call cap would never let sign is spam.
     const priceUsdc = atomicToUsdc(tabAccept.amountAtomic, tabAccept.decimals);
     const cap = deps.getMaxAmountUsdc?.() ?? Number.POSITIVE_INFINITY;
     if (!Number.isFinite(priceUsdc) || priceUsdc > cap) {
@@ -264,6 +333,79 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
           reason: `tab skipped: this call would exceed the rolling 24h budget`,
         },
       };
+    }
+
+    let record = findTab(tabAccept.payTo, dir);
+
+    // ── No grant at all: mint a session key and make the in-band offer ─
+    // Custody first, link second: the keypair is generated and persisted
+    // (0700 dir / 0600 file, atomic) BEFORE the consent link exists. The
+    // link and the offer carry only the public key.
+    if (!record) {
+      const minted = mintPendingTab(request.url, tabAccept.payTo, dir);
+      return offerOutcome("tab_available", minted, priceUsdc, requirements);
+    }
+
+    // ── Dead grant: fall through to exact, loudly — and no auto re-offer.
+    // The chain said this session is gone; it may have been deliberately
+    // revoked, and re-inviting after a revocation is spam. Reconnecting
+    // stays a human decision (`opendexter tab connect`), and a dead record
+    // can hold an unsettled receipt a fresh key could never settle.
+    if (record.status === "dead") {
+      return {
+        done: false,
+        note: {
+          rail: "tab",
+          used: false,
+          reason: `stored tab is dead (${record.deadReason ?? "unknown"}) — paid exact instead`,
+          connect: `opendexter tab connect ${request.url}`,
+        },
+      };
+    }
+
+    // ── Pending grant: ONE bounded chain read — the human may have just
+    // approved on dexter.cash. Found live → promote and ride the tab THIS
+    // call (this is the retry the offer's instructions promised). Not
+    // found → still pending; say so via the offer materials. Read failed →
+    // treat as pending, honestly; the next call reads again.
+    if (record.status === "pending") {
+      let found: Awaited<ReturnType<typeof findSessionByAgentKey>> = null;
+      try {
+        found = await bounded(
+          findSessionByAgentKey(getConnection(), record.sessionPubkey, record.counterparty),
+          GRANT_CHECK_TIMEOUT_MS,
+        );
+      } catch {
+        found = null;
+      }
+      if (found && found.live) {
+        const patch = {
+          status: "active" as const,
+          vaultPda: found.vaultPda,
+          params: found.params,
+          sessionPda: found.sessionPda,
+          activatedAt: new Date().toISOString(),
+        };
+        updateTab(record.counterparty, patch, dir);
+        record = { ...record, ...patch };
+        // Fall through to the active path below — this call pays on the tab.
+      } else if (found && !found.live) {
+        updateTab(
+          record.counterparty,
+          { status: "dead", deadReason: "session registered but not live (expired or revoked before first use)" },
+          dir,
+        );
+        return {
+          done: false,
+          note: {
+            rail: "tab",
+            used: false,
+            reason: "the registered tab is not live on chain (expired or revoked before first use) — paid exact instead",
+          },
+        };
+      } else {
+        return offerOutcome("tab_pending", record, priceUsdc, requirements);
+      }
     }
 
     // ── Construct (or reuse) the tab ───────────────────────────────────

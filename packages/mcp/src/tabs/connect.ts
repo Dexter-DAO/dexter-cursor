@@ -38,6 +38,31 @@ export function consentLinkFor(sellerUrl: string, sessionPubkey: string): string
   return `${CONSENT_BASE}/tabs/connect?url=${encodeURIComponent(sellerUrl)}&agent=${sessionPubkey}`;
 }
 
+/**
+ * Mint a fresh PENDING grant record for (sellerUrl, counterparty): generate
+ * the ed25519 session keypair and persist it — 0700 dir / 0600 file, atomic
+ * write — BEFORE any consent link leaves the process. Links, logs, and tool
+ * results carry only the public key. Shared by `opendexter tab connect` and
+ * the tab lane's in-band offer.
+ */
+export function mintPendingTab(
+  sellerUrl: string,
+  counterparty: string,
+  dir?: string,
+): TabRecord {
+  const kp = nacl.sign.keyPair();
+  const record: TabRecord = {
+    status: "pending",
+    sellerUrl,
+    counterparty,
+    sessionPubkey: new PublicKey(kp.publicKey).toBase58(),
+    sessionSecretKey: bs58.encode(kp.secretKey),
+    createdAt: new Date().toISOString(),
+  };
+  upsertTab(record, dir);
+  return record;
+}
+
 export interface TabConnectOpts {
   /** Poll the chain for the approval (default true). */
   wait?: boolean;
@@ -154,16 +179,7 @@ export async function cliTabConnect(url: string, opts: TabConnectOpts = {}): Pro
           `first if you want it on-chain: \`opendexter tab close ${url}\`.`,
       );
     }
-    const kp = nacl.sign.keyPair();
-    record = {
-      status: "pending",
-      sellerUrl: url,
-      counterparty,
-      sessionPubkey: new PublicKey(kp.publicKey).toBase58(),
-      sessionSecretKey: bs58.encode(kp.secretKey),
-      createdAt: new Date().toISOString(),
-    };
-    upsertTab(record, dir);
+    record = mintPendingTab(url, counterparty, dir);
   }
 
   const link = consentLinkFor(url, record.sessionPubkey);
