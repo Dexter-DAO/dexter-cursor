@@ -6,8 +6,10 @@
  * keypair per (vault, seller), the human passkey-approves the grant on
  * dexter.cash, and from then on this key signs spend vouchers bounded by
  * the consented cap / expiry / counterparty. It is NOT the wallet key —
- * its blast radius is exactly the scope the human approved, and the wallet
- * owner can revoke the session from dexter.cash/wallet at any time.
+ * its blast radius is exactly the scope the human approved, and the session
+ * ends on its own expiry or when a new tab with the same seller atomically
+ * replaces it on dexter.cash (one session PDA per (vault, counterparty);
+ * re-registering closes the old one in the same transaction).
  *
  * Storage follows the wallet.json convention: 0700 dir, 0600 file.
  *

@@ -6,9 +6,11 @@
  * submits the on-chain settle (Ed25519 precompile + settle_tab_voucher +
  * Swig transfer) and pays gas — no CLI key signs anything at close; the
  * voucher is already a bearer claim payable only to the seller. This is
- * the grant tab's SETTLE-ONLY close: the on-chain session stays live until
- * the wallet owner revokes it at dexter.cash/wallet or it expires — the
- * CLI holds no passkey and cannot revoke (custody law).
+ * the grant tab's SETTLE-ONLY close: settling moves the money but does not
+ * end the session — the on-chain session stays live until it expires or a
+ * new tab with this seller atomically replaces it (opening one closes the
+ * old session in the SAME transaction, on dexter.cash). The CLI holds no
+ * passkey and settles only; it never composes that replacement (custody law).
  */
 
 import { Connection } from "@solana/web3.js";
@@ -98,7 +100,7 @@ export async function cliTabClose(ref: string, opts: TabCliOpts = {}): Promise<v
     log(
       `Nothing to settle: no unsettled voucher receipt is held for ${record.sellerUrl}. ` +
         `(The seller's own crystallization lane secures anything already streamed; ` +
-        `the on-chain session stays live until it expires or you revoke it at dexter.cash/wallet.)`,
+        `the on-chain session stays live until it expires or a new tab with this seller replaces it.)`,
     );
     return;
   }
@@ -152,8 +154,9 @@ export async function cliTabClose(ref: string, opts: TabCliOpts = {}): Promise<v
     log(`  tx          ${settleTx}`);
     log(`  https://solscan.io/tx/${settleTx}`);
     log(
-      `The on-chain session stays live until it expires or you revoke it at ` +
-        `https://dexter.cash/wallet (revoking is the wallet owner's passkey surface — this CLI cannot).`,
+      `Settling moved the money; it did not end the session. This tab stays live ` +
+        `until it expires or you open a new tab with this seller — opening one ` +
+        `atomically replaces this session (the old one closes in the same transaction).`,
     );
     return;
   }
@@ -185,7 +188,7 @@ export async function cliTabRemove(ref: string, opts: TabCliOpts = {}): Promise<
     log(
       `Note: removing this record only deletes the LOCAL session key. The on-chain session ` +
         `stays live until it expires (${record.params ? new Date(record.params.expiresAtUnix * 1000).toISOString() : "unknown"}) ` +
-        `or you revoke it at https://dexter.cash/wallet.`,
+        `or a new tab with this seller atomically replaces it.`,
     );
   }
   if (record.lastVoucherHeader) {

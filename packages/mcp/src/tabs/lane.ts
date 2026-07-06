@@ -241,8 +241,10 @@ function explainRefusal(reason: string, detail: string | undefined, sellerUrl: s
         `voucher will be refused again. Recover by opening a FRESH tab with a ` +
         `new key — \`opendexter tab connect ${sellerUrl} --rekey\` (or ` +
         `\`opendexter tab remove ${sellerUrl}\` then ` +
-        `\`opendexter tab connect ${sellerUrl}\`); reopening is a new grant ` +
-        `on a new channel that resumes cleanly over the chain frontier. To ` +
+        `\`opendexter tab connect ${sellerUrl}\`); reopening atomically ` +
+        `replaces this tab — the old session closes in the same transaction ` +
+        `and the fresh tab starts at zero spend, clear of the frontier that ` +
+        `tripped the bound. To ` +
         `pay just this one call without a tab: \`opendexter fetch ${sellerUrl} ` +
         `--no-tab\` (CLI) or the tab:false arg on x402_fetch.`
       );

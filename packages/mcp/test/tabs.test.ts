@@ -811,6 +811,12 @@ describe("tabs/cli — close (settle the held receipt)", () => {
     });
     expect(lines.join("\n")).toContain("SETTLE_TX_123");
     expect(findTab(g.record.counterparty, dir)!.lastVoucherHeader).toBeUndefined();
+    // K-T4 atomic-replace copy: settle does not end the session, and the model
+    // is atomic-replace — never the old "go manually revoke it" abandonment step.
+    const out = lines.join("\n");
+    expect(out).toMatch(/atomically replaces/i);
+    expect(out).not.toMatch(/revoke/i);
+    expect(out).not.toContain("dexter.cash/wallet");
   });
 
   it("explains an already-crystallized voucher (facilitator non_monotonic) honestly and clears it", async () => {

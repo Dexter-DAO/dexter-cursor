@@ -49,7 +49,7 @@
     "viem": "^2.0.0",
     "yargs": "^17.7.2",
     "zod": "^3.23.0",
-    "@dexterai/vault": "^0.20.0"
+    "@dexterai/vault": "^0.34.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

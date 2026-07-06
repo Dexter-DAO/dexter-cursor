@@ -72,9 +72,11 @@ export interface TabConnectOpts {
   /**
    * Force a fresh session key even when an ACTIVE tab already exists. This
    * is the recovery path when a long-lived tab has outgrown the seller's
-   * per-voucher resume window (cumulative_exceeds_cap): a new grant on a new
-   * channel resumes cleanly over the chain frontier. Replaces the record in
-   * place after the human re-approves.
+   * per-voucher resume window (cumulative_exceeds_cap): re-approving on
+   * dexter.cash atomically replaces the live session in the same transaction
+   * — the old scope closes and the fresh tab starts at zero spend, clear of
+   * the frontier that tripped the bound. Replaces the local record in place
+   * after the human re-approves.
    */
   rekey?: boolean;
   /** Test seams. */
