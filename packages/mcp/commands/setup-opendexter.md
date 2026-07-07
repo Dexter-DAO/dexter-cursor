@@ -12,7 +12,7 @@ Set up the x402 gateway so your AI agent can search, price-check, and pay for an
 1. Run the installer — it auto-detects your AI client and writes the MCP config:
 
 ```bash
-npx @dexterai/opendexter install
+npx @dexterai/opendexter@latest install
 ```
 
 Supports: Cursor, Claude Code, Codex, VS Code, Windsurf, Gemini CLI. Claude Code gets full plugin support (MCP server + 6 skills) in a single install.

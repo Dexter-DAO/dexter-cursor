@@ -25,7 +25,7 @@ OpenDexter ships in two flavors. Most of the surface is identical; a few tools a
 | Mode | URL / install | Wallet model | Tools that exist |
 |---|---|---|---|
 | **Hosted MCP** | `https://open.dexter.cash/mcp` (added as a connector in Claude.ai, ChatGPT, Cursor, etc.) | Session-managed by the gateway. The user pairs through dexter.cash; `x402_wallet` returns the session's funded balances. | `x402_search`, `x402_check`, `x402_fetch`, `x402_pay`, `x402_access`, `x402_wallet`, `card_status`, `card_issue`, `card_link_wallet`, `card_freeze` (10 tools) |
-| **Local npx** | `npx @dexterai/opendexter` (Claude Code, Cursor, Codex, Windsurf, Gemini CLI) | Local file at `~/.dexterai-mcp/wallet.json` (override with `DEXTER_PRIVATE_KEY` / `EVM_PRIVATE_KEY`). | All hosted tools **plus** `x402_settings`, `card_login_request_otp`, `card_login_complete` (13 tools) |
+| **Local npx** | `npx @dexterai/opendexter@latest` (Claude Code, Cursor, Codex, Windsurf, Gemini CLI) | Local file at `~/.dexterai-mcp/wallet.json` (override with `DEXTER_PRIVATE_KEY` / `EVM_PRIVATE_KEY`). | All hosted tools **plus** `x402_settings`, `card_login_request_otp`, `card_login_complete` (13 tools) |
 
 **Quick detection rule**: if `x402_settings` is registered in the available tools, you're on **local npx**. If it isn't, you're on **hosted**. Same applies to `card_login_request_otp`/`card_login_complete`.
 
@@ -270,7 +270,7 @@ In Claude.ai: Settings → Connectors → Add custom connector, paste the URL. T
 Best for Claude Code, Cursor, Codex, Windsurf, and Gemini CLI when you want the wallet on your own machine.
 
 ```bash
-npx @dexterai/opendexter
+npx @dexterai/opendexter@latest
 ```
 
 Or wire it into an MCP client config:
@@ -280,7 +280,7 @@ Or wire it into an MCP client config:
   "mcpServers": {
     "opendexter": {
       "command": "npx",
-      "args": ["-y", "@dexterai/opendexter"]
+      "args": ["-y", "@dexterai/opendexter@latest"]
     }
   }
 }

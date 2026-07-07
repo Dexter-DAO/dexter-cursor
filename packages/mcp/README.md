@@ -29,7 +29,7 @@
 ## Install
 
 ```bash
-npx @dexterai/opendexter install
+npx @dexterai/opendexter@latest install
 ```
 
 Supports **Cursor**, **Claude Code**, **Codex**, **VS Code**, **Windsurf**, and **Gemini CLI**.
@@ -43,7 +43,7 @@ The installer creates two wallets (Solana + EVM) at `~/.dexterai-mcp/wallet.json
 If you want the cleanest first-run flow, use:
 
 ```bash
-npx @dexterai/opendexter setup
+npx @dexterai/opendexter@latest setup
 ```
 
 `setup`:
@@ -59,7 +59,7 @@ If you already know exactly which client you want, `install` is still the narrow
 ### Install Into All Detected Clients
 
 ```bash
-npx @dexterai/opendexter install --all
+npx @dexterai/opendexter@latest install --all
 ```
 
 This scans your machine for supported MCP clients and installs OpenDexter into every one it finds.
@@ -82,7 +82,7 @@ This scans your machine for supported MCP clients and installs OpenDexter into e
 **Claude Code** — use the installer instead of manual config. It registers the MCP server and installs 6 SDK/protocol skills as a native plugin:
 
 ```bash
-npx @dexterai/opendexter install --client claude-code
+npx @dexterai/opendexter@latest install --client claude-code
 ```
 
 Manual MCP-only (no skills): `claude mcp add opendexter -- npx -y @dexterai/opendexter@latest`
@@ -192,7 +192,7 @@ Use this when:
 3. `x402_check` or marketplace metadata tells you the endpoint is auth-gated
 
 ```bash
-npx @dexterai/opendexter access "https://x402.quicknode.com/base-mainnet"
+npx @dexterai/opendexter@latest access "https://x402.quicknode.com/base-mainnet"
 ```
 
 This is separate from `x402_fetch` on purpose:
@@ -247,11 +247,11 @@ If you want a more recognizable wallet identity, you can mint a vanity address l
 
 ```bash
 # guided presets
-npx @dexterai/opendexter wallet --vanity
+npx @dexterai/opendexter@latest wallet --vanity
 
 # direct prefixes
-npx @dexterai/opendexter wallet --vanity --solana-prefix Dex
-npx @dexterai/opendexter wallet --vanity --evm-prefix 402dd
+npx @dexterai/opendexter@latest wallet --vanity --solana-prefix Dex
+npx @dexterai/opendexter@latest wallet --vanity --evm-prefix 402dd
 ```
 
 OpenDexter uses the generated wallet for future local payments. This is optional — `setup` stays fast and operational even if you skip vanity generation.
@@ -265,7 +265,7 @@ catalog. It is the seller-side command — every other command above is for
 buyers.
 
 ```bash
-npx @dexterai/opendexter audition "https://your-x402-api.com"
+npx @dexterai/opendexter@latest audition "https://your-x402-api.com"
 ```
 
 This is not a linter. OpenDexter discovers every paid route on your server,
@@ -282,7 +282,7 @@ A high-scoring audition lists your API in the catalog automatically.
 
 ```bash
 # agent-driven onboarding: machine-readable output a coding agent parses
-npx @dexterai/opendexter audition "https://your-x402-api.com" --json
+npx @dexterai/opendexter@latest audition "https://your-x402-api.com" --json
 ```
 
 The `--json` form is the path designed for a coding agent: paste the
@@ -297,15 +297,15 @@ every route passes — you never leave your editor.
 Every tool is also available as a standalone command:
 
 ```bash
-npx @dexterai/opendexter wallet
-npx @dexterai/opendexter setup
-npx @dexterai/opendexter wallet --vanity
-npx @dexterai/opendexter search "token analysis"
-npx @dexterai/opendexter check "https://x402.dexter.cash/api/v2-test"
-npx @dexterai/opendexter access "https://x402.quicknode.com/base-mainnet"
-npx @dexterai/opendexter settings --max-amount 2.50
-npx @dexterai/opendexter fetch "https://x402.dexter.cash/api/v2-test" --method POST
-npx @dexterai/opendexter audition "https://your-x402-api.com" --json
+npx @dexterai/opendexter@latest wallet
+npx @dexterai/opendexter@latest setup
+npx @dexterai/opendexter@latest wallet --vanity
+npx @dexterai/opendexter@latest search "token analysis"
+npx @dexterai/opendexter@latest check "https://x402.dexter.cash/api/v2-test"
+npx @dexterai/opendexter@latest access "https://x402.quicknode.com/base-mainnet"
+npx @dexterai/opendexter@latest settings --max-amount 2.50
+npx @dexterai/opendexter@latest fetch "https://x402.dexter.cash/api/v2-test" --method POST
+npx @dexterai/opendexter@latest audition "https://your-x402-api.com" --json
 ```
 
 ---
@@ -357,13 +357,13 @@ OpenDexter supports a persistent default max spend per paid call.
 
 ```bash
 # read current settings
-npx @dexterai/opendexter settings
+npx @dexterai/opendexter@latest settings
 
 # set a new default cap
-npx @dexterai/opendexter settings --max-amount 2.50
+npx @dexterai/opendexter@latest settings --max-amount 2.50
 
 # override for one call only
-npx @dexterai/opendexter fetch "https://x402.dexter.cash/api/v2-test" --method POST --max-amount 10
+npx @dexterai/opendexter@latest fetch "https://x402.dexter.cash/api/v2-test" --method POST --max-amount 10
 ```
 
 If an endpoint requests more than your configured max, OpenDexter rejects the payment before signing and tells you why. It also checks that you have enough balance on a compatible rail before attempting settlement.

@@ -65,14 +65,14 @@ claude plugins install opendexter
 **Cursor**
 
 ```bash
-npx @dexterai/opendexter install --client cursor
+npx @dexterai/opendexter@latest install --client cursor
 ```
 
 **Any other MCP client.** The installer covers Codex, VS Code, Windsurf,
 and Gemini CLI:
 
 ```bash
-npx @dexterai/opendexter install --client <codex|vscode|windsurf|gemini-cli>
+npx @dexterai/opendexter@latest install --client <codex|vscode|windsurf|gemini-cli>
 ```
 
 Or add the server to your client's MCP config by hand:
@@ -82,7 +82,7 @@ Or add the server to your client's MCP config by hand:
   "mcpServers": {
     "opendexter": {
       "command": "npx",
-      "args": ["-y", "@dexterai/opendexter"]
+      "args": ["-y", "@dexterai/opendexter@latest"]
     }
   }
 }

@@ -53,6 +53,7 @@ import type {
 } from "@dexterai/x402-mcp-tools";
 import type { Tab, SignedVoucher } from "@dexterai/x402/tab";
 import { SOLANA_RPC_URL } from "../config.js";
+import { cliHint } from "../cli-hint.js";
 import { findTab, updateTab, type TabRecord } from "./store.js";
 import { consentLinkFor, mintPendingTab } from "./connect.js";
 import { findSessionByAgentKey } from "./chain.js";
@@ -239,14 +240,15 @@ function explainRefusal(reason: string, detail: string | undefined, sellerUrl: s
         `seller's per-voucher bound — sellers cap single-voucher increments ` +
         `to limit over-delivery on resumed sessions. Do NOT retry: the same ` +
         `voucher will be refused again. Recover by opening a FRESH tab with a ` +
-        `new key — \`opendexter tab connect ${sellerUrl} --rekey\` (or ` +
-        `\`opendexter tab remove ${sellerUrl}\` then ` +
-        `\`opendexter tab connect ${sellerUrl}\`); reopening atomically ` +
+        `new key — \`${cliHint(`tab connect ${sellerUrl} --rekey`)}\` (or ` +
+        `\`${cliHint(`tab remove ${sellerUrl}`)}\` then ` +
+        `\`${cliHint(`tab connect ${sellerUrl}`)}\`); reopening atomically ` +
         `replaces this tab — the old session closes in the same transaction ` +
         `and the fresh tab starts at zero spend, clear of the frontier that ` +
         `tripped the bound. To ` +
-        `pay just this one call without a tab: \`opendexter fetch ${sellerUrl} ` +
-        `--no-tab\` (CLI) or the tab:false arg on x402_fetch.`
+        `pay just this one call without a tab: ` +
+        `\`${cliHint(`fetch ${sellerUrl} --no-tab`)}\` (CLI) or the ` +
+        `tab:false arg on x402_fetch.`
       );
     case "non_monotonic":
       return (
@@ -268,15 +270,15 @@ function explainRefusal(reason: string, detail: string | undefined, sellerUrl: s
       return (
         `The seller refused the tab voucher: session_expired — the tab's ` +
         `consented expiry has passed. Open a fresh tab: ` +
-        `\`opendexter tab connect ${sellerUrl} --rekey\`.`
+        `\`${cliHint(`tab connect ${sellerUrl} --rekey`)}\`.`
       );
     default:
       return (
         `The seller refused the tab voucher: ${reason}` +
         (detail ? ` (${detail})` : "") +
-        `. Not retried — inspect the reason; \`opendexter tab connect ` +
-        `${sellerUrl} --rekey\` opens a fresh tab, \`--no-tab\` (or the ` +
-        `x402_fetch tab:false arg) pays this call exact.`
+        `. Not retried — inspect the reason; ` +
+        `\`${cliHint(`tab connect ${sellerUrl} --rekey`)}\` opens a fresh tab, ` +
+        `\`--no-tab\` (or the x402_fetch tab:false arg) pays this call exact.`
       );
   }
 }
@@ -360,7 +362,7 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
           rail: "tab",
           used: false,
           reason: `stored tab is dead (${record.deadReason ?? "unknown"}) — paid exact instead`,
-          connect: `opendexter tab connect ${request.url}`,
+          connect: cliHint(`tab connect ${request.url}`),
         },
       };
     }
@@ -419,8 +421,8 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
           note: {
             rail: "tab",
             used: false,
-            reason: "stored tab record is incomplete — re-run `opendexter tab connect`",
-            connect: `opendexter tab connect ${request.url}`,
+            reason: `stored tab record is incomplete — re-run \`${cliHint("tab connect")}\``,
+            connect: cliHint(`tab connect ${request.url}`),
           },
         };
       }
@@ -461,7 +463,7 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
             rail: "tab",
             used: false,
             reason: `tab unavailable (${msg}) — paid exact instead`,
-            connect: `opendexter tab connect ${request.url}`,
+            connect: cliHint(`tab connect ${request.url}`),
           },
         };
       }
@@ -613,7 +615,7 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
           // matching on-chain cumulative semantics — NOT this process's spend.
           cumulativeAtomic: signed.payload.cumulativeAmount,
           sequenceNumber: signed.payload.sequenceNumber,
-          close: `opendexter tab close ${record.sellerUrl}`,
+          close: cliHint(`tab close ${record.sellerUrl}`),
         },
       },
     };

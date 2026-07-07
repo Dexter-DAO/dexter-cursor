@@ -1,7 +1,15 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { checkStaleness } from "./staleness.js";
 
 async function main() {
+  // Startup staleness probe: throttled to once/day and fire-and-forget — never
+  // awaited, so it can never delay a command. `background: true` unrefs the
+  // socket: the long-lived `server` command stays alive to print the notice on
+  // stderr, while a one-shot CLI abandons the probe on exit instead of hanging.
+  // Offline/uninstalled config dir → silent.
+  void checkStaleness({ throttle: true, context: "startup", background: true }).catch(() => {});
+
   await yargs(hideBin(process.argv))
     .scriptName("opendexter")
     .usage("$0 [command] [options]")
@@ -372,10 +380,24 @@ async function main() {
     )
     .strict()
     .help()
+    // Throw parse failures (unknown command/argument) instead of letting yargs
+    // exit for us, so main().catch can add the staleness notice before exit.
+    .fail(false)
     .parseAsync();
 }
 
-main().catch((err) => {
-  console.error(err);
+main().catch(async (err) => {
+  const message = err instanceof Error ? err.message : String(err);
+  // An unknown command/argument is the exact signal a stale global install
+  // gives off (it lacks a command this build ships). Force the staleness probe
+  // — bypassing the daily throttle — so the upgrade line lands on the very
+  // invocation that failed.
+  if (/Unknown (command|argument)/i.test(message)) {
+    process.stderr.write(message + "\n");
+    process.stderr.write("Run `opendexter --help` for the current command list.\n");
+    await checkStaleness({ throttle: false, context: "unknown-command" }).catch(() => {});
+  } else {
+    console.error(err);
+  }
   process.exit(1);
 });
