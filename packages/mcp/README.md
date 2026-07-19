@@ -36,6 +36,30 @@ Supports **Cursor**, **Claude Code**, **Codex**, **VS Code**, **Windsurf**, and 
 
 The installer creates two wallets (Solana + EVM) at `~/.dexterai-mcp/wallet.json` and writes the MCP config for your client. Fund either address with USDC and your agent can start paying for APIs from your own machine.
 
+## Connect your real Dexter wallet
+
+The local wallet above is the quickstart — fine for trying things with a dollar of dust. To use your **real** Dexter wallet (the passkey-protected one from [dexter.cash](https://dexter.cash/wallet), synced across your phone and laptop), connect it in under a minute. No keys are copied, no passwords — your passkey is the only thing that approves.
+
+```bash
+opendexter connect
+```
+
+Your terminal shows three ways to approve — use whichever is easiest, and only **one** of them:
+
+- click the **link**,
+- scan the **QR code** with your phone, or
+- go to [dexter.cash/wallet/connect](https://dexter.cash/wallet/connect) on any device and type the short **code** (this one works even on a headless server with no browser).
+
+Tap Face ID / your fingerprint to approve. Then:
+
+```bash
+opendexter wallet
+```
+
+Your terminal now shows your real balance and deposit address. Revoke anytime at [dexter.cash/wallet](https://dexter.cash/wallet), or run `opendexter connect disconnect`.
+
+Full walkthrough (with troubleshooting): [Connect your Dexter wallet](https://github.com/Dexter-DAO/opendexter-ide/blob/main/docs/connect-your-wallet.md).
+
 **Claude Code** gets full plugin support: the installer registers 8 skills (opendexter, x402-client, x402-server, x402-discoverable, x402-react, x402-protocol, x402-debugging, instinct-advertiser) as a native Claude Code plugin alongside the MCP server. Your agent gets both live tools and deep SDK knowledge in a single install.
 
 ## Fastest Start

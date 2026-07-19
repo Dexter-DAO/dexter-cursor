@@ -1,0 +1,230 @@
+<title>Connect your Dexter wallet — OpenDexter</title>
+<style>
+  :root {
+    --ink: #0b0d12;
+    --paper: #f7f6f2;
+    --bg: var(--paper);
+    --surface: #ffffff;
+    --term-bg: #0e1117;
+    --term-fg: #e6e8ec;
+    --term-dim: #8b93a3;
+    --term-prompt: #5fb98a;
+    --text: #14161c;
+    --muted: #5c626e;
+    --hair: #e3e1d8;
+    --accent: #d98a1f;
+    --accent-soft: #f4e6cd;
+    --focus: #d98a1f;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0c10;
+      --surface: #12151b;
+      --text: #eceef2;
+      --muted: #9aa1ad;
+      --hair: #23272f;
+      --accent: #eaa63d;
+      --accent-soft: #2a2213;
+      --term-bg: #05070a;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: var(--paper); --surface: #ffffff; --text: #14161c; --muted: #5c626e;
+    --hair: #e3e1d8; --accent: #d98a1f; --accent-soft: #f4e6cd; --term-bg: #0e1117;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0c10; --surface: #12151b; --text: #eceef2; --muted: #9aa1ad;
+    --hair: #23272f; --accent: #eaa63d; --accent-soft: #2a2213; --term-bg: #05070a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: clamp(2rem, 6vw, 5rem) 1.4rem 5rem; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 1.1rem;
+    display: flex; align-items: center; gap: 0.6rem;
+  }
+  .eyebrow::before {
+    content: ""; width: 1.6rem; height: 1px; background: var(--accent); display: inline-block;
+  }
+  h1 {
+    font-family: var(--mono); font-weight: 600; letter-spacing: -0.02em;
+    font-size: clamp(1.9rem, 6vw, 3rem); line-height: 1.08; margin: 0 0 1rem;
+    text-wrap: balance;
+  }
+  .lede { font-size: 1.12rem; color: var(--muted); max-width: 34em; margin: 0 0 0.4rem; }
+  .lede strong { color: var(--text); font-weight: 600; }
+
+  .need {
+    font-family: var(--mono); font-size: 0.82rem; color: var(--muted);
+    border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair);
+    padding: 0.9rem 0; margin: 2.4rem 0 0; display: flex; gap: 1.6rem; flex-wrap: wrap;
+  }
+  .need b { color: var(--text); font-weight: 600; }
+
+  ol.steps { list-style: none; counter-reset: step; margin: 2.6rem 0 0; padding: 0; }
+  ol.steps > li {
+    counter-increment: step; position: relative;
+    padding: 0 0 2.4rem 3.2rem; border-left: 1px solid var(--hair); margin-left: 0.9rem;
+  }
+  ol.steps > li:last-child { border-left: 1px solid transparent; padding-bottom: 0.5rem; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: -0.95rem; top: -0.15rem;
+    width: 1.9rem; height: 1.9rem; background: var(--bg); border: 1px solid var(--accent);
+    color: var(--accent); font-family: var(--mono); font-size: 0.9rem; font-weight: 600;
+    display: grid; place-items: center; border-radius: 50%;
+  }
+  .step-title { font-size: 1.16rem; font-weight: 600; margin: 0 0 0.55rem; letter-spacing: -0.01em; }
+  .step p { margin: 0.55rem 0 0; color: var(--muted); }
+  .step p strong { color: var(--text); font-weight: 600; }
+
+  .term {
+    background: var(--term-bg); border-radius: 8px; margin: 0.9rem 0 0;
+    overflow: hidden; border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 12px 30px -18px rgba(0,0,0,0.6);
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: 0.4rem; padding: 0.55rem 0.8rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .dot { width: 0.62rem; height: 0.62rem; border-radius: 50%; background: #3a3f48; }
+  .term-label {
+    margin-left: auto; font-family: var(--mono); font-size: 0.68rem;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--term-dim);
+  }
+  .term pre {
+    margin: 0; padding: 0.95rem 1.05rem; overflow-x: auto;
+    font-family: var(--mono); font-size: 0.86rem; line-height: 1.65; color: var(--term-fg);
+  }
+  .term pre .p { color: var(--term-prompt); }
+  .term pre .c { color: #7f8794; }
+  .term pre .a { color: var(--accent); }
+  .term pre .g { color: #5fb98a; }
+
+  .options { list-style: none; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.55rem; }
+  .options li {
+    display: flex; gap: 0.7rem; align-items: baseline;
+    font-size: 0.98rem; color: var(--text);
+  }
+  .options li b {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent); min-width: 4.3rem; flex-shrink: 0;
+  }
+  .options li span { color: var(--muted); }
+
+  .payoff {
+    margin: 2.8rem 0 0; padding: 1.6rem; background: var(--surface);
+    border: 1px solid var(--hair); border-left: 3px solid var(--accent); border-radius: 4px;
+  }
+  .payoff h2 { font-size: 1rem; margin: 0 0 0.9rem; font-weight: 600; }
+
+  .safety { margin: 3rem 0 0; display: grid; gap: 1.1rem; }
+  .safety .row { display: flex; gap: 0.9rem; align-items: baseline; }
+  .safety .k {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--accent); min-width: 6.5rem; flex-shrink: 0; padding-top: 0.1rem;
+  }
+  .safety .v { color: var(--muted); }
+  .safety .v strong { color: var(--text); font-weight: 600; }
+  .safety a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+  .safety a:hover { border-bottom-color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+
+  .foot {
+    margin: 3.4rem 0 0; padding-top: 1.3rem; border-top: 1px solid var(--hair);
+    font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
+    display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  }
+</style>
+
+<main class="wrap">
+  <p class="eyebrow">OpenDexter</p>
+  <h1>Connect your wallet<br>to your terminal.</h1>
+  <p class="lede">Your Dexter wallet lives on your phone and laptop, locked behind your passkey. Bring it into your terminal in under a minute — so your AI agent can see it and pay from it. <strong>No keys copied. No passwords.</strong></p>
+
+  <div class="need">
+    <span><b>You need:</b> the OpenDexter tool</span>
+    <span><b>and:</b> a Dexter wallet from dexter.cash</span>
+    <span><b>time:</b> ~1 minute</span>
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-title">Install OpenDexter</div>
+      <div class="term">
+        <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-label">terminal</span></div>
+        <pre><span class="p">$</span> npm install -g @dexterai/opendexter</pre>
+      </div>
+      <p>A one-time install. No Node? Run any command with <span style="font-family:var(--mono)">npx @dexterai/opendexter …</span> instead.</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Run connect</div>
+      <div class="term">
+        <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-label">terminal</span></div>
+<pre><span class="p">$</span> opendexter connect
+
+<span class="c">── Connect your Dexter wallet ──────────────</span>
+Approve with your passkey — any one of these:
+
+  1. Open this link
+  2. Or scan the QR code
+  3. Or enter code <span class="a">PTXF-HHXQ</span> at dexter.cash/wallet/connect
+
+<span class="c">Waiting for approval…</span></pre>
+      </div>
+      <p>Your terminal offers three ways in. You only need <strong>one</strong>.</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Approve with your passkey</div>
+      <ul class="options">
+        <li><b>Laptop</b><span>Click the link — your browser opens the approval page.</span></li>
+        <li><b>Phone</b><span>Scan the QR code with your camera.</span></li>
+        <li><b>Server</b><span>No browser? Type the short code at dexter.cash/wallet/connect on any device.</span></li>
+      </ul>
+      <p>The page shows <strong>which app is asking</strong>. Tap Face ID or your fingerprint. That's the only thing that approves — and it never leaves your device.</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">See your wallet</div>
+      <div class="term">
+        <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-label">terminal</span></div>
+<pre><span class="p">$</span> opendexter wallet
+
+Dexter wallet
+  lane: <span class="g">connected</span>
+
+  USDC balance
+    $0.00
+
+  Deposit address
+    <span class="a">3NWeBKn…QR9Ke</span></pre>
+      </div>
+      <p>Your real balance and deposit address, right in the terminal. Done.</p>
+    </li>
+  </ol>
+
+  <div class="payoff">
+    <h2>That's the whole thing.</h2>
+    <div class="safety">
+      <div class="row"><span class="k">Your keys</span><span class="v">Never move. Your <strong>passkey</strong> is the only thing that approves a connection — no password, nothing to paste.</span></div>
+      <div class="row"><span class="k">Your control</span><span class="v">Revoke anytime at <a href="https://dexter.cash/wallet">dexter.cash/wallet</a>, or run <span style="font-family:var(--mono)">opendexter connect disconnect</span>.</span></div>
+      <div class="row"><span class="k">Anywhere</span><span class="v">Laptop or a headless server over SSH — the short-code path always works when there's no browser.</span></div>
+      <div class="row"><span class="k">To fund it</span><span class="v">Send USDC on Solana to the deposit address <span style="font-family:var(--mono)">opendexter wallet</span> shows you. Always that one.</span></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>OpenDexter · dexter.cash</span>
+    <span>npm i -g @dexterai/opendexter</span>
+  </div>
+</main>
