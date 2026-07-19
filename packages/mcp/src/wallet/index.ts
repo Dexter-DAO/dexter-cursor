@@ -6,6 +6,8 @@ import { createPublicClient, http, erc20Abi } from "viem";
 import { type Chain, base, polygon, arbitrum, optimism, avalanche, bsc, skaleBase } from "viem/chains";
 import bs58 from "bs58";
 import { DATA_DIR, WALLET_FILE, SOLANA_RPC_URL, EVM_RPC_URLS, EVM_USDC_ADDRESSES, CHAIN_NAMES, usdcDecimalsForChain } from "../config.js";
+import { loadSession } from "../connect/store.js";
+import { showConnectedWallet, type HostedWalletResult } from "../connect/wallet.js";
 
 export interface WalletInfo {
   solanaPrivateKey?: string;
@@ -256,10 +258,61 @@ export async function getAllBalances(
   return { totalUsdc, chains, degraded: unavailableChains.length > 0, unavailableChains };
 }
 
-export async function showWalletInfo(opts: { dev: boolean }): Promise<void> {
+export interface ShowWalletOpts {
+  dev: boolean;
+  /** Session-store directory override (test seam). */
+  dataDir?: string;
+  /** Primary output sink (default console.log). */
+  log?: (line: string) => void;
+  /** Secondary sink for the connect hint — stderr so it can't corrupt the
+   *  quickstart JSON on stdout (default console.error). */
+  hint?: (line: string) => void;
+  /** Quickstart renderer override (test seam — default renderQuickstartWallet). */
+  renderQuickstart?: (log: (line: string) => void) => Promise<void>;
+  /** Hosted x402_wallet call override (test seam, forwarded to connected mode). */
+  callHostedWallet?: (accessToken: string) => Promise<HostedWalletResult>;
+  /** HTTP client override (test seam, forwarded to connected mode). */
+  fetchImpl?: typeof fetch;
+  /** Clock override (test seam, forwarded to connected mode). */
+  now?: () => number;
+}
+
+/**
+ * `opendexter wallet`.
+ *
+ * Connected mode (a `connect` session exists): read the user's REAL vault via
+ * the hosted MCP `x402_wallet` tool and show the wallet-PDA deposit address +
+ * balance. Quickstart mode (no session): keep the existing local-wallet JSON
+ * and nudge the user to `opendexter connect` to link their real vault.
+ */
+export async function showWalletInfo(opts: ShowWalletOpts): Promise<void> {
+  const log = opts.log ?? console.log;
+
+  const session = loadSession(opts.dataDir);
+  if (session) {
+    await showConnectedWallet({
+      session,
+      dev: opts.dev,
+      dataDir: opts.dataDir,
+      log,
+      callHostedWallet: opts.callHostedWallet,
+      fetchImpl: opts.fetchImpl,
+      now: opts.now,
+    });
+    return;
+  }
+
+  const hint = opts.hint ?? ((line: string) => console.error(line));
+  const renderQuickstart = opts.renderQuickstart ?? renderQuickstartWallet;
+  await renderQuickstart(log);
+  hint("");
+  hint("Run `opendexter connect` to link your Dexter wallet and pay from your vault balance.");
+}
+
+async function renderQuickstartWallet(log: (line: string) => void): Promise<void> {
   const wallet = await loadOrCreateWallet();
   if (!wallet) {
-    console.log(JSON.stringify({ error: "Failed to load wallet" }));
+    log(JSON.stringify({ error: "Failed to load wallet" }));
     process.exit(1);
   }
 
@@ -308,5 +361,5 @@ export async function showWalletInfo(opts: { dev: boolean }): Promise<void> {
     result.tip = `Could not verify balances on ${unavailableChains.length} chain(s) (RPC unavailable). Retry before assuming the wallet is empty.`;
   }
 
-  console.log(JSON.stringify(result, null, 2));
+  log(JSON.stringify(result, null, 2));
 }
