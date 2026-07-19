@@ -60,6 +60,11 @@ export interface HostedWalletResult {
   /** Some hosted builds surface vault activation state; render it if present. */
   activated?: boolean;
   activation?: { activated?: boolean; state?: string } | string | boolean;
+  /** Enrollment signals: present when the vault itself isn't set up yet. */
+  vault_status?: string;
+  mode?: string;
+  enroll_url?: string;
+  pairing_url?: string;
   [key: string]: unknown;
 }
 
@@ -254,6 +259,23 @@ function readActivated(result: HostedWalletResult): boolean | null {
  * dexter.vault state address on the session.
  */
 function renderConnectedWallet(result: HostedWalletResult, log: (line: string) => void): void {
+  // The session is connected, but the vault itself isn't set up yet — a user
+  // who ran `connect` before finishing wallet setup. Guide them to finish;
+  // never imply a service outage (that message is for a genuine no-data read).
+  if (result.vault_status === "not_enrolled" || result.mode === "vault_required") {
+    const setupUrl = result.enroll_url || result.pairing_url || "https://dexter.cash/wallet";
+    log("");
+    log("Dexter wallet");
+    log("  lane: connected");
+    log("");
+    log("  Your wallet isn't set up yet.");
+    log(`  Finish setup at ${setupUrl}`);
+    log("  then run `opendexter wallet` again.");
+    log("");
+    log("Revoke this connection anytime at dexter.cash/wallet.");
+    return;
+  }
+
   const address = result.address || result.solanaAddress || null;
   const usdc =
     typeof result.balances?.usdc === "number"
