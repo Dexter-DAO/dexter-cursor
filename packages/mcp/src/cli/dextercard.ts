@@ -16,29 +16,11 @@
  * than embedding our own.
  */
 
-import { spawn } from "node:child_process";
-import { platform } from "node:os";
 import * as p from "@clack/prompts";
 import chalk from "chalk";
 import { refresh, verify } from "@dexterai/dextercard";
 import { createNpmCardsAdapter } from "../cards-adapter.js";
-
-/**
- * Best-effort: open a URL in the user's default browser. Falls back to
- * just printing it on platforms we can't drive.
- */
-function tryOpenInBrowser(url: string): boolean {
-  const cmd =
-    platform() === "darwin" ? "open" :
-    platform() === "win32" ? "start" :
-    "xdg-open";
-  try {
-    spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { tryOpenInBrowser } from "../util/browser.js";
 
 export async function cliDextercardLogin(opts: { email?: string }): Promise<void> {
   const adapter = createNpmCardsAdapter();

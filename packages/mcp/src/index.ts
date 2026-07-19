@@ -309,6 +309,37 @@ async function main() {
       },
     )
     .command(
+      "connect [subcommand]",
+      "Connect this CLI to your Dexter wallet (passkey device flow), or check/clear the connection",
+      (y) =>
+        y
+          .positional("subcommand", {
+            type: "string",
+            choices: ["status", "disconnect"] as const,
+            description: "Omit to connect; `status` shows the linked vault; `disconnect` clears it",
+          })
+          .option("browser", {
+            type: "boolean",
+            default: true,
+            description:
+              "Offer to open the approval link in a browser (--no-browser prints link + QR + code only, for headless machines)",
+          }),
+      async (args) => {
+        const mod = await import("./connect/connect.js");
+        switch (args.subcommand) {
+          case "status":
+            await mod.cliConnectStatus();
+            break;
+          case "disconnect":
+            await mod.cliConnectDisconnect();
+            break;
+          default:
+            await mod.cliConnect({ dev: args.dev, noBrowser: args.browser === false });
+            break;
+        }
+      },
+    )
+    .command(
       "dextercard <subcommand>",
       "Manage your Dextercard session (login, logout, status, refresh)",
       (y) =>
