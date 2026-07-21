@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { SERVER_INSTRUCTIONS } from "@dexterai/mcp-instructions";
+import { buildServerInstructions, LOCAL_CAPS, assertInstructionRosterParity } from "@dexterai/mcp-instructions";
 import {
   composeAllTools,
   composeCardTools,
@@ -38,9 +38,10 @@ export async function startServer(opts: ServerOptions): Promise<void> {
     wallet = null;
   }
 
+  const instructions = buildServerInstructions(LOCAL_CAPS);
   const server = new McpServer(
     { name: "OpenDexter", version: VERSION },
-    { instructions: SERVER_INSTRUCTIONS },
+    { instructions },
   );
 
   // Wire the file-backed local wallet through the shared adapter contract.
@@ -131,6 +132,15 @@ export async function startServer(opts: ServerOptions): Promise<void> {
   registerSettingsTool(server);
 
   registerWidgetResources(server);
+
+  // Physics, not vigilance: if these instructions ever name a tool this
+  // server doesn't register, refuse to start (drift register, R1).
+  assertInstructionRosterParity(instructions, [
+    "x402_search", "x402_pay", "x402_fetch", "x402_check", "x402_access", "x402_wallet",
+    "x402_settings",
+    "card_status", "card_issue", "card_link_wallet", "card_freeze",
+    "card_login_request_otp", "card_login_complete", "card_login_start",
+  ]);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
