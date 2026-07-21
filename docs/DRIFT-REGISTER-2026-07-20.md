@@ -6,6 +6,25 @@ HOSTED = `dexter-mcp` repo — `open-mcp-server.mjs` serves the claude.ai "OpenD
 (PM2 `dexter-open-mcp`); the "dexter-x402" connector runs the local package's roster. Both serve
 the SAME byte-identical instructions from `@dexterai/mcp-instructions@2.0.2`.
 
+## Wave-1 close-out (2026-07-21, plan docs/superpowers/plans/2026-07-21-drift-pass-wave1.md)
+
+**CLOSED by Wave 1** (mcp-instructions@2.1.0 + opendexter@1.20.1 published; hosted live-verified):
+R1 mechanism (surface-conditioned buildServerInstructions + boot parity assertion, both servers) ·
+B1 (captcha fallback per-surface) · B2 instructions-half (hosted text no longer advertises
+x402_settings; the hosted settings TOOL remains the Wave-2 build) · B3 (hosted policy recipe
+matches real dexter-api cap errors, no hardcoded numbers) · B4 (docs:// ships locally) ·
+D3 (Solana-only funding copy on hosted) · D4 (dexter_passkey documented, env-var recipe local-only) ·
+D5 (SDK floors current) · Q1 (hosted tools documented) · Q2 (version stamp derives from
+package.json) · Q3 (x402_pay schema byte-identical to x402_fetch) · Q4 (phantom dep removed).
+
+**STILL OPEN:** B5 cap zoo (Wave 2 settings build + Branch's cap confirmation) · D2 schema
+convergence via shared package (Wave 4 / R2) · **NEW: widgets.ts prod bug** — packages/mcp/src/
+resources/widgets.ts:17 hardcodes ../widgets, nonexistent under the bundled build, so widgets
+silently serve fallbackHtml in production (reviewer-confirmed; fix = candidate-probing like
+docs.ts) · workflow-doc FROM-SCRATCH REWRITE per Branch's Jul 19 ruling (fresh seat, not
+api-fable; Wave-1 applied only a falsehood-excision stopgap) · x402-mcp-tools declares
+mcp-instructions ^2.0.1 (caret-fine; floor hygiene).
+
 ## The two root causes (fix these and most symptoms stop regenerating)
 
 **R1 — One instructions string, two rosters, no parity check.** The shared instructions are served
