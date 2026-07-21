@@ -19,6 +19,7 @@ import { createTabLane } from "../tabs/lane.js";
 import { registerSettingsTool } from "../tools/settings.js";
 import { registerCardLoginTools } from "../tools/card-login.js";
 import { registerWidgetResources } from "../resources/widgets.js";
+import { registerDocsResources } from "../resources/docs.js";
 import { CARD_WIDGET_URIS, X402_WIDGET_URIS } from "../widget-uris.js";
 
 export interface ServerOptions {
@@ -132,6 +133,12 @@ export async function startServer(opts: ServerOptions): Promise<void> {
   registerSettingsTool(server);
 
   registerWidgetResources(server);
+
+  // docs://opendexter/{workflow,protocol,debugging} — the resources the
+  // served instructions point agents at. The hosted server registers
+  // these; ship them here too so a local agent following the pointer gets
+  // the doc instead of resource-not-found (drift register B4).
+  registerDocsResources(server);
 
   // Physics, not vigilance: if these instructions ever name a tool this
   // server doesn't register, refuse to start (drift register, R1).
