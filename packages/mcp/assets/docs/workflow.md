@@ -24,10 +24,10 @@ OpenDexter ships in two flavors. Most of the surface is identical; a few tools a
 
 | Mode | URL / install | Wallet model | Tools that exist |
 |---|---|---|---|
-| **Hosted MCP** | `https://open.dexter.cash/mcp` (added as a connector in Claude.ai, ChatGPT, Cursor, etc.) | Session-managed by the gateway. The user pairs through dexter.cash; `x402_wallet` returns the session's funded balances. | `x402_search`, `x402_check`, `x402_fetch`, `x402_pay`, `x402_access`, `x402_wallet`, `card_status`, `card_issue`, `card_link_wallet`, `card_freeze` (10 tools) |
-| **Local npx** | `npx @dexterai/opendexter@latest` (Claude Code, Cursor, Codex, Windsurf, Gemini CLI) | Local file at `~/.dexterai-mcp/wallet.json` (override with `DEXTER_PRIVATE_KEY` / `EVM_PRIVATE_KEY`). | All hosted tools **plus** `x402_settings`, `card_login_request_otp`, `card_login_complete` (13 tools) |
+| **Hosted MCP** | `https://open.dexter.cash/mcp` (added as a connector in Claude.ai, ChatGPT, Cursor, etc.) | Non-custodial passkey vault bound to the session (Solana). Pairing via dexter.cash; `dexter_passkey` drives wallet onboarding. | The x402 family (`x402_search`, `x402_check`, `x402_fetch`, `x402_pay`, `x402_access`, `x402_wallet`), the card family incl. `card_login_request_otp`/`card_login_complete`, plus hosted-only `x402_compose_skill`, `promote_skill`, `dexter_passkey`, `dexter_passkey_probe`. NOT present: `x402_settings`, `card_login_start`. |
+| **Local npx** | `npx @dexterai/opendexter@latest` (Claude Code, Cursor, Codex, Windsurf, Gemini CLI) | Local file at `~/.dexterai-mcp/wallet.json` (override with `DEXTER_PRIVATE_KEY` / `EVM_PRIVATE_KEY`). | The x402 family plus local-only `x402_settings`, and the card family incl. `card_login_start`. NOT present: the passkey/skill tools. |
 
-**Quick detection rule**: if `x402_settings` is registered in the available tools, you're on **local npx**. If it isn't, you're on **hosted**. Same applies to `card_login_request_otp`/`card_login_complete`.
+**Quick detection rule**: `x402_settings` registered → **local npx**. `dexter_passkey` registered → **hosted**. (`card_login_request_otp`/`card_login_complete` exist on BOTH surfaces — never use them to detect the mode.) The server's own served instructions are the authority for your surface's exact roster.
 
 Setup advice depends on mode:
 
@@ -161,7 +161,7 @@ Pre-condition: card must be `active`. Post-condition: linked wallets show up in 
 
 Pass `frozen: true` to freeze or `frozen: false` to resume, and the tool returns the updated card metadata.
 
-### `card_login_request_otp` / `card_login_complete` *(local npx only)*
+### `card_login_request_otp` / `card_login_complete` *(both surfaces)*
 
 Bootstrap a Dextercard session from inside the agent without leaving the chat.
 
@@ -171,18 +171,20 @@ tab. After it returns ok, ask the user for the 6-digit code from their email,
 then call `card_login_complete` with `{email, code}` to persist the session.
 
 If `card_login_request_otp` returns `captcha_solver_not_configured` or
-`captcha_solve_failed`, fall back to `card_login_start`. That one returns a
-MoonPay URL the user opens to solve the captcha themselves, after which they
-still get an OTP email and you still finish with `card_login_complete`.
+`captcha_solve_failed`, the fallback depends on your surface: on **local npx**,
+call `card_login_start` — it returns a MoonPay URL the user opens to solve the
+captcha themselves, after which they still get an OTP email and you finish
+with `card_login_complete`. On **hosted** (no `card_login_start`), direct the
+user to provision at `https://dexter.cash/dextercard` instead.
 
 Once `card_login_complete` succeeds, all `card_*` tools work as if the user
 had paired through dexter.cash.
 
-**Hosted users don't need these tools.** When `card_status` returns
-`no_session` on hosted, it returns a clickable pairing URL. Surface that URL
-to the user and tell them to complete pairing on dexter.cash. After they pair,
-`card_status` returns `onboarding_required` (or further) and the standard
-`card_issue` flow continues.
+On hosted, an alternative to the OTP flow exists: when `card_status` returns
+`auth_required`/`no_session` it includes a clickable pairing URL — surface it
+and the user signs in at dexter.cash; after pairing, the standard `card_issue`
+flow continues. Both paths are valid on hosted; the OTP flow keeps the user
+in-chat.
 
 ## Workflow patterns
 
