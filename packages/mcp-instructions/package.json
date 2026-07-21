@@ -22,6 +22,7 @@
     "build": "tsup src/index.ts --format esm,cjs --clean --minify && tsc --emitDeclarationOnly --outDir dist",
     "dev": "tsup src/index.ts --format esm,cjs --watch",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "prepublishOnly": "npm run build",
     "release": "npm version patch && npm publish --access public"
   },
@@ -37,7 +38,8 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "publishConfig": {
     "access": "public"
