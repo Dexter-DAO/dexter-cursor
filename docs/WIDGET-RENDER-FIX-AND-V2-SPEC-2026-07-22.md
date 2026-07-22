@@ -33,7 +33,7 @@ Tags: **[CONFIRMED]** observed/documented this session · **[INFERENCE]** reason
 | **A. Tool descriptor binds the widget** (`_meta.ui.resourceUri` on `tools/list`) | **Us** | ❌ missing **[CONFIRMED]** | ✅ present **[CONFIRMED]** |
 | **B. The surface's display layer mounts an iframe from that `_meta`** | **Anthropic** | undocumented for mobile Code; **failed live 2026-07-22** | undocumented for mobile Code; **failed live 2026-07-22** |
 
-`ui://` resources on the local server DO use the correct spec MIME `text/html;profile=mcp-app`, but they also **lack `_meta.ui.csp`** (the hosted server's resources have it). CSP is optional per spec, but a strict host may refuse without it — secondary gap. **[CONFIRMED, live probe]**
+`ui://` resources on the local server use the correct spec MIME `text/html;profile=mcp-app` AND **do carry `_meta.ui.csp`** on the resource content (`resourceDomains` + `connectDomains`) — verified 2026-07-22 via `readResource` on published 1.20.3. An earlier probe reported CSP missing, but it read `listResources` *descriptors*; CSP lives on the read *content*, per spec. **No CSP gap. [CONFIRMED, correct layer]**
 
 ---
 
@@ -70,7 +70,7 @@ registerAppTool(server, "x402_wallet", {
 - `packages/x402-mcp-tools/src/tools/fetch.ts:786,788`
 - `packages/x402-mcp-tools/src/tools/cards/{freeze,status,issue,link-wallet}.ts`
 
-**Second gap:** verify the deployed `packages/mcp/src/resources/widgets.ts` build actually emits `_meta.ui.csp` on the `ui://` resources — the live listing says it isn't reaching the wire (stale build vs source suspected). **[CONFIRMED gap; cause INFERENCE]**
+**~~Second gap~~ RESOLVED (bad check):** `_meta.ui.csp` IS emitted on the `ui://` resource content — verified 2026-07-22 via `readResource` on published 1.20.3 (full `resourceDomains`/`connectDomains`, MIME `text/html;profile=mcp-app`, real HTML). The earlier "missing" read `listResources` descriptors; CSP is on the read content. **No fix needed. [CONFIRMED, correct layer]**
 
 **Do NOT:**
 - **Retire `openai/outputTemplate`.** Dual-emit is free — each host reads its own namespace, no collision (`widget-meta.ts:52-68`). Killing the OpenAI keys forfeits **ChatGPT**, the largest surface that renders *today*. **[CONFIRMED]**
