@@ -122,7 +122,7 @@ export function registerCardStatusTool(server: McpServer, opts: CardToolOpts): v
         };
       }
     },
-  );
+  ).update({ _meta: meta });
 }
 
 type CardStage =

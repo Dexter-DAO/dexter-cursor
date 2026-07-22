@@ -17,11 +17,15 @@ export function registerWalletTool(server: McpServer, opts: WalletToolOpts): voi
     opts.noWalletTip ??
     "No wallet is configured for this MCP session. Sign in or provision a wallet to enable balances and payments.";
 
-  server.tool(
+  server.registerTool(
     "x402_wallet",
-    "Show wallet addresses (Solana + EVM), USDC balances across all chains, and deposit instructions. " +
-      "The wallet is used to automatically pay for x402 API calls on Solana, Base, Polygon, Arbitrum, Optimism, and Avalanche.",
-    {},
+    {
+      description:
+        "Show wallet addresses (Solana + EVM), USDC balances across all chains, and deposit instructions. " +
+        "The wallet is used to automatically pay for x402 API calls on Solana, Base, Polygon, Arbitrum, Optimism, and Avalanche.",
+      inputSchema: {},
+      _meta: meta,
+    },
     async () => {
       if (!wallet) {
         return {

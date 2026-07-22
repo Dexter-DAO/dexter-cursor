@@ -229,7 +229,7 @@ export function registerCardIssueTool(server: McpServer, opts: CardToolOpts): vo
         };
       }
     },
-  );
+  ).update({ _meta: meta });
 }
 
 type DetectedStage =

@@ -56,7 +56,7 @@ export function registerCardLinkWalletTool(server: McpServer, opts: CardToolOpts
         };
       }
     },
-  );
+  ).update({ _meta: meta });
 }
 
 function wrap(data: Record<string, unknown>, meta: unknown, isError = false) {

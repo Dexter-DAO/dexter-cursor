@@ -139,23 +139,30 @@ export async function accessWithWalletProof(
 
 export function registerAccessTool(server: McpServer, opts: AccessToolOpts): void {
   const wallet = opts.wallet;
+  // Access returns API-response data like a fetch, so it shares the fetch widget
+  // (matches the hosted server's ACCESS_META = fetch widget).
+  const meta = opts.metas.fetch;
 
-  server.tool(
+  server.registerTool(
     "x402_access",
-    "Access identity-gated endpoints using a wallet proof instead of a payment. " +
-      "Use this when an endpoint requires Sign-In-With-X / wallet authentication " +
-      "rather than USDC settlement.",
     {
-      url: z.string().url().describe("The protected endpoint URL"),
-      method: z
-        .enum(["GET", "POST", "PUT", "DELETE"])
-        .default("GET")
-        .describe("HTTP method"),
-      body: z.string().optional().describe("JSON request body for POST/PUT"),
-      network: z
-        .string()
-        .optional()
-        .describe("Optional preferred auth network, e.g. solana:... or eip155:8453"),
+      description:
+        "Access identity-gated endpoints using a wallet proof instead of a payment. " +
+        "Use this when an endpoint requires Sign-In-With-X / wallet authentication " +
+        "rather than USDC settlement.",
+      inputSchema: {
+        url: z.string().url().describe("The protected endpoint URL"),
+        method: z
+          .enum(["GET", "POST", "PUT", "DELETE"])
+          .default("GET")
+          .describe("HTTP method"),
+        body: z.string().optional().describe("JSON request body for POST/PUT"),
+        network: z
+          .string()
+          .optional()
+          .describe("Optional preferred auth network, e.g. solana:... or eip155:8453"),
+      },
+      _meta: meta,
     },
     async (args) => {
       try {

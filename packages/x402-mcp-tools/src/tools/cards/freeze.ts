@@ -57,7 +57,7 @@ export function registerCardFreezeTool(server: McpServer, opts: CardToolOpts): v
         };
       }
     },
-  );
+  ).update({ _meta: meta });
 }
 
 function wrap(data: Record<string, unknown>, meta: unknown, isError = false) {

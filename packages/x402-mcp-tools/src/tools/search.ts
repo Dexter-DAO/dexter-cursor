@@ -86,5 +86,5 @@ export function registerSearchTool(server: McpServer, opts: SearchToolOpts): voi
         } as any;
       }
     },
-  );
+  ).update({ _meta: meta });
 }

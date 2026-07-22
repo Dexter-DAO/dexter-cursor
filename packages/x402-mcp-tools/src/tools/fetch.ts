@@ -783,7 +783,7 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
     }
   };
 
-  server.tool("x402_fetch", description, inputSchema, runFetch);
+  server.tool("x402_fetch", description, inputSchema, runFetch).update({ _meta: meta });
 
   server.tool(
     "x402_pay",
@@ -791,5 +791,5 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
       "Uses the same wallet x402 payment flow and returns the same settlement/result payload.",
     inputSchema,
     runFetch,
-  );
+  ).update({ _meta: meta });
 }
