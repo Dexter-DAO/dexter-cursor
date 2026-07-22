@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { CARD_WIDGET_URIS, X402_WIDGET_URIS } from "../widget-uris.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const WIDGETS_DIR = join(__dirname, "..", "widgets");
+const WIDGETS_DIR = join(__dirname, "widgets");
 
 const ASSET_CDN = "https://dexter.cash/mcp/app-assets";
 
