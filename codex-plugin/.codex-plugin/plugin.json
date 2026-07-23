@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
   "version": "0.1.0",
-  "description": "Search, price-check, and pay for x402 APIs from a passkey-secured, non-custodial Dexter wallet — the full OpenDexter toolset for Codex.",
+  "description": "OpenDexter connects your chat to a non-custodial Dexter wallet: search the x402 catalog of paid APIs, check prices, pay per call in USDC on Solana, and publish composed skills.",
   "author": {
     "name": "Dexter",
     "email": "dev@dexter.cash"
@@ -12,6 +12,13 @@
     "displayName": "OpenDexter",
     "developerName": "Dexter",
     "category": "Finance",
+    "shortDescription": "Give your agent a wallet: find paid APIs, check the exact price, and pay per call in USDC, secured by your passkey.",
+    "longDescription": "OpenDexter connects your agent to x402, the open protocol for paying APIs per call: a small USDC payment rides along with the request instead of an account or an API key.\n\nYour agent can search a marketplace of thousands of paid endpoints (market data, research, media generation, blockchain queries), check an endpoint's exact price, network, and seller before anything is spent, pay, and return the result in the same conversation. Wallet address and balance are always one question away.\n\nThe wallet is yours. You create it in your browser with a passkey, Face ID or a security key, and Dexter never holds the keys: every payment is signed under spending rules you set. Link it once and your agent can pay from then on.\n\nAny service your agent likes can become a reusable skill, published to the marketplace at x402gle.com if you choose. Publishing only happens when you ask for it.\n\nSearches and price checks are free and never trigger a payment. Spending is deliberate: your agent shows the price and the seller before it pays.",
+    "defaultPrompt": [
+      "Set up my OpenDexter passkey wallet.",
+      "What's my Dexter wallet address and USDC balance?",
+      "Find an x402 API that can generate images, and show me what each one costs."
+    ],
     "websiteURL": "https://dexter.cash/opendexter",
     "privacyPolicyURL": "https://dexter.cash/privacy",
     "termsOfServiceURL": "https://dexter.cash/terms",
