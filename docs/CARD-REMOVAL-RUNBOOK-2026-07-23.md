@@ -57,12 +57,30 @@ instruction change first, installs it, then removes the tools.
   `codex-plugin/skills/`) — this is the #82 skill-rewrite deliverable landing on the
   Claude surface. Card content already absent from v2.
 
-### 5. Verify no card tool anywhere
+### 5. Verify no standalone card TOOL anywhere
 - Hosted wire: 10 tools. Local published tarball: no `card_*` registrars.
 - Chat card questions → the wallet + https://dexter.cash/dextercard redirect
   (already encoded in the v2 skills).
+- This removes the card TOOL-FAMILY, not the card. Interim state: the card is
+  reachable only via the web page until #71 lands.
+
+## The card's real home is the wallet widget (#71) — and it needs NO card tool
+The card is not banned; it moves. Board #71 gives the card a face inside the WALLET
+widget: tap-to-reveal card art (the three animated designs already in dexter-fe),
+a freeze button, a status line. Critically, that face needs **zero** MCP card tools:
+- Card summary (has-a-card, last4) can ride the `x402_wallet` result as **widget-only
+  `_meta`** (never model-visible), so the widget knows to offer the reveal.
+- Full PAN/CVV/expiry are fetched by the WIDGET itself via a single-use reveal URL
+  straight into its own frame — never through a tool, never into the model or the
+  chat (PCI-safe by construction; same widget-only side-channel precedent as the
+  `_meta.sessionToken` pattern).
+So "no card tools" (this runbook) and "card details in the wallet" (#71) are the
+SAME design, not opposing ones. When #71 builds the wallet card face, do NOT
+reintroduce a card tool to feed it.
 
 ## What this deliberately does NOT do
 - Does not touch payments, settlement, keys, the vault, or any x402 logic.
 - Does not delete the web card at dexter.cash/dextercard (unchanged, still works).
-- Does not build the wallet card face — that is board #71, sequenced after.
+- Does not build the wallet card face — that is board #71, sequenced after (above).
+- Does not foreclose card details in-chat later — it routes them through the wallet
+  widget instead of a tool.
