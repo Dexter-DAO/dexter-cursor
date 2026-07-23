@@ -30,7 +30,7 @@ Everything in this half is pasted by hand into OpenAI's UI (the app registration
 
 The observed manifest fields are: `description`, `shortDescription`, `longDescription`, `defaultPrompt`, `capabilities` — all placeholders or empty today; there is no `skills` field and no `skills/` directory `[VERIFIED — requisition's cache inspection; corrected per C3]`. Which UI surface renders which description field is `[UNVERIFIED]`; copy is supplied for all three so every field is final-quality regardless of where it shows.
 
-**Stance note (owner ruling):** the directory submission describes the FULL product, payments included. Do not soften "pays in USDC from the user's wallet" into review-friendly euphemism anywhere in this half. The read-vs-spend boundary is stated plainly instead — that is the honest version of full-strength.
+**Stance note (owner rulings, reconciled Jul 23):** two rules that are NOT in tension. (1) FULL-STRENGTH — the directory submission describes the full product, spending included; never euphemize *that money moves* to look review-friendly; state the read-vs-spend boundary plainly. (2) PLAIN-MONEY VOCABULARY (Branch, Jul 23) — user-facing copy says "money"/"dollars", not "USDC" ("it's daunting to adults; it's literally a dollar with a c on the end"). These combine cleanly: "your agent pays in dollars, only when you approve" is both full-strength AND approachable. Rule of thumb used throughout: crypto vocabulary (USDC, Solana) stays only in strings a MACHINE reads (the Half-2 tool descriptions the model routes on); it comes OUT of everything a HUMAN reads (Half-1 listing fields, the namespace description, default prompts).
 
 ## 1.1 App name
 
@@ -40,42 +40,13 @@ OpenDexter
 
 Use exactly this string everywhere: app registration, connector metadata, plugin display name, docs, assets. OpenAI's guidelines warn against overly generic single-word names; "OpenDexter" is distinctive and already the serverInfo name on the live wire (`serverInfo: {name: "OpenDexter", version: "1.0.0"}` `[VERIFIED — re-probed this session]`). The Claude plugin currently displays "OpenDexter — x402 Payments"; the suffix is acceptable as a plugin subtitle but the app name field must be the bare word.
 
-## 1.2 `description` (one-sentence field) — [C5: card clause removed]
+## 1.2–1.5 Listing copy + default prompts — CANONICAL IN THE MANIFEST
 
-```
-OpenDexter connects your chat to a non-custodial Dexter wallet: search the x402 catalog of paid APIs, check real prices, pay per call in USDC on Solana, and publish composed skills.
-```
+These four fields (`description`, `shortDescription`, `longDescription`, `defaultPrompt`) are **owned by the package manifest** — `codex-plugin/.codex-plugin/plugin.json` — where the Branch-approved, anti-slop-gated, plain-money copy lives (approved Jul 23; opendexter-ide@1234d61 / @f8087bd). To avoid two divergent copies of the same strings (that is exactly the drift Rule 7 forbids), paste the dashboard fields **from the manifest**, not from an inline draft here. The manifest copy already follows the plain-money rule (zero "USDC" in the listing) and the ≤128-char × 3 default-prompt cap. Read it with: `python3 -c "import json;m=json.load(open('codex-plugin/.codex-plugin/plugin.json'));print(m['description']);print(m['interface']['shortDescription']);print(m['interface']['longDescription']);print(m['interface']['defaultPrompt'])"`.
 
-## 1.3 `shortDescription` — [C5: card clause removed]
-
-```
-Discover and pay for x402 APIs in USDC on Solana, from a passkey-secured wallet you control — plus the composed-skill marketplace.
-```
-
-(130 chars. Alternate, if the field wants something punchier: `A wallet your agent can use: x402 API discovery and USDC payments, secured by your passkey.`)
-
-## 1.4 `longDescription` — [C5: DEXTERCARD section removed; free/paid paragraph rewritten without card actions]
-
-```
-OpenDexter gives your chat a real wallet — one you control.
-
-YOUR WALLET, YOUR KEYS. OpenDexter connects to a non-custodial Dexter wallet secured by a passkey (Face ID, Touch ID, or your device PIN). Dexter never holds your keys and cannot move your funds. Setup takes about a minute: the app opens dexter.cash in a new tab, you approve with your device's passkey, and the wallet links back to your conversation.
-
-PAY FOR APIS AS YOU USE THEM. x402 is an open standard for paying for API calls with small USDC payments instead of subscriptions and API keys. OpenDexter searches a live catalog of thousands of x402 services — data feeds, image generation, translation, research, and more — shows you the exact price before anything is paid, and settles in USDC on Solana from your wallet when you approve a call.
-
-COMPOSED SKILLS. Turn any x402 service you like into a reusable skill, and — if you choose — publish it to the public marketplace at x402gle.com/skills.
-
-WHAT'S FREE AND WHAT COSTS MONEY. Searching the catalog, checking an endpoint's price, and viewing your wallet balance are read-only and never cost anything. Money moves only when you approve a specific paid API call, with the exact price shown first. Publishing a skill is always an explicit action you ask for — OpenDexter never spends and never publishes on its own.
-```
-
-(If the field is plain-text-only, the ALL-CAPS section leads read as headers; if it renders markdown, swap them for `**bold**`.)
-
-## 1.5 Default prompts — [C5 + C6: card prompt removed; max 3, each ≤128 chars]
-
-The observed manifest has a singular `defaultPrompt: null` `[VERIFIED — requisition]`. If the UI takes one prompt, use #1. If it takes a list, use all three in this order.
-
-1. `Set up my OpenDexter passkey wallet.` (36 chars)
-2. `What's my Dexter wallet address and USDC balance?` (49 chars)
+Approved copy at a glance (source of truth is the manifest):
+- **one-sentence / short:** "Give your agent spending power: it finds the right paid service, shows you the price, and pays from a wallet only you control."
+- **default prompts (3):** "Set up my OpenDexter passkey wallet." · "What's my Dexter wallet address and balance?" · "Find an x402 API that can generate images, and show me what each one costs."
 3. `Find an x402 API that can generate images, and show me what each one costs.` (75 chars)
 
 Rationale carried from v1: #1 is the new-user funnel (a starter prompt should onboard, not "check" a wallet that doesn't exist yet); #2 merges address + balance into one natural question; #3 is concrete (no dangling "this job" antecedent) and shows off check-before-pay. v1's prompts #4 (paste-URL price check) and #5 (card status) are dropped: #5 by the card ruling, #4 by the 3-prompt cap — it survives as a routing-eval case, not a starter prompt.
@@ -170,7 +141,7 @@ Scope — **[C5: reduced from 16 to 10]**: the 10 tools that remain after the ca
 This is what Codex/ChatGPT show as the description of the `opendexter.*` tool namespace. Today it lives ONLY in OpenAI's dashboard (paste it there — cross-ref Half 1 §1.2); if/when a manifest field carries it in the plugin package, use the same string.
 
 ```
-OpenDexter: a non-custodial, passkey-secured Dexter wallet (USDC on Solana) your agent can use, plus the x402 paid-API marketplace. Use these tools when the user wants to: set up or check a Dexter wallet or passkey; see their wallet address or USDC balance; find an x402 API for a job; check what a paid endpoint costs; pay for an API call in USDC from their own wallet; sign in to a wallet-gated endpoint; or turn an x402 service into a reusable skill and publish it to the marketplace. Searching, price checks, and wallet views are read-only and free; payments and skill publishing move money or make public writes, and happen only on explicit user approval.
+OpenDexter gives your agent a passkey-secured wallet you control, plus a marketplace of paid APIs it can use. Use these tools when the user wants to: set up or check their Dexter wallet or passkey; see their wallet address or balance; find a paid API for a job; check what an endpoint costs; pay for an API call in dollars from their own wallet; sign in to a wallet-gated endpoint; or turn a service into a reusable skill and publish it to the marketplace. Searching, price checks, and wallet views are read-only and free; payments and skill publishing move money or make public writes, and happen only on explicit user approval.
 ```
 
 **[C1 — CORRECTED observation for the controller]:** v1 claimed the server's initialize instructions never mention `dexter_passkey`, `x402_compose_skill`, or `promote_skill`. That is FALSE on today's wire — the live instructions already cover all three (dexter_passkey 4 mentions, compose/promote one each) via `HOSTED_CAPS {hasPasskeyTools:true, hasSkillTools:true}` `[VERIFIED — live initialize + @dexterai/mcp-instructions dist, this session]`. No instructions gap exists for those tools. The real instructions work item is the card-section removal (see rule 2.0-2): the current text routes card intents to card tools 7+ times and will violate roster parity the moment the cards come off.

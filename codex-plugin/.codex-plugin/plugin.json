@@ -16,7 +16,7 @@
     "longDescription": "OpenDexter lets your assistant get things done that cost money. It can pull live market data, generate images, run research, and call thousands of other specialized services, paying for each one in the moment: pennies per call, no subscriptions, no API keys.\n\nYou stay in charge of every dollar. Your assistant shows the exact price and the seller before anything is paid, it spends only within rules you set, and browsing never costs a thing: searching services and checking prices are always free.\n\nThe money lives in a wallet that belongs to you, not to Dexter. You create it in about a minute with Face ID or a security key, and only your device can approve spending. Dexter never holds your keys.\n\nWhen your assistant finds a service worth keeping, it can save it as a reusable skill and, if you choose, publish it to the marketplace at x402gle.com.\n\nUnder the hood it runs on x402, the open standard for paying for API calls.",
     "defaultPrompt": [
       "Set up my OpenDexter passkey wallet.",
-      "What's my Dexter wallet address and USDC balance?",
+      "What's my Dexter wallet address and balance?",
       "Find an x402 API that can generate images, and show me what each one costs."
     ],
     "websiteURL": "https://dexter.cash/opendexter",
