@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
   "version": "0.1.0",
-  "description": "OpenDexter connects your chat to a non-custodial Dexter wallet: search the x402 catalog of paid APIs, check prices, pay per call in USDC on Solana, and publish composed skills.",
+  "description": "Give your agent spending power: it finds the right paid service, shows you the price, and pays from a wallet only you control.",
   "author": {
     "name": "Dexter",
     "email": "dev@dexter.cash"
@@ -12,8 +12,8 @@
     "displayName": "OpenDexter",
     "developerName": "Dexter",
     "category": "Finance",
-    "shortDescription": "Give your agent a wallet: find paid APIs, check the exact price, and pay per call in USDC, secured by your passkey.",
-    "longDescription": "OpenDexter connects your agent to x402, the open protocol for paying APIs per call: a small USDC payment rides along with the request instead of an account or an API key.\n\nYour agent can search a marketplace of thousands of paid endpoints (market data, research, media generation, blockchain queries), check an endpoint's exact price, network, and seller before anything is spent, pay, and return the result in the same conversation. Wallet address and balance are always one question away.\n\nThe wallet is yours. You create it in your browser with a passkey, Face ID or a security key, and Dexter never holds the keys: every payment is signed under spending rules you set. Link it once and your agent can pay from then on.\n\nAny service your agent likes can become a reusable skill, published to the marketplace at x402gle.com if you choose. Publishing only happens when you ask for it.\n\nSearches and price checks are free and never trigger a payment. Spending is deliberate: your agent shows the price and the seller before it pays.",
+    "shortDescription": "Give your agent spending power: it finds the right paid service, shows you the price, and pays from a wallet only you control.",
+    "longDescription": "OpenDexter lets your assistant get things done that cost money. It can pull live market data, generate images, run research, and call thousands of other specialized services, paying for each one in the moment: pennies per call, no subscriptions, no API keys.\n\nYou stay in charge of every dollar. Your assistant shows the exact price and the seller before anything is paid, it spends only within rules you set, and browsing never costs a thing: searching services and checking prices are always free.\n\nThe money lives in a wallet that belongs to you, not to Dexter. You create it in about a minute with Face ID or a security key, and only your device can approve spending. Dexter never holds your keys.\n\nWhen your assistant finds a service worth keeping, it can save it as a reusable skill and, if you choose, publish it to the marketplace at x402gle.com.\n\nUnder the hood it runs on x402, the open standard for per-call API payments, settled in USDC.",
     "defaultPrompt": [
       "Set up my OpenDexter passkey wallet.",
       "What's my Dexter wallet address and USDC balance?",
