@@ -1,0 +1,20 @@
+{
+  "name": "opendexter",
+  "version": "0.1.0",
+  "description": "Search, price-check, and pay for x402 APIs from a passkey-secured, non-custodial Dexter wallet — the full OpenDexter toolset for Codex.",
+  "author": {
+    "name": "Dexter",
+    "email": "dev@dexter.cash"
+  },
+  "skills": "./skills/",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "OpenDexter",
+    "developerName": "Dexter",
+    "category": "Finance",
+    "websiteURL": "https://dexter.cash/opendexter",
+    "privacyPolicyURL": "https://dexter.cash/privacy",
+    "termsOfServiceURL": "https://dexter.cash/terms",
+    "brandColor": "#E67C3E"
+  }
+}
