@@ -49,19 +49,40 @@ export interface SurfaceCaps {
   hasSkillTools: boolean;
   hasDocsResources: boolean;
   multichainFunding: boolean;
+  /**
+   * Whether the surface exposes the six card_* tools. Optional, DEFAULT TRUE
+   * so existing consumers render unchanged until they opt out. Owner ruling
+   * Jul 23 (card-removal runbook): cards come off the MCP product on both
+   * first-party surfaces — the card lives in the wallet widget instead
+   * (widget-side reveal; no card tools feed it).
+   */
+  hasCardTools?: boolean;
+}
+
+/** Card tools present unless the surface explicitly opts out. */
+function cardsOn(caps: SurfaceCaps): boolean {
+  return caps.hasCardTools !== false;
 }
 
 // ---------------------------------------------------------------------------
 // Preamble — the framing + the one rule. Surface-independent.
 // ---------------------------------------------------------------------------
 
-const PREAMBLE = `You are connected to OpenDexter, an MCP server for discovering and paying for x402 APIs and for provisioning a Dextercard. This is your operating procedure for these tools. Follow it.
+const PREAMBLE_LEAD_CARDS =
+  'You are connected to OpenDexter, an MCP server for discovering and paying for x402 APIs and for provisioning a Dextercard. This is your operating procedure for these tools. Follow it.';
 
-# The one rule that prevents every common failure
+const PREAMBLE_LEAD_NO_CARDS =
+  'You are connected to OpenDexter, an MCP server for discovering and paying for x402 APIs. This is your operating procedure for these tools. Follow it.';
+
+const PREAMBLE_RULE = `# The one rule that prevents every common failure
 
 Never answer "is there an x402 API for X?", "can I pay for X?", or "what does X cost?" from memory or prior knowledge. The catalog has thousands of paid endpoints and changes constantly. The only correct source is a live tool call. If a question is about what exists or what it costs, the first action is x402_search or x402_check, not a sentence.
 
 When you have a concrete endpoint URL, never describe what it probably costs. Call x402_check and report what it actually returned.`;
+
+function preamble(caps: SurfaceCaps): string {
+  return [cardsOn(caps) ? PREAMBLE_LEAD_CARDS : PREAMBLE_LEAD_NO_CARDS, PREAMBLE_RULE].join('\n\n');
+}
 
 // ---------------------------------------------------------------------------
 // Tool routing — one entry per intent, some conditioned on the surface.
@@ -93,11 +114,14 @@ const ROUTE_PASSKEY = `"Set up / bind my wallet"
 const ROUTE_CARD = `Anything about a Dextercard (status, get a card, freeze it, link a wallet, sign in)
   -> the Dextercard section below. Always card_status first.`;
 
+const ROUTE_CARD_TO_WALLET = `Anything about a Dextercard (get a card, see it, freeze it)
+  -> the card lives in the wallet: call x402_wallet, or direct the user to https://dexter.cash/dextercard. There are no card tools on this surface.`;
+
 function routingSection(caps: SurfaceCaps): string {
   const entries = [ROUTE_SEARCH, ROUTE_CALL_URL, ROUTE_COST, ROUTE_PAY, ROUTE_WALLET];
   if (caps.hasSettings) entries.push(ROUTE_SETTINGS);
   if (caps.hasPasskeyTools) entries.push(ROUTE_PASSKEY);
-  entries.push(ROUTE_CARD);
+  entries.push(cardsOn(caps) ? ROUTE_CARD : ROUTE_CARD_TO_WALLET);
   return [ROUTING_HEADER, ...entries].join('\n\n');
 }
 
@@ -244,12 +268,15 @@ const SAFETY_SETTINGS_BULLET =
 const SAFETY_NEUTRAL_BULLET =
   '- Every paid call is bounded by server-enforced spend caps. A call above the cap is rejected, not silently paid. Treat a policy block as a decision point for the user, never something to route around on your own.';
 
-const SAFETY_REST = `- Private keys never cross the tool boundary. You sign through the wallet; you never see or handle the key. Never ask the user to paste a private key into the conversation.
-- For Dextercard identity and address fields, and for the OTP email, ask the user. Do not guess personal data.`;
+const SAFETY_KEYS_BULLET = `- Private keys never cross the tool boundary. You sign through the wallet; you never see or handle the key. Never ask the user to paste a private key into the conversation.`;
+
+const SAFETY_CARD_BULLET = `- For Dextercard identity and address fields, and for the OTP email, ask the user. Do not guess personal data.`;
 
 function safetySection(caps: SurfaceCaps): string {
   const firstBullet = caps.hasSettings ? SAFETY_SETTINGS_BULLET : SAFETY_NEUTRAL_BULLET;
-  return `# Safety model\n\n${firstBullet}\n${SAFETY_REST}`;
+  const bullets = [firstBullet, SAFETY_KEYS_BULLET];
+  if (cardsOn(caps)) bullets.push(SAFETY_CARD_BULLET);
+  return `# Safety model\n\n${bullets.join('\n')}`;
 }
 
 const DOCS_POINTER = `# Deeper reference
@@ -262,18 +289,21 @@ Read docs://opendexter/workflow, docs://opendexter/protocol, or docs://opendexte
 
 export function buildServerInstructions(caps: SurfaceCaps): string {
   const sections: string[] = [];
-  sections.push(PREAMBLE);
+  sections.push(preamble(caps));
   sections.push(routingSection(caps));
   sections.push(toolsSection(caps));
   sections.push(failuresSection(caps));
-  sections.push(cardSection(caps));
+  if (cardsOn(caps)) sections.push(cardSection(caps));
   sections.push(safetySection(caps));
   if (caps.hasDocsResources) sections.push(DOCS_POINTER);
   return sections.join('\n\n');
 }
 
-export const LOCAL_CAPS: SurfaceCaps = { surface: 'local', hasSettings: true, hasCardLoginStart: true, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: true };
-export const HOSTED_CAPS: SurfaceCaps = { surface: 'hosted', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: true, hasSkillTools: true, hasDocsResources: true, multichainFunding: false };
+// Both first-party surfaces ship cards-off (owner ruling Jul 23, card-removal
+// runbook): the card is a wallet-widget concern now. hasCardLoginStart goes
+// false with it — the flag is meaningless without the card tool family.
+export const LOCAL_CAPS: SurfaceCaps = { surface: 'local', hasSettings: true, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: true, hasCardTools: false };
+export const HOSTED_CAPS: SurfaceCaps = { surface: 'hosted', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: true, hasSkillTools: true, hasDocsResources: true, multichainFunding: false, hasCardTools: false };
 
 /** @deprecated Use buildServerInstructions(caps) — this is the local-default rendering. */
 export const SERVER_INSTRUCTIONS = buildServerInstructions(LOCAL_CAPS);
