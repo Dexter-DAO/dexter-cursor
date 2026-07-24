@@ -29,21 +29,12 @@ export { registerWalletTool } from "./tools/wallet.js";
 // Compose helper (x402 toolset)
 export { composeAllTools, type ComposeAllToolsOpts } from "./compose.js";
 
-// Dextercard tool registrars
-export { registerCardStatusTool } from "./tools/cards/status.js";
-export { registerCardIssueTool } from "./tools/cards/issue.js";
-export { registerCardLinkWalletTool } from "./tools/cards/link-wallet.js";
-export { registerCardFreezeTool } from "./tools/cards/freeze.js";
-
-// Dextercard compose helper + adapter contract + widget metas
-export { composeCardTools, type ComposeCardToolsOpts } from "./compose-cards.js";
-export type { CardsAdapter } from "./cards-adapter.js";
-
-// Card operations interface (the small subset of the Dextercard SDK
-// surface that registrars actually call) plus the two reference
-// implementations: a local wrapper around a real Dextercard, and a
-// remote HTTP+HMAC client for hosted servers that don't hold the
-// carrier session in-process.
+// Dextercard TOOL registrars: REMOVED in 0.6.0 (owner ruling Jul 23;
+// opendexter-ide/docs/CARD-REMOVAL-RUNBOOK-2026-07-23.md). The card is a
+// wallet-widget concern — servers surface a read-only card summary on
+// x402_wallet and a widget-frame-only reveal/freeze rail; no card tools.
+// The card OPERATIONS clients below deliberately survive: they are how
+// those non-tool surfaces (and the CLI) talk to the carrier.
 export {
   LocalCardOperations,
   type CardOperations,
@@ -54,11 +45,6 @@ export {
   DextercardPairingRequiredError,
   type RemoteCardOperationsOptions,
 } from "./remote-card-operations.js";
-export {
-  buildCardToolMetas,
-  type CardToolMetas,
-  type CardWidgetUris,
-} from "./card-widget-meta.js";
 
 // Widget metadata helpers
 export {
@@ -92,7 +78,6 @@ export type {
   TabOfferMaterials,
   AccessToolOpts,
   WalletToolOpts,
-  CardToolOpts,
 } from "./types.js";
 export { DEFAULT_CAPABILITY_PATH } from "./types.js";
 

@@ -3,24 +3,19 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { buildServerInstructions, LOCAL_CAPS, assertInstructionRosterParity } from "@dexterai/mcp-instructions";
 import {
   composeAllTools,
-  composeCardTools,
   buildToolMetas,
-  buildCardToolMetas,
   type WidgetUris,
-  type CardWidgetUris,
 } from "@dexterai/x402-mcp-tools";
 import { CAPABILITY_PATH, VERSION, getApiBase } from "../config.js";
 import { loadOrCreateWallet } from "../wallet/index.js";
 import { createNpmWalletAdapter } from "../wallet/adapter.js";
-import { createNpmCardsAdapter } from "../cards-adapter.js";
 import { loadSettings } from "../settings.js";
 import { recordSpend, spentLast24h } from "../spend-ledger.js";
 import { createTabLane } from "../tabs/lane.js";
 import { registerSettingsTool } from "../tools/settings.js";
-import { registerCardLoginTools } from "../tools/card-login.js";
 import { registerWidgetResources } from "../resources/widgets.js";
 import { registerDocsResources } from "../resources/docs.js";
-import { CARD_WIDGET_URIS, X402_WIDGET_URIS } from "../widget-uris.js";
+import { X402_WIDGET_URIS } from "../widget-uris.js";
 
 export interface ServerOptions {
   transport: "stdio";
@@ -97,36 +92,12 @@ export async function startServer(opts: ServerOptions): Promise<void> {
       "Set DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (EVM) env var, or run `npx @dexterai/opendexter wallet` to create one.",
   });
 
-  // Dextercard tools — opt-in surface. The CardsAdapter resolves the
-  // active session lazily on first tool call, so registering them here
-  // costs nothing when no session is configured (handlers gracefully
-  // surface a `no_session` stage with the configured tip).
-  const cardWidgetUris: CardWidgetUris = {
-    status: CARD_WIDGET_URIS.status,
-    issue: CARD_WIDGET_URIS.issue,
-    linkWallet: CARD_WIDGET_URIS.linkWallet,
-  };
-  const cardMetas = buildCardToolMetas(cardWidgetUris);
-  const cardsAdapter = createNpmCardsAdapter();
-
-  // noSessionTip only surfaces when auto-pairing is disabled
-  // (OPENDEXTER_AUTOPAIR=0). In the normal path the adapter throws
-  // DextercardPairingRequiredError instead of returning null, so the
-  // shared registrars surface a clickable pairing URL automatically.
-  composeCardTools(server, {
-    cards: cardsAdapter,
-    metas: cardMetas,
-    noSessionTip:
-      "Auto-pairing is disabled (OPENDEXTER_AUTOPAIR=0). Run `npx @dexterai/opendexter dextercard login` to provision a session manually, or unset OPENDEXTER_AUTOPAIR to enable browser-based pairing.",
-  });
-
-  // Agent-driven carrier provisioning. Closes the bootstrap gap for users
-  // who haven't yet provisioned a Dextercard session at dexter.cash:
-  // card_login_start hands the agent a MoonPay URL the user opens to
-  // solve the captcha, card_login_complete exchanges the resulting OTP
-  // code for a carrier session, persisted to the same encrypted store
-  // that auto-pairing populates.
-  registerCardLoginTools(server, { cards: cardsAdapter });
+  // Dextercard TOOLS: REMOVED (owner ruling Jul 23; docs/CARD-REMOVAL-
+  // RUNBOOK-2026-07-23.md). The card is a wallet-widget + web-page concern
+  // now; the `opendexter dextercard` CLI commands remain the local non-tool
+  // path. Instructions render card-free via @dexterai/mcp-instructions
+  // LOCAL_CAPS (hasCardTools:false) — reintroducing a card tool without
+  // flipping that cap back on trips the parity assert below at boot.
 
   // Settings stays npm-package-specific (filesystem-backed). Hosted servers
   // do not surface this tool.
@@ -145,8 +116,6 @@ export async function startServer(opts: ServerOptions): Promise<void> {
   assertInstructionRosterParity(instructions, [
     "x402_search", "x402_pay", "x402_fetch", "x402_check", "x402_access", "x402_wallet",
     "x402_settings",
-    "card_status", "card_issue", "card_link_wallet", "card_freeze",
-    "card_login_request_otp", "card_login_complete", "card_login_start",
   ]);
 
   const transport = new StdioServerTransport();
