@@ -28,8 +28,11 @@ describe("local package distribution", () => {
     const mcp = JSON.parse(read("cursor-mcp.json"));
 
     expect(manifest.name).toBe("opendexter");
+    expect(manifest.version).toBe(pkg.version);
     expect(manifest.logo).toBe("assets/dexter-wordmark.svg");
     expect(existsSync(join(packageRoot, manifest.logo))).toBe(true);
+    expect(pkg.dependencies["@dexterai/mcp-instructions"]).toBe("^2.3.0");
+    expect(pkg.dependencies["@dexterai/x402-mcp-tools"]).toBe("^0.7.1");
     expect(mcp.mcpServers.opendexter).toEqual({
       command: "npx",
       args: ["-y", `@dexterai/opendexter@${pkg.version}`],
@@ -71,7 +74,11 @@ describe("local package distribution", () => {
   it("uses a no-network candidate fixture instead of registry latest", () => {
     const script = read("scripts/test-fresh-install.sh");
     expect(script).toContain("CANDIDATE_TARBALL");
+    expect(script).toContain("SOURCE_PACKAGE_JSON");
     expect(script).toContain("tar -xzf");
+    expect(script).toContain("pkg.version === expected.version");
+    expect(script).toContain('"@dexterai/mcp-instructions"] === "^2.3.0"');
+    expect(script).toContain('"@dexterai/x402-mcp-tools"] === "^0.7.1"');
     expect(script).not.toContain("npx @dexterai/opendexter@latest");
     expect(script).not.toContain("HOME=$TEST_HOME");
   });

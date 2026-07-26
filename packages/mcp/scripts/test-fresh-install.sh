@@ -19,6 +19,13 @@ if [[ ! -f "$CANDIDATE_TARBALL" ]]; then
   exit 2
 fi
 
+SCRIPT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+SOURCE_PACKAGE_JSON="$SCRIPT_ROOT/../package.json"
+if [[ ! -f "$SOURCE_PACKAGE_JSON" ]]; then
+  echo "Source package manifest not found: $SOURCE_PACKAGE_JSON" >&2
+  exit 2
+fi
+
 CANDIDATE_ROOT=$(mktemp -d)
 trap 'rm -rf "$CANDIDATE_ROOT"' EXIT
 
@@ -32,25 +39,40 @@ fi
 tar -xzf "$CANDIDATE_TARBALL" -C "$CANDIDATE_ROOT"
 CANDIDATE_PACKAGE="$CANDIDATE_ROOT/package"
 
-node --input-type=module - "$CANDIDATE_PACKAGE" <<'NODE'
+node --input-type=module - "$CANDIDATE_PACKAGE" "$SOURCE_PACKAGE_JSON" <<'NODE'
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.argv[2];
+const sourcePackageJson = process.argv[3];
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
 const pkg = readJson(join(root, "package.json"));
-assert(pkg.name === "@dexterai/opendexter", "wrong package name");
-assert(/^\d+\.\d+\.\d+/.test(pkg.version), "missing candidate version");
+const expected = readJson(sourcePackageJson);
+assert(pkg.name === expected.name, "candidate package name does not match this checkout");
+assert(pkg.version === expected.version, "candidate version does not match this checkout");
+assert(
+  pkg.dependencies?.["@dexterai/mcp-instructions"] === "^2.3.0" &&
+    pkg.dependencies?.["@dexterai/mcp-instructions"] ===
+      expected.dependencies?.["@dexterai/mcp-instructions"],
+  "candidate has the wrong MCP instructions dependency",
+);
+assert(
+  pkg.dependencies?.["@dexterai/x402-mcp-tools"] === "^0.7.1" &&
+    pkg.dependencies?.["@dexterai/x402-mcp-tools"] ===
+      expected.dependencies?.["@dexterai/x402-mcp-tools"],
+  "candidate has the wrong shared tool dependency",
+);
 assert(existsSync(join(root, "dist", "index.js")), "missing stdio entrypoint");
 assert(existsSync(join(root, "skills", "opendexter", "SKILL.md")), "missing local OpenDexter skill");
 assert(existsSync(join(root, "cursor-mcp.json")), "missing Cursor MCP configuration");
 
 const cursorManifest = readJson(join(root, ".cursor-plugin", "plugin.json"));
 assert(cursorManifest.name === "opendexter", "Cursor plugin has stale identity");
+assert(cursorManifest.version === pkg.version, "Cursor plugin version does not match the package");
 assert(typeof cursorManifest.logo === "string", "Cursor plugin logo is undeclared");
 assert(existsSync(join(root, cursorManifest.logo)), "Cursor plugin logo target is missing");
 const cursorMcp = readJson(join(root, "cursor-mcp.json"));
