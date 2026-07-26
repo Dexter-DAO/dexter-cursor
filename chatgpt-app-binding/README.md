@@ -17,8 +17,9 @@ in the same client can expose duplicate namespaces with independent OAuth and
 session state.
 
 OpenAI Apps Management remains authoritative for the live registration state.
-The intended hosted surface contains ten tools and no card controls; protected
-tools use native OAuth.
+The intended hosted surface contains eleven tools and no card controls;
+protected tools—including the session-bound, read-only
+`dexter_portfolio`—use native OAuth.
 
 Do not add this file to `plugins/opendexter/.codex-plugin/plugin.json`, do not publish
 it as a universal app identity, and do not edit generated copies under

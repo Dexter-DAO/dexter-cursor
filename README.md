@@ -179,8 +179,10 @@ The local MCP server registers exactly seven tools:
 
 The hosted release contract deliberately differs. It does not expose the
 filesystem-backed `x402_settings` tool. It adds passkey enrollment and
-reusable-skill tools, for a ten-tool roster. After release, the server's own
-advertised tool list is authoritative.
+reusable-skill tools plus a session-bound governed portfolio read, for an
+eleven-tool roster. `dexter_portfolio` cannot select a wallet or user from its
+arguments and does not change the local seven-tool package. After release, the
+server's own advertised tool list is authoritative.
 
 ## Wallets and authority
 

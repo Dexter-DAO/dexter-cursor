@@ -7,6 +7,7 @@ import { LOCAL_TOOL_ROSTER } from "../src/server/index.js";
 
 const LOCAL_TOOLS = [...LOCAL_TOOL_ROSTER].sort();
 const HOSTED_ONLY_TOOLS = [
+  "dexter_portfolio",
   "dexter_passkey",
   "dexter_passkey_probe",
   "promote_skill",
@@ -14,7 +15,7 @@ const HOSTED_ONLY_TOOLS = [
 ];
 
 const TOOL_NAME =
-  /\b(?:x402_[a-z_]+|card_[a-z_]+|dexter_passkey(?:_probe)?|promote_skill)\b/g;
+  /\b(?:x402_[a-z_]+|card_[a-z_]+|dexter_[a-z_]+|promote_skill)\b/g;
 
 function read(relative: string): string {
   return readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");

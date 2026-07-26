@@ -3,15 +3,18 @@
 This is the developer-distributed Codex package for the hosted
 OpenDexter MCP at `https://open.dexter.cash/mcp`.
 
-Version `0.4.0-rc.1` targets the ten-tool hosted contract. It is a pre-release
-source candidate, not proof that the matching server version is deployed. Do
-not distribute or install it against production until Dexter announces the
-matching hosted release.
+Version `0.4.0-rc.2` targets the eleven-tool hosted manifest `0.3.0`. It is a
+pre-release source candidate, not proof that the matching server version is
+deployed. Do not distribute or install it against production until Dexter
+announces the matching hosted release.
 
 ## Contract
 
-- The hosted roster is exactly ten tools. The older six card tools and local
+- The hosted roster is exactly eleven tools. The older six card tools and local
   settings tool are not part of this package.
+- `dexter_portfolio` reads only the governed portfolio bound to the
+  authenticated MCP session. It accepts no caller-selected wallet, handle,
+  actor, grant, or authority.
 - Anonymous tools remain usable without connecting a wallet. Protected tools
   use the MCP server's native per-tool OAuth contract with scope `vault`.
 - The paid contract is search, fresh check, choose one `purchaseOptions`

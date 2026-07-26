@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
-  "contractId": "opendexter-hosted-ten-tool-v1",
+  "contractId": "opendexter-hosted-eleven-tool-v1",
   "mcp": {
     "url": "https://open.dexter.cash/mcp",
+    "manifestVersion": "0.3.0",
     "resource": "https://open.dexter.cash/mcp",
     "protectedResourceMetadata": "https://open.dexter.cash/.well-known/oauth-protected-resource/mcp",
     "protectedResourcePaths": [
@@ -139,6 +140,27 @@
       "visibility": [
         "model",
         "app"
+      ],
+      "widgetAccessible": false
+    },
+    {
+      "name": "dexter_portfolio",
+      "securitySchemes": [
+        {
+          "type": "oauth2",
+          "scopes": [
+            "vault"
+          ]
+        }
+      ],
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "visibility": [
+        "model"
       ],
       "widgetAccessible": false
     },

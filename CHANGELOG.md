@@ -2,8 +2,9 @@
 
 ## Unreleased — hosted plugin release candidates
 
-- Added Codex `0.4.0-rc.1` and Claude Code `2.0.0-rc.1` source packages for
-  the ten-tool hosted OpenDexter contract.
+- Updated Codex to `0.4.0-rc.2` and Claude Code to `2.0.0-rc.2` for the
+  eleven-tool hosted OpenDexter contract, including the authenticated,
+  session-bound `dexter_portfolio` read.
 - Replaced the Claude Code npm-latest launcher with the remote HTTP MCP at
   `https://open.dexter.cash/mcp`.
 - Materialized Claude Code skills inside the package; removed escaping

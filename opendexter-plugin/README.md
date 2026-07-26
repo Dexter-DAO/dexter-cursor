@@ -3,9 +3,10 @@
 This is the developer-distributed Claude Code package for the hosted OpenDexter MCP at
 `https://open.dexter.cash/mcp`.
 
-Version `2.0.0-rc.1` targets the ten-tool hosted contract. It replaces the old
-`npx @dexterai/opendexter@latest` launcher with an exact remote HTTP MCP
-connection so package behavior cannot drift with an npm latest tag.
+Version `2.0.0-rc.2` targets the eleven-tool hosted manifest `0.3.0`. It
+replaces the old `npx @dexterai/opendexter@latest` launcher with an exact
+remote HTTP MCP connection so package behavior cannot drift with an npm latest
+tag.
 
 The package includes the same three hosted-contract skills as the Codex
 package. Claude Code discovers them from `skills/`, connects through
@@ -17,6 +18,10 @@ marketplace.
 
 The older hosted card-tool roster is superseded. Card controls remain outside
 the hosted MCP on Dexter's secure wallet surface.
+
+`dexter_portfolio` reads only the governed portfolio bound to the authenticated
+MCP session. It accepts no caller-selected wallet, handle, actor, grant, or
+authority, and an unavailable read must not be presented as zero assets.
 
 The paid contract is search, fresh check, choose one `purchaseOptions` entry,
 approve its exact request/mode/seller offer/atomic ceiling, and pass its

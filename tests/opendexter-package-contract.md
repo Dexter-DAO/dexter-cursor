@@ -12,7 +12,7 @@ node --test tests/opendexter-package-contract.test.mjs
 
 It checks:
 
-- the release-pinned ten-tool and OAuth contract;
+- the release-pinned eleven-tool and OAuth contract;
 - Codex and Claude manifest/MCP/marketplace shapes;
 - the three hosted-contract skills in both packages;
 - absence of old card, local-wallet, pairing, and npm-latest routes from active

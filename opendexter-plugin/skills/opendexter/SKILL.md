@@ -1,6 +1,6 @@
 ---
 name: opendexter
-description: "Use the hosted OpenDexter MCP to search the x402 marketplace, inspect an endpoint, make a user-bounded paid API call, use wallet-gated access, view or set up the user's passkey-controlled Dexter Wallet, and compose or publish reusable x402 skills. Trigger for OpenDexter, x402 APIs, API payments, Dexter Wallet balance or setup, passkey compatibility, and composed x402 skills."
+description: "Use the hosted OpenDexter MCP to search the x402 marketplace, inspect an endpoint, make a user-bounded paid API call, use wallet-gated access, view the session-bound Dexter portfolio, set up the passkey-controlled wallet, and compose or publish reusable x402 skills. Trigger for OpenDexter, x402 APIs, API payments, Dexter Wallet balance, assets, portfolio or setup, passkey compatibility, and composed x402 skills."
 ---
 
 # OpenDexter
@@ -10,7 +10,7 @@ local npm wallet or fall back to direct HTTP.
 
 ## Hosted contract
 
-- Treat the ten tools below as the complete hosted roster.
+- Treat the eleven tools below as the complete hosted roster.
 - Card tools and the local settings tool are not available.
 - Let Claude Code use native MCP OAuth when a protected tool challenges. Use
   `/mcp` or `claude mcp login opendexter`; never ask for a pasted token,
@@ -31,6 +31,7 @@ local npm wallet or fall back to direct HTTP.
 | Compatibility alias for the same paid call | `x402_pay` |
 | Use wallet-proof or Sign-In-With-X access | `x402_access` |
 | View or resume the Dexter Wallet | `x402_wallet` |
+| View the governed assets bound to this session | `dexter_portfolio` |
 | Check passkey wallet status | `dexter_passkey` |
 | Test a host after its passkey ceremony fails | `dexter_passkey_probe` |
 | Draft or publish a reusable single-host skill | `x402_compose_skill` |
@@ -85,6 +86,24 @@ it is a disposable capability test, not enrollment.
 
 Only `receiveAddress` or `receive_address` is a deposit address. Vault PDA and
 Swig state or configuration addresses are never deposit fallbacks.
+
+## Portfolio
+
+Use `dexter_portfolio` for asset inventory, exact quantities, valuation
+completeness, and the actions the common policy currently allows. It derives
+identity only from the authenticated MCP session and durable wallet binding;
+never supply or infer a wallet address, handle, vault, actor, agent, grant,
+role, or authority.
+
+Preserve quantity and value strings exactly. An unavailable or partial read is
+not zero assets. Portfolio value does not increase spendable cash or available
+credit. Unreviewed assets remain visible. Treat only the returned
+`availableActions` as allowed; the model-safe result omits policy reasons, so
+never invent one.
+
+The current hosted roster exposes portfolio viewing, not asset execution.
+Never invent a send, buy, sell, earn, lend, borrow, or pay tool from returned
+action metadata.
 
 ## Composed skills
 

@@ -5,6 +5,7 @@
 - Anonymous: `x402_search`, `x402_check`, `x402_access`,
   `dexter_passkey_probe`.
 - OAuth scope `vault`: `x402_pay`, `x402_fetch`, `x402_wallet`,
+  `dexter_portfolio`,
   `promote_skill`, `dexter_passkey`.
 - Mixed: `x402_compose_skill` is anonymous for a draft and requires
   `vault` when `publish: true`.
@@ -38,6 +39,16 @@ Never automatically retry after possible dispatch. Preserve safe stage, reason,
 merchant status, and correlation detail. A merchant rejection is not a
 no-payment-required success, and a provider `2xx` alone is not settlement
 evidence.
+
+## Portfolio truth
+
+`dexter_portfolio` accepts no identity selector. Use only the authenticated
+session's durable wallet binding. Preserve exact quantity and valuation
+strings, and keep spendable cash separate from portfolio value. Partial or
+unavailable inventory is not zero. Only returned `availableActions` are
+allowed; policy reasons are deliberately absent and must not be invented. The
+tool reports view and policy evidence only; it does not create an
+asset-execution route.
 
 Never expose credentials or substitute vault PDA or Swig state for the returned
 receive address.

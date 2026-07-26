@@ -32,6 +32,7 @@ const EXPECTED_TOOLS = Object.freeze([
   "x402_check",
   "x402_access",
   "x402_wallet",
+  "dexter_portfolio",
   "x402_compose_skill",
   "promote_skill",
   "dexter_passkey_probe",
@@ -45,6 +46,7 @@ const EXPECTED_SCHEMES = Object.freeze({
   x402_check: ["noauth"],
   x402_access: ["noauth"],
   x402_wallet: ["oauth2:vault"],
+  dexter_portfolio: ["oauth2:vault"],
   x402_compose_skill: ["noauth", "oauth2:vault"],
   promote_skill: ["oauth2:vault"],
   dexter_passkey_probe: ["noauth"],
@@ -155,11 +157,23 @@ async function inspectTree(root) {
   return entries;
 }
 
-test("release fixture pins the exact ten-tool OAuth contract", async () => {
+test("release fixture pins the exact eleven-tool OAuth contract", async () => {
   const contract = await readJson(contractPath);
-  assert.equal(contract.contractId, "opendexter-hosted-ten-tool-v1");
+  assert.equal(contract.contractId, "opendexter-hosted-eleven-tool-v1");
   assert.equal(contract.mcp.url, "https://open.dexter.cash/mcp");
+  assert.equal(contract.mcp.manifestVersion, "0.3.0");
   assert.equal(contract.mcp.resource, "https://open.dexter.cash/mcp");
+  assert.equal(
+    contract.mcp.protectedResourceMetadata,
+    "https://open.dexter.cash/.well-known/oauth-protected-resource/mcp",
+  );
+  assert.deepEqual(
+    contract.mcp.protectedResourcePaths,
+    [
+      "/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/mcp",
+    ],
+  );
   assert.equal(
     contract.mcp.authorizationServer,
     "https://mcp.dexter.cash/mcp",
@@ -194,6 +208,21 @@ test("release fixture pins the exact ten-tool OAuth contract", async () => {
     contract.tools.find(({ name }) => name === "x402_fetch").widgetAccessible,
     false,
   );
+  assert.deepEqual(
+    contract.tools.find(({ name }) => name === "dexter_portfolio"),
+    {
+      name: "dexter_portfolio",
+      securitySchemes: [{ type: "oauth2", scopes: ["vault"] }],
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      visibility: ["model"],
+      widgetAccessible: false,
+    },
+  );
   assert.deepEqual(contract.conditionalAuth, [
     {
       name: "x402_compose_skill",
@@ -208,7 +237,7 @@ test("Codex package uses one portable remote MCP and mixed-auth marketplace poli
   const mcp = await readJson(resolve(codexRoot, ".mcp.json"));
   const marketplace = await readJson(codexMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "0.4.0-rc.1");
+  assert.equal(manifest.version, "0.4.0-rc.2");
   assert.equal(manifest.mcpServers, "./.mcp.json");
   assert.equal(Object.hasOwn(manifest, "apps"), false);
   assert.deepEqual(mcp, {
@@ -232,7 +261,7 @@ test("Claude package is self-contained and uses the hosted remote MCP", async ()
   const mcp = await readJson(resolve(claudeRoot, ".mcp.json"));
   const marketplace = await readJson(claudeMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "2.0.0-rc.1");
+  assert.equal(manifest.version, "2.0.0-rc.2");
   assert.deepEqual(mcp, {
     mcpServers: {
       opendexter: {
@@ -308,6 +337,13 @@ test("publisher-side app binding stays separate from portable packages", async (
   const claudeEntries = (await inspectTree(claudeRoot)).map(({ path }) => path);
   assert.equal(codexEntries.includes(".app.json"), false);
   assert.equal(claudeEntries.includes(".app.json"), false);
+  const bindingReadme = await readFile(
+    resolve(repoRoot, "chatgpt-app-binding/README.md"),
+    "utf8",
+  );
+  assert.match(bindingReadme, /eleven tools/i);
+  assert.match(bindingReadme, /`dexter_portfolio`/);
+  assert.doesNotMatch(bindingReadme, /\bten tools\b|\b10 tools\b/i);
 });
 
 test("disposable marketplaces discover both clean source packages", async () => {
