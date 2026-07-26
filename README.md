@@ -1,81 +1,71 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Dexter-DAO/dexter-x402-sdk/main/assets/dexter-wordmark.svg" alt="Dexter" width="360">
+  <img src="./packages/mcp/assets/dexter-wordmark.svg" alt="Dexter" width="360">
 </p>
 
 <h1 align="center">OpenDexter</h1>
 
 <p align="center">
-  <strong>x402 payments for AI agents — search, pay, and build with paid APIs.</strong><br>
-  Skills, rules, tools, and an MCP server for Claude Code, Cursor, and any MCP client.
+  <strong>Your agent can find an API, see what it costs, and call it.</strong><br>
+  OpenDexter searches paid services by the job they do, checks the current terms, and makes a bounded request through the configured wallet.
 </p>
 
 <p align="center">
-  <a href="https://x402.org"><img src="https://img.shields.io/badge/protocol-x402_v2-00FF88" alt="x402"></a>
-  <a href="https://www.npmjs.com/package/@dexterai/opendexter"><img src="https://img.shields.io/npm/v/@dexterai/opendexter.svg" alt="npm"></a>
-  <a href="https://www.npmjs.com/package/@dexterai/x402"><img src="https://img.shields.io/npm/v/@dexterai/x402.svg?label=%40dexterai%2Fx402" alt="SDK"></a>
-  <a href="https://dexter.cash/opendexter"><img src="https://img.shields.io/badge/Marketplace-the_full_index-blueviolet" alt="Marketplace"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
+  <a href="https://www.npmjs.com/package/@dexterai/opendexter"><img src="https://img.shields.io/npm/v/@dexterai/opendexter.svg" alt="npm version"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D18-339933" alt="Node 18 or newer"></a>
+  <a href="https://x402.org"><img src="https://img.shields.io/badge/protocol-x402-6f5cff" alt="x402 protocol"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-111111" alt="MIT license"></a>
 </p>
 
-<p align="center">
-  <a href="https://dexter.cash/opendexter"><strong>Browse Marketplace</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="https://x402.org"><strong>x402 Protocol</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="https://www.npmjs.com/package/@dexterai/x402"><strong>SDK Docs</strong></a>
-</p>
+OpenDexter starts with the job, not the provider. Ask for an image model, a
+market-data feed, an address validator, or another paid capability. It searches
+the current catalog, explains why each result matches, checks the selected
+endpoint's current terms, and can make the call from a wallet whose authority
+you chose.
 
----
+## Choose how it runs
 
-## Install
+OpenDexter has two deliberately different ways to hold payment authority.
 
-There are two ways to run OpenDexter. **Hosted** is the fastest: nothing to
-install, and the wallet is a session you fund with a QR code. **Local** runs
-the MCP server on your machine with a self-custodied wallet key.
+| | Hosted connector candidate | Local package |
+|---|---|---|
+| Best for | Chat clients with remote MCP and OAuth | Codex, Claude Code, Cursor, VS Code, Windsurf, Gemini CLI, scripts |
+| Runs | At `https://open.dexter.cash/mcp` | On your machine through npm/stdio |
+| Wallet | Passkey-protected Dexter Wallet, bound to the authenticated session | Solana and EVM keys stored locally, or keys supplied through environment variables |
+| Networks | Solana | Solana plus configured EVM networks |
+| Setup | Add one MCP URL; the client handles OAuth when a protected tool needs it | Run the setup command below |
+| Spending policy | Managed by the hosted wallet experience | Default per-call limit and optional rolling 24-hour budget stored on this machine |
 
-### Hosted (no install)
+The public npm package is ready to install today. The repository's current
+Claude Code plugin also launches that local package. The hosted connector
+contract shown here, and the rebuilt hosted-only Codex and Claude packages, are
+release candidates pending final client-host validation; they are not public
+marketplace releases.
 
-Add the hosted MCP server to any MCP client's config. There is nothing to
-download; you pair and fund a session wallet at `dexter.cash`.
-
-```json
-{
-  "mcpServers": {
-    "opendexter": {
-      "url": "https://open.dexter.cash/mcp"
-    }
-  }
-}
-```
-
-That is the whole setup. Skip to [Fund your wallet](#fund-your-wallet).
-
-### Local (self-custody)
-
-Runs `@dexterai/opendexter` on your machine; the wallet key lives in
-`~/.dexterai-mcp/wallet.json`.
-
-**Claude Code.** Install the plugin (skills, rules, agent, commands, and
-the MCP server). Do not also add the hosted or local server by hand. The
-plugin already includes it.
+### Local: start in one command
 
 ```bash
-claude plugins marketplace add Dexter-DAO/opendexter-ide
-claude plugins install opendexter
+npx @dexterai/opendexter@latest setup
 ```
 
-**Cursor**
+`setup` creates or loads the local wallet, detects supported AI clients,
+configures the clients it can edit safely, and prints any remaining manual step
+plus the shortest path to a first search. To target one client:
 
 ```bash
 npx @dexterai/opendexter@latest install --client cursor
 ```
 
-**Any other MCP client.** The installer covers Codex, VS Code, Windsurf,
-and Gemini CLI:
+Use `codex`, `vscode`, `windsurf`, or `gemini-cli` in place of `cursor`.
+For a guaranteed local Claude Code connection, add the stdio server directly:
 
 ```bash
-npx @dexterai/opendexter@latest install --client <codex|vscode|windsurf|gemini-cli>
+claude mcp add opendexter -- npx -y @dexterai/opendexter@latest
 ```
 
-Or add the server to your client's MCP config by hand:
+The current `--client claude-code` route installs the repository's full plugin:
+skills and commands plus the same local npm MCP. The direct command above is the
+smaller MCP-only route. It does not install those additional plugin files. For
+a manual stdio MCP configuration in another client:
 
 ```json
 {
@@ -88,128 +78,139 @@ Or add the server to your client's MCP config by hand:
 }
 ```
 
-### Fund your wallet
+See the [local package guide](./packages/mcp/README.md) for wallet, policy,
+client, CLI, and seller workflows.
 
-A paid call needs USDC. After install, fund whichever wallet you are using:
+### Hosted release candidate
 
-- **Hosted:** pair the session at `dexter.cash` and fund it with the QR code.
-- **Local:** send USDC (Solana or Base) to the address printed during
-  install, or run the `card_issue` tool to set up a Dextercard and fund
-  calls from that.
+When the hosted release is declared available, clients with remote MCP and
+OAuth use this URL:
 
-Your agent can call `x402_wallet` at any time to show the address and
-current balance.
+```json
+{
+  "mcpServers": {
+    "opendexter": {
+      "url": "https://open.dexter.cash/mcp"
+    }
+  }
+}
+```
 
----
+The release contract uses native client sign-in when a protected tool requires
+it. Connector sign-in, wallet enrollment, and a paid call are three separate
+events:
 
-## What This Plugin Does
+- signing in lets the client call account-protected tools;
+- enrolling the passkey wallet creates or resumes the user's payment authority;
+- calling `x402_fetch` or `x402_pay` can move USDC under that wallet's limits.
 
-This plugin ships with a **real MCP server** that gives your agent live tools for searching, paying for, and calling paid APIs. On top of that, it has deep SDK knowledge so the agent can help you **build** x402 payments into your own projects.
+Connecting does not itself approve a payment. A hosted release must pass its
+client OAuth and wallet-result checks before this setup is treated as available.
+Never paste a bearer token into the MCP configuration.
 
-After installing, your agent can immediately:
+## From request to result
 
-- **Search** the Dexter Marketplace for any paid API (image generation, DeFi, analytics, AI, games — thousands of endpoints)
-- **Check** what an API costs before paying
-- **Pay and call** any x402 API with automatic USDC settlement
-- **Help you build** x402 clients, servers, React apps, Stripe integrations, and access passes
+OpenDexter keeps discovery and spending separate:
 
----
+1. **Find.** `x402_search` searches the live catalog using the user's actual
+   request. Results include strong and related matches, ranking reasons,
+   quality evidence, structured input guidance when available, and advertised
+   payment routes.
+2. **Inspect.** `x402_check` probes the exact URL and method without paying. It
+   returns current per-chain pricing, accepted assets, schemas when published,
+   and whether the endpoint is paid, identity-gated, API-key protected, or
+   unprotected.
+3. **Call.** `x402_fetch` makes the request and, when required, settles a
+   compatible x402 payment within the active policy. `x402_pay` is the same
+   operation under a more explicit name.
+4. **Receive.** The tool returns the provider response with settlement detail
+   when payment succeeds.
 
-## What is x402?
+Search cards are leads, not payment authorization. Check the selected route
+again before spending. If a dispatched payment has an uncertain outcome, do
+not blindly retry it; reconcile the first attempt before another payment can be
+safe.
 
-[x402](https://x402.org) is an open protocol for machine-to-machine payments over HTTP. When an API returns `402 Payment Required`, it includes payment instructions. The client pays (USDC on Solana, Base, or other chains), and the API delivers the response. No API keys, no subscriptions, no invoices.
+## What the local package exposes
 
-Dexter operates the most-used x402 facilitator at `https://x402.dexter.cash`, processing millions of settlements across thousands of indexed endpoints from every major x402 facilitator — Dexter, Coinbase, PayAI, and more.
+The local MCP server registers exactly seven tools:
 
----
+| Tool | What it does | Moves money? |
+|---|---|---|
+| `x402_search` | Finds services by capability in the OpenDexter catalog | No |
+| `x402_check` | Reads current price, route, schema, and authentication requirements | No |
+| `x402_access` | Uses a wallet signature for Sign-In-With-X access | No payment |
+| `x402_fetch` | Calls an endpoint and settles a compatible x402 charge when required | Yes |
+| `x402_pay` | Alias of `x402_fetch` | Yes |
+| `x402_wallet` | Shows local addresses and verified balance reads | No |
+| `x402_settings` | Reads or changes this installation's spending policy | No |
 
-## Plugin Contents
+The hosted release contract deliberately differs. It does not expose the
+filesystem-backed `x402_settings` tool. It adds passkey enrollment and
+reusable-skill tools, for a ten-tool roster. After release, the server's own
+advertised tool list is authoritative.
 
-### MCP Server — `@dexterai/opendexter`
+## Wallets and authority
 
-Seven tools cover everything:
+### Local wallet
 
-| Tool | Description |
-|------|-------------|
-| **`x402_search`** | Semantic capability search over thousands of paid APIs. Returns tiered results (strong + related matches) ranked by quality, usage, and reputation. |
-| **`x402_check`** | Preview pricing per chain without spending anything. See exactly what an API costs before committing. |
-| **`x402_fetch`** | Call any x402 API with automatic USDC payment. Signs, pays, retries — returns the response directly with an on-chain settlement receipt. |
-| **`x402_pay`** | Alias for `x402_fetch`. |
-| **`x402_access`** | Access identity-gated endpoints with wallet proof (Sign-In-With-X). |
-| **`x402_wallet`** | Show wallet address, USDC/SOL balances, and deposit instructions. |
-| **`x402_settings`** | Read or update your per-call spending limit. |
+The npm package creates a Solana keypair and an EVM keypair at:
 
-Two wallets are auto-created at `~/.dexterai-mcp/wallet.json` on first run — one Solana, one EVM. Fund either address with USDC and your agent can start paying for APIs immediately.
+```text
+~/.dexterai-mcp/wallet.json
+```
 
----
+The directory and file are created with owner-only permissions. You can supply
+`DEXTER_PRIVATE_KEY` or `SOLANA_PRIVATE_KEY` for Solana and `EVM_PRIVATE_KEY`
+for EVM instead; environment variables take precedence over the wallet file.
 
-### Skills (6)
+Local balance and signing support is configured for Solana, Base, Polygon,
+Arbitrum, Optimism, Avalanche, BNB Chain, and SKALE. An endpoint still decides
+which network and asset it accepts; `x402_check` shows the actual options before
+a paid call.
 
-Deep knowledge the agent invokes when relevant:
+### Local `connect`
 
-| Skill | What it teaches |
-|-------|-----------------|
-| **opendexter** | How to use the x402 tools: search → check → fetch workflow, quality scores, funding flows, error recovery |
-| **x402-client** | Build x402 clients: `wrapFetch()`, `createX402Client()`, Budget Accounts for agents, Sponsored Access, keypair wallets, access passes |
-| **x402-server** | Add x402 paywalls: `x402Middleware()` with multi-chain accept, Stripe PayTo, dynamic/token pricing, access passes, sponsored access injection |
-| **x402-react** | React hooks: `useX402Payment()` (payment state, balances, tx info), `useAccessPass()` (tier discovery, purchase, auto-fetch) |
-| **x402-protocol** | v2 spec: core types, payment flow, 3 schemes (exact, upto, bridge), HTTP/MCP/A2A transports, all CAIP-2 networks, error codes |
-| **x402-debugging** | Diagnose failures: 27 SDK error codes, facilitator health, fee payer safety, retry support, pre-payment callbacks |
+`npx @dexterai/opendexter@latest connect` creates a connector session. The
+local package currently uses that session only to let
+`npx @dexterai/opendexter@latest wallet` show the hosted wallet's balance and
+Solana deposit address.
 
----
+It does **not** change the payment signer used by the local MCP server, `fetch`,
+or `pay`. Local paid calls still use the local wallet file or configured
+environment keys. See [Connect your Dexter wallet](./docs/connect-your-wallet.md)
+for the exact boundary.
 
-### Rules (2, always-on)
+### Spending policy
 
-Injected into every conversation so the agent always knows the fundamentals:
+The local package stores a default per-call USDC limit and can enforce an
+optional rolling 24-hour budget. A caller can supply a different limit for one
+call, so the stored value is not an immutable wallet ceiling. The rolling
+budget counts only x402 spending witnessed by this installation on this
+machine; it is not a complete view of the wallet's on-chain activity.
 
-- **x402-protocol** — CAIP-2 network identifiers, header conventions, atomic units, facilitator URL, supported chains
-- **x402-coding** — Import from subpaths (`@dexterai/x402/client`), prefer `wrapFetch()` for agents, `x402Middleware()` for servers
+```bash
+npx @dexterai/opendexter@latest settings
+npx @dexterai/opendexter@latest settings --max-amount 2.50 --daily-budget 20
+```
 
----
+## Build or sell
 
-### Agent
+- **Build an x402 client or server:** use
+  [`@dexterai/x402`](https://www.npmjs.com/package/@dexterai/x402).
+- **Prepare a compatible service for discovery:** run
+  `npx @dexterai/opendexter@latest audition https://your-service.example`.
+  Audition performs real paid test calls, so use a testable endpoint and fund
+  only the amount you intend those tests to spend.
+- **Inspect the protocol:** read the [x402 specification](https://x402.org).
 
-- **x402-engineer** — Specialized persona that knows the full Dexter x402 stack. Validates amounts and balances before payment, never exposes private keys, reaches for `x402_search` whenever a user mentions paid APIs.
+## Repository map
 
----
-
-### Commands (3)
-
-| Command | What it does |
-|---------|-------------|
-| **setup-opendexter** | Install the OpenDexter MCP server into Cursor, Claude Code, Codex, VS Code, Windsurf, or Gemini CLI. |
-| **setup-x402-client** | Add `@dexterai/x402` to a Node.js project with `wrapFetch()` boilerplate and a test call. |
-| **setup-x402-server** | Add `x402Middleware()` to an Express app with paywall configuration and test. |
-
----
-
-## Supported Chains
-
-| Chain | Network ID (CAIP-2) | Gas Token |
-|-------|---------------------|-----------|
-| Solana | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` | SOL |
-| Base | `eip155:8453` | ETH |
-| Polygon | `eip155:137` | POL |
-| Arbitrum | `eip155:42161` | ETH |
-| Optimism | `eip155:10` | ETH |
-| Avalanche | `eip155:43114` | AVAX |
-| BSC (BNB Chain) | `eip155:56` | BNB |
-| SKALE Base | `eip155:1187947933` | sFUEL (free) |
-
----
-
-## Links
-
-- [Dexter Marketplace](https://dexter.cash/opendexter) — Browse thousands of paid APIs
-- [Dexter Facilitator](https://x402.dexter.cash) — Payment infrastructure
-- [@dexterai/x402 SDK](https://www.npmjs.com/package/@dexterai/x402) — Build x402 clients and servers
-- [@dexterai/opendexter](https://www.npmjs.com/package/@dexterai/opendexter) — MCP gateway for AI agents
-- [x402 Protocol Spec](https://x402.org) — The open standard
-- [Become a Seller](https://dexter.cash/onboard) — List your API on the marketplace
-- [Twitter](https://twitter.com/dexteraisol)
-- [Telegram](https://t.me/dexterdao)
-
----
+| Path | Audience |
+|---|---|
+| [`packages/mcp`](./packages/mcp) | Published local CLI and stdio MCP package |
+| [`packages/x402-mcp-tools`](./packages/x402-mcp-tools) | Shared MCP tool implementations |
+| [`packages/mcp-instructions`](./packages/mcp-instructions) | Roster-aware agent instructions |
 
 ## License
 

@@ -280,10 +280,11 @@ export interface ShowWalletOpts {
 /**
  * `opendexter wallet`.
  *
- * Connected mode (a `connect` session exists): read the user's REAL vault via
- * the hosted MCP `x402_wallet` tool and show the wallet-PDA deposit address +
- * balance. Quickstart mode (no session): keep the existing local-wallet JSON
- * and nudge the user to `opendexter connect` to link their real vault.
+ * Connected mode (a `connect` session exists): read the user's hosted wallet
+ * via the remote `x402_wallet` tool and show its wallet-PDA deposit address +
+ * balance. This is a view only; it does not replace the signer used by local
+ * paid calls. Quickstart mode (no session): render the local-wallet JSON and
+ * offer the optional hosted-wallet view.
  */
 export async function showWalletInfo(opts: ShowWalletOpts): Promise<void> {
   const log = opts.log ?? console.log;
@@ -306,7 +307,10 @@ export async function showWalletInfo(opts: ShowWalletOpts): Promise<void> {
   const renderQuickstart = opts.renderQuickstart ?? renderQuickstartWallet;
   await renderQuickstart(log);
   hint("");
-  hint("Run `opendexter connect` to link your Dexter wallet and pay from your vault balance.");
+  hint(
+    "Run `opendexter connect` to view your Dexter Wallet balance. " +
+      "This does not change the payment signer; local paid calls still use the local wallet.",
+  );
 }
 
 async function renderQuickstartWallet(log: (line: string) => void): Promise<void> {

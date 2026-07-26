@@ -2,17 +2,17 @@
  * Vault session custody — `~/.dexterai-mcp/vault.json`.
  *
  * Holds the token pair `opendexter connect` receives from the OAuth device
- * grant so later commands (`opendexter wallet`, the MCP server) can read the
- * user's real vault without re-authenticating every call. This is a bearer
- * credential (accessToken/refreshToken) — same custody discipline as
- * `../tabs/store.ts`'s session-secret file, not the plain writeFileSync used
- * by wallet.json.
+ * grant so `opendexter wallet` can read the user's hosted wallet without
+ * re-authenticating every call. The local MCP and paid CLI paths do not read
+ * this file. This is a bearer credential (accessToken/refreshToken) — use the
+ * same custody discipline as `../tabs/store.ts`'s session-secret file, not the
+ * plain writeFileSync used by wallet.json.
  *
  * Storage: 0700 dir, 0600 file, atomic write (temp file + rename) so a torn
  * write (crash / disk-full mid-write) can never leave truncated JSON —
  * loadSession's corrupt-file branch would silently discard it, dropping the
- * session. The read path must NEVER throw: the paid path depends on a
- * missing/corrupt file degrading to "no session", not a crash.
+ * session. The read path must NEVER throw: the wallet-view path depends on a
+ * missing or corrupt file degrading to "no session", not a crash.
  */
 
 import {
@@ -52,7 +52,7 @@ export function loadSession(dir?: string): VaultSession | null {
     if (parsed.version !== 1) return null;
     return parsed as VaultSession;
   } catch {
-    // A corrupt session file must not crash the paid path; the CLI simply
+    // A corrupt session file must not crash the wallet-view path; the CLI simply
     // sees no session and re-prompts `opendexter connect`. (The file only
     // becomes corrupt via external edits — we always write whole-file JSON.)
     return null;

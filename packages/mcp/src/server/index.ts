@@ -22,6 +22,16 @@ export interface ServerOptions {
   dev: boolean;
 }
 
+export const LOCAL_TOOL_ROSTER = [
+  "x402_search",
+  "x402_pay",
+  "x402_fetch",
+  "x402_check",
+  "x402_access",
+  "x402_wallet",
+  "x402_settings",
+] as const;
+
 export async function startServer(opts: ServerOptions): Promise<void> {
   let wallet;
   try {
@@ -113,10 +123,7 @@ export async function startServer(opts: ServerOptions): Promise<void> {
 
   // Physics, not vigilance: if these instructions ever name a tool this
   // server doesn't register, refuse to start (drift register, R1).
-  assertInstructionRosterParity(instructions, [
-    "x402_search", "x402_pay", "x402_fetch", "x402_check", "x402_access", "x402_wallet",
-    "x402_settings",
-  ]);
+  assertInstructionRosterParity(instructions, [...LOCAL_TOOL_ROSTER]);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

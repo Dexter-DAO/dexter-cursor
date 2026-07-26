@@ -240,6 +240,11 @@ describe("wallet/index — showWalletInfo routing", () => {
 
     expect(renderQuickstart).toHaveBeenCalledTimes(1);
     expect(log.join("\n")).toContain("[[quickstart-wallet-json]]");
-    expect(hint.join("\n")).toContain("opendexter connect");
+    const copy = hint.join("\n");
+    expect(copy).toContain("opendexter connect");
+    expect(copy).toMatch(/view/i);
+    expect(copy).toContain("does not change the payment signer");
+    expect(copy).toMatch(/local paid calls still use the local wallet/i);
+    expect(copy).not.toMatch(/pay from (?:your )?(?:vault|Dexter wallet)/i);
   });
 });

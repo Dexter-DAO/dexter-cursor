@@ -3,7 +3,7 @@ import { runInstall } from "./install/index.js";
 import { CLIENTS, detectInstalledClients } from "./install/clients.js";
 import { intro, outro, log, note } from "@clack/prompts";
 import chalk from "chalk";
-import { SUPPORTED_CHAIN_LABELS } from "../config.js";
+import { SUPPORTED_CHAIN_LABELS, VERSION } from "../config.js";
 
 interface SetupOpts {
   dev: boolean;
@@ -30,6 +30,8 @@ function fundingAdvice(totalUsdc: number, wallet: { solanaAddress?: string; evmA
 }
 
 export async function runSetup(opts: SetupOpts): Promise<void> {
+  const cli = `npx @dexterai/opendexter@${VERSION}`;
+
   intro(chalk.bold("OpenDexter setup"));
   log.message("Activating your agent wallet, wiring your clients, and bringing multichain settlement online.");
 
@@ -72,10 +74,10 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
 
   note(
     [
-      "1. Run `opendexter wallet` to confirm your addresses and balances.",
-      "2. Run `opendexter search <what-you-need>` to browse the marketplace.",
-      "3. Run `opendexter check <url>` on any result before your first paid call.",
-      "4. Run `opendexter fetch <url>` once your wallet is funded.",
+      `1. Run \`${cli} wallet\` to confirm your addresses and balances.`,
+      `2. Run \`${cli} search <what-you-need>\` to browse the marketplace.`,
+      `3. Run \`${cli} check <url>\` on any result before your first paid call.`,
+      `4. Run \`${cli} fetch <url>\` once your wallet is funded.`,
     ].join("\n"),
     "First-use path",
   );
@@ -84,7 +86,7 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
   if (totalUsdc > 0) {
     nextMove = "Treasury funded. Start with a real marketplace search for the task you actually want to complete.";
   } else {
-    nextMove = "Fund a rail, then start with `opendexter search <what-you-need>`.";
+    nextMove = `Fund a rail, then start with \`${cli} search <what-you-need>\`.`;
   }
   outro(nextMove);
 }

@@ -7,14 +7,15 @@
  * (link, terminal QR, hand-typed code), then poll /token with
  * grant_type=device_code until the user approves with their passkey on any
  * device. On success we persist the returned vault token pair via the atomic
- * session store (Task 3) so `opendexter wallet` and the MCP server can act as
- * the vault without re-authenticating.
+ * session store so `opendexter wallet` can read the hosted wallet without
+ * re-authenticating. The local MCP server and paid CLI commands do not consume
+ * this session; they continue to use the local file/env wallet.
  *
- * The CLI never handles a password or the raw passkey handle — OAuth is only the
- * transport; the passkey ceremony (in the browser at dexter.cash/wallet/connect)
- * is the sole auth. The device_code held here is a one-time capability; the
- * access_token it yields is a bearer spend credential, so this file follows the
- * same custody discipline as the store it writes to.
+ * The CLI never handles a password, private key, or passkey ceremony — OAuth is
+ * only the transport; approval happens in the browser at
+ * dexter.cash/wallet/connect. The device_code held here is a one-time
+ * capability; the access_token it yields is a bearer credential, so this file
+ * follows the same custody discipline as the store it writes to.
  */
 
 import { getApiBase } from "../config.js";

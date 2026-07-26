@@ -9,8 +9,10 @@
  * follows the pointer locally gets the doc, not resource-not-found
  * (drift register B4).
  *
- * Staleness between skills/ (source) and assets/docs/ (committed copies)
- * is accepted here — a future mechanism handles re-sync, not this module.
+ * `test/docs.test.ts` enforces that the served workflow names only the local
+ * seven-tool roster. The installable skill is intentionally dual-surface
+ * because the legacy Claude package currently links to the same skill source;
+ * its exact hosted/local union is tested separately.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

@@ -148,7 +148,7 @@
 <main class="wrap">
   <p class="eyebrow">OpenDexter</p>
   <h1>Connect your wallet<br>to your terminal.</h1>
-  <p class="lede">Your Dexter wallet lives on your phone and laptop, locked behind your passkey. Bring it into your terminal in under a minute — so your AI agent can see it and pay from it. <strong>No keys copied. No passwords.</strong></p>
+  <p class="lede">Your Dexter wallet lives behind your passkey. Let the local OpenDexter package show its balance and Solana deposit address in under a minute. <strong>No keys copied. No passwords.</strong></p>
 
   <div class="need">
     <span><b>You need:</b> the OpenDexter tool</span>
@@ -163,7 +163,7 @@
         <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-label">terminal</span></div>
         <pre><span class="p">$</span> npm install -g @dexterai/opendexter</pre>
       </div>
-      <p>A one-time install. No Node? Run any command with <span style="font-family:var(--mono)">npx @dexterai/opendexter …</span> instead.</p>
+      <p>A one-time install. Don't want a global install? Run commands with <span style="font-family:var(--mono)">npx @dexterai/opendexter@latest …</span> instead. Both paths require Node.js.</p>
     </li>
 
     <li class="step">
@@ -216,8 +216,9 @@ Dexter wallet
   <div class="payoff">
     <h2>That's the whole thing.</h2>
     <div class="safety">
-      <div class="row"><span class="k">Your keys</span><span class="v">Never move. Your <strong>passkey</strong> is the only thing that approves a connection — no password, nothing to paste.</span></div>
-      <div class="row"><span class="k">Your control</span><span class="v">Revoke anytime at <a href="https://dexter.cash/wallet">dexter.cash/wallet</a>, or run <span style="font-family:var(--mono)">opendexter connect disconnect</span>.</span></div>
+      <div class="row"><span class="k">Your keys</span><span class="v">No private key is copied into the terminal. Your <strong>passkey</strong> approves the connection — no password or secret key to paste.</span></div>
+      <div class="row"><span class="k">Payment signer</span><span class="v">Connect does not change the payment signer. Local paid calls still use the local wallet or configured environment keys.</span></div>
+      <div class="row"><span class="k">Your control</span><span class="v">Revoke the connector at <a href="https://dexter.cash/wallet">dexter.cash/wallet</a>. <span style="font-family:var(--mono)">opendexter connect disconnect</span> only removes this terminal's stored session.</span></div>
       <div class="row"><span class="k">Anywhere</span><span class="v">Laptop or a headless server over SSH — the short-code path always works when there's no browser.</span></div>
       <div class="row"><span class="k">To fund it</span><span class="v">Send USDC on Solana to the deposit address <span style="font-family:var(--mono)">opendexter wallet</span> shows you. Always that one.</span></div>
     </div>
