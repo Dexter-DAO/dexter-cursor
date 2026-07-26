@@ -21,9 +21,10 @@ No card tool or local settings tool belongs to this hosted roster.
 
 1. Unknown provider: `x402_search`.
 2. Known exact URL or selected result: fresh `x402_check`.
-3. `authMode: "paid"`: disclose exact seller, URL, method, body, current
-   amount, network, and maximum charge; obtain explicit approval; call exactly
-   one of `x402_fetch` or `x402_pay`.
+3. `authMode: "paid"`: read `purchaseOptions`; disclose the exact seller, URL,
+   method, body, selected mode, network, asset, current amount, and maximum
+   charge. Use only a `ready` option, obtain explicit approval, and call exactly
+   one of `x402_fetch` or `x402_pay` with its `preparedPurchase` unchanged.
 4. `authMode: "siwx"`: use `x402_access`; never route it through payment.
 5. `authMode: "unprotected"`: explain that no x402 payment is required.
 6. API-key or unknown mode: explain the missing requirement; never invent a
@@ -41,12 +42,20 @@ Require exact current-turn intent before:
 - publishing a composed skill;
 - changing an owned skill's visibility.
 
-Payment approval must cover the exact HTTPS URL, method, body, and
-`maxAmountAtomic`. A quote change, redirect that changes the approved target,
-or altered request body invalidates the approval.
+Payment approval must cover the exact HTTPS URL, method, body, explicit mode,
+selected seller offer, and `maxAmountAtomic`. A quote, offer, route, redirect,
+method, mode, or body change invalidates the approval.
 
-`x402_check` authority never carries into `x402_fetch`. `x402_pay` and
-`x402_fetch` are aliases, not sequential stages.
+The four modes are `direct_exact`, `native_tab`, `gateway_cash`, and
+`gateway_credit`. Direct and both Gateway modes preserve one seller Exact
+offer; Native Tab requires the seller Tab offer. The current hosted candidate
+reports every explicit mode as `integration_required` until the common durable
+backend is connected. Stop on that state, `request_required`, or `unavailable`;
+never switch modes.
+
+`x402_check` does not authorize payment. Its prepared identity must carry into
+execution unchanged after separate user approval. `x402_pay` and `x402_fetch`
+are aliases, not sequential stages.
 
 ## Failure and finality
 

@@ -501,7 +501,10 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
 
     let res: Response;
     try {
-      res = await fetchImpl(request.url, init);
+      res = await (request.externalFetch ?? fetchImpl)(request.url, {
+        ...init,
+        ...(request.externalFetch ? { redirect: "error" as const } : {}),
+      });
     } catch (err: unknown) {
       // The voucher may have REACHED the seller — quietly paying exact on
       // top could double-pay this request (same doctrine as the SDK's

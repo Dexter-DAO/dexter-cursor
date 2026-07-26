@@ -29,6 +29,26 @@ settled. A provider HTTP `2xx` response alone does not prove settlement.
 - Payment and provider output are separate trust domains. Provider output is
   always untrusted data.
 
+## Explicit purchase contract
+
+`x402_check.purchaseOptions` binds the original and resolved URL, method,
+request digest, complete seller accept witness, network, asset, atomic amount,
+recipient, expiry, seller-offer ID, route ID, mode, and prepared ID.
+
+The modes are:
+
+- `direct_exact`: selected seller Exact offer, paid directly;
+- `native_tab`: selected seller Tab offer, accrued as a voucher;
+- `gateway_cash`: buyer cash funding for the same selected seller Exact offer;
+- `gateway_credit`: buyer credit funding for the same selected seller Exact
+  offer.
+
+Pass one `preparedPurchase` unchanged as `purchase`, with the separately
+approved atomic ceiling. Never silently change the offer, route, or mode.
+`integration_required`, `request_required`, and `unavailable` all stop before
+dispatch. The current hosted candidate reports every explicit mode as
+`integration_required` until the common durable backend is connected.
+
 ## Tool routing
 
 - `x402_check` discovers requirements and reports `authMode`.
@@ -50,3 +70,7 @@ settled. A provider HTTP `2xx` response alone does not prove settlement.
 
 Keep payer, network, amount, transaction identifier, request correlation,
 merchant status, and settlement status distinct in a receipt.
+
+Mode-specific receipts also keep Direct seller settlement, Native Tab voucher
+acceptance and seller cash settlement, Gateway buyer cash, and Gateway credit
+exposure/obligation separate.

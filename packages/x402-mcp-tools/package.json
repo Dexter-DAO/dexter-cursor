@@ -1,6 +1,6 @@
 {
   "name": "@dexterai/x402-mcp-tools",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Shared MCP tool registrations for the Dexter x402 ecosystem. One register*Tool function per tool, plus widget metadata. Consumed by @dexterai/opendexter (npm CLI), the hosted public MCP server, and the hosted authenticated MCP server.",
   "type": "module",
   "main": "dist/index.js",
@@ -15,6 +15,7 @@
   },
   "files": [
     "dist",
+    "PURCHASE-CONTRACT.md",
     "README.md",
     "LICENSE"
   ],
@@ -39,7 +40,7 @@
     "@dexterai/dextercard": "^0.5.0",
     "@dexterai/mcp-instructions": "^2.0.1",
     "@dexterai/x402": "^5.4.2",
-    "@dexterai/x402-core": "^1.4.8",
+    "@dexterai/x402-core": "^1.5.0",
     "@modelcontextprotocol/sdk": "^1.17.4",
     "@x402/core": "^2.6.0",
     "@x402/extensions": "^2.6.0",

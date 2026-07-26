@@ -51,17 +51,35 @@ Search does not spend money. Neither does checking the selected endpoint:
 npx @dexterai/opendexter@latest check "https://service.example/x402/route"
 ```
 
-Only call `fetch` or `pay` after the URL, method, input, current price, and
-accepted route match the intended request:
+`check` returns explicit `purchaseOptions`. A mode is ready only when its local
+wallet/adapter exists and OpenDexter durably recorded that prepared identity.
+Select one ready option, approve its atomic ceiling, and pass that exact object
+back unchanged:
 
 ```bash
+npx @dexterai/opendexter@latest check \
+  "https://service.example/x402/route" \
+  --method POST \
+  --body '{"document_url":"https://example.com/report.pdf"}' \
+  > /tmp/opendexter-check.json
+
+selected_purchase="$(jq -c \
+  '.purchaseOptions[] | select(.mode == "direct_exact" and .availability.state == "ready") | .preparedPurchase' \
+  /tmp/opendexter-check.json | head -n 1)"
+
+approved_ceiling="$(printf '%s\n' "$selected_purchase" | jq -r '.route.sellerOffer.amountAtomic')"
+
 npx @dexterai/opendexter@latest fetch \
   "https://service.example/x402/route" \
   --method POST \
-  --body '{"document_url":"https://example.com/report.pdf"}'
+  --body '{"document_url":"https://example.com/report.pdf"}' \
+  --purchase "$selected_purchase" \
+  --max-amount-atomic "$approved_ceiling"
 ```
 
-That final command can move real USDC.
+Inspect the option and ceiling before running the final command. It can move
+real USDC. An `integration_required`, `request_required`, or `unavailable`
+option is not permission to choose a different mode automatically.
 
 ## Install into an AI client
 
@@ -151,10 +169,24 @@ provider state. Obtain approval for that external action.
 
 ### 3. Call
 
-`x402_fetch` sends the request. When the endpoint returns compatible x402
-requirements, it selects a supported route, applies the active spending policy,
-signs with the local wallet, and returns the provider response plus payment
-detail on success.
+`x402_fetch` takes one `preparedPurchase` returned by the check and a separate
+approved atomic ceiling. It re-probes the stored resolved public HTTPS route,
+requires the complete seller offer to match, claims the prepared identity, and
+uses only the selected mode:
+
+- `direct_exact` — the local wallet pays the selected Exact offer;
+- `native_tab` — the local Tab lane sends the selected Tab voucher;
+- `gateway_cash` — reserved contract name; unavailable until its common backend
+  adapter exists;
+- `gateway_credit` — reserved contract name; unavailable until its common
+  backend adapter exists.
+
+OpenDexter does not switch from Native Tab to Direct Exact, or from Direct to a
+Gateway, after selection. It returns a mode-specific receipt that keeps seller
+settlement, Tab accrual, Gateway cash, and Gateway credit obligation separate.
+
+Calls that omit `purchase` retain a legacy compatibility path. New MCP and CLI
+flows should use the explicit prepared contract.
 
 `x402_pay` is an exact alias. It is not a second stage and must not be called
 after a successful fetch.
@@ -269,10 +301,7 @@ currently uses it only to read the user's hosted Dexter Wallet. After passkey ap
 `npx @dexterai/opendexter@latest wallet` shows that wallet's Solana deposit
 address and balance.
 
-This connection is **view-only for the local package today**. It does not change
-the payment signer used by the local MCP server, `fetch`, or `pay`. Local paid
-calls still use the local wallet in `wallet.json` or the configured environment
-keys.
+This connection is **view-only for the local package today**. It does not change the payment signer used by the local MCP server, `fetch`, or `pay`. Local paid calls still use the local wallet in `wallet.json` or the configured environment keys.
 
 ```bash
 npx @dexterai/opendexter@latest connect status

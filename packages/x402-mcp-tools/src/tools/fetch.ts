@@ -2,8 +2,26 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
+import {
+  fetchPublicExternalUrl,
+  parsePaymentRequiredHeader,
+  UnsafeExternalUrlError,
+} from "@dexterai/x402-core";
 import type { FetchToolOpts, TabLaneHook, TabOfferMaterials } from "../types.js";
 import type { WalletAdapter } from "../wallet-adapter.js";
+import {
+  PURCHASE_MODES,
+  preparedPurchaseSchema,
+  attachPurchaseReceipt,
+  buildPurchaseIntegrationRequired,
+  sellerOfferMatches,
+  validatePurchaseExecution,
+  type PreparedPurchaseV1,
+  type PurchaseAttemptStateV1,
+  type PurchaseAttemptStoreV1,
+  type PurchaseReceiptV1,
+  type ValidatedPurchaseV1,
+} from "../purchase-contract.js";
 
 const MULTIPART_MAX_BYTES = 200 * 1024 * 1024;
 
@@ -159,7 +177,11 @@ async function parseResponse(res: Response): Promise<unknown> {
 }
 
 function extractSettlement(res: Response): unknown {
-  const header = res.headers.get("payment-response") || res.headers.get("PAYMENT-RESPONSE");
+  const header =
+    res.headers.get("payment-response")
+    || res.headers.get("PAYMENT-RESPONSE")
+    || res.headers.get("x-payment-response")
+    || res.headers.get("X-PAYMENT-RESPONSE");
   if (!header) return null;
   try {
     return JSON.parse(atob(header));
@@ -260,11 +282,21 @@ function buildAttachedTabOffer(offer: TabOfferMaterials): Record<string, unknown
   };
 }
 
-function parse402(body: unknown): {
+function parse402(body: unknown, paymentRequiredHeader: string | null = null): {
   requirements: Record<string, unknown> | null;
   firstAccept: Record<string, unknown> | null;
 } {
-  const obj = body as Record<string, unknown> | null;
+  let obj = body as Record<string, unknown> | null;
+  if (!obj?.accepts || !Array.isArray(obj.accepts) || obj.accepts.length === 0) {
+    const header = parsePaymentRequiredHeader(paymentRequiredHeader);
+    if (Array.isArray(header.accepts) && header.accepts.length > 0) {
+      obj = {
+        accepts: header.accepts,
+        x402Version: header.x402Version ?? 2,
+        resource: header.resource,
+      };
+    }
+  }
   if (!obj?.accepts || !Array.isArray(obj.accepts))
     return { requirements: null, firstAccept: null };
   return {
@@ -294,6 +326,326 @@ interface RuntimeFetchOpts {
    * a voucher re-issue cannot replay a consumed FormData stream.
    */
   tabLane?: TabLaneHook | null;
+  /** Atomic ceiling approved for an explicit prepared purchase. */
+  maxAmountAtomic?: string;
+  /** Durable prepared-identity claim store for explicit purchase modes. */
+  purchaseAttempts?: PurchaseAttemptStoreV1 | null;
+  /**
+   * Test seam only. Production callers leave this absent so explicit probes
+   * use x402-core's DNS-pinned public-HTTPS transport with redirects disabled.
+   */
+  explicitExternalFetch?: typeof fetch;
+}
+
+function paymentResponseTransaction(response: Response): string | undefined {
+  const settlement = extractSettlement(response);
+  if (!settlement || typeof settlement !== "object") return undefined;
+  const record = settlement as Record<string, unknown>;
+  const transaction =
+    record.transaction ?? record.txHash ?? record.transactionHash;
+  return typeof transaction === "string" ? transaction : undefined;
+}
+
+async function responseFailureDetail(response: Response): Promise<string> {
+  try {
+    const body = await parseResponse(response.clone());
+    const text =
+      typeof body === "string" ? body : JSON.stringify(body);
+    return text.slice(0, 1_000);
+  } catch {
+    return `merchant_http_${response.status}`;
+  }
+}
+
+/**
+ * x402 v2's public strategy re-probes and chooses by preferred network. That
+ * is insufficient for a prepared purchase because two offers on one network
+ * can differ by asset, amount, payee, or facilitator. This adapter builds and
+ * sends exactly the already revalidated raw accept—there is no second probe
+ * and no network-only selection.
+ */
+async function paySelectedV2Offer({
+  x402Client,
+  url,
+  requestInit,
+  requirements,
+  selectedAccept,
+  wallets,
+  maxAmountAtomic,
+  onDispatch,
+  externalFetch,
+}: {
+  x402Client: typeof import("@dexterai/x402/client");
+  url: string;
+  requestInit: RequestInit;
+  requirements: Record<string, unknown> | null;
+  selectedAccept: Record<string, unknown>;
+  wallets: Record<string, unknown>;
+  maxAmountAtomic: string;
+  onDispatch: () => void;
+  externalFetch: typeof fetch;
+}) {
+  const network = String(selectedAccept.network ?? "");
+  const amount = String(
+    selectedAccept.amount ?? selectedAccept.maxAmountRequired ?? "",
+  );
+  const networkRef = x402Client.toNetworkRef(network);
+  if (!networkRef || !/^[1-9]\d*$/.test(amount)) {
+    return {
+      ok: false as const,
+      reason: "no_payment_options" as const,
+      detail: "selected_v2_offer_is_not_payable",
+      paymentDispatched: false,
+    };
+  }
+  if (BigInt(amount) > BigInt(maxAmountAtomic)) {
+    return {
+      ok: false as const,
+      reason: "budget_exceeded" as const,
+      detail: "selected_v2_offer_exceeds_atomic_ceiling",
+      paymentDispatched: false,
+    };
+  }
+  if (String(selectedAccept.amount ?? "") !== amount) {
+    return {
+      ok: false as const,
+      reason: "no_payment_options" as const,
+      detail: "selected_v2_offer_missing_amount",
+      paymentDispatched: false,
+    };
+  }
+
+  const adapter =
+    networkRef.family === "svm"
+      ? x402Client.createSolanaAdapter()
+      : x402Client.createEvmAdapter();
+  const wallet =
+    networkRef.family === "svm" ? wallets.solana : wallets.evm;
+  if (!wallet || !adapter.canHandle(network) || !adapter.isConnected(wallet)) {
+    return {
+      ok: false as const,
+      reason: "unsupported_network" as const,
+      paymentDispatched: false,
+    };
+  }
+
+  try {
+    const accept = { ...selectedAccept };
+    const rpcUrl = adapter.getDefaultRpcUrl(network);
+    const signed = await adapter.buildTransaction(
+      accept as never,
+      wallet,
+      rpcUrl,
+    );
+    const payload =
+      adapter.name === "EVM"
+        ? JSON.parse(signed.serialized)
+        : { transaction: signed.serialized };
+    const paymentSignature: Record<string, unknown> = {
+      x402Version: 2,
+      resource: requirements?.resource ?? { url },
+      accepted: accept,
+      payload,
+    };
+    if (signed.extensions) {
+      paymentSignature.extensions = signed.extensions;
+    }
+
+    const headers = new Headers(requestInit.headers ?? undefined);
+    headers.set(
+      "PAYMENT-SIGNATURE",
+      Buffer.from(JSON.stringify(paymentSignature)).toString("base64"),
+    );
+    const controller = new AbortController();
+    const signal = requestInit.signal
+      ? AbortSignal.any([requestInit.signal, controller.signal])
+      : controller.signal;
+    const paidInit: RequestInit = {
+      method: requestInit.method ?? "GET",
+      headers,
+      redirect: requestInit.redirect ?? "error",
+      signal,
+    };
+    if (typeof requestInit.body === "string") {
+      paidInit.body = requestInit.body;
+    }
+    onDispatch();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+    try {
+      const response = await externalFetch(url, paidInit);
+      clearTimeout(timeout);
+      if (!response.ok) {
+        return {
+          ok: false as const,
+          reason:
+            response.status === 402
+              ? ("merchant_rejected" as const)
+              : ("settlement_failed" as const),
+          detail: await responseFailureDetail(response),
+          paymentDispatched: true,
+        };
+      }
+      return {
+        ok: true as const,
+        paid: true as const,
+        response,
+        amountPaid: amount,
+        network: networkRef,
+        txSignature: paymentResponseTransaction(response),
+        paymentDispatched: true,
+      };
+    } catch (error) {
+      clearTimeout(timeout);
+      if (signed.settlementProbe && adapter.confirmSettlement) {
+        try {
+          const confirmation = await adapter.confirmSettlement(
+            signed.settlementProbe,
+            rpcUrl,
+          );
+          if (confirmation.settled) {
+            return {
+              ok: true as const,
+              paid: true as const,
+              response: undefined,
+              amountPaid: amount,
+              network: networkRef,
+              txSignature: confirmation.txSignature,
+              paymentDispatched: true,
+            };
+          }
+        } catch {
+          // Unknown remains unknown. Never turn a failed reconciliation read
+          // into permission to sign a second authorization.
+        }
+      }
+      return {
+        ok: false as const,
+        reason: "payment_unconfirmed" as const,
+        detail: error instanceof Error ? error.message : String(error),
+        paymentDispatched: true,
+      };
+    }
+  } catch (error) {
+    return {
+      ok: false as const,
+      reason: "error" as const,
+      detail: error instanceof Error ? error.message : String(error),
+      paymentDispatched: false,
+    };
+  }
+}
+
+async function paySelectedV1Offer({
+  x402Client,
+  url,
+  requestInit,
+  challenge,
+  wallets,
+  maxAmountAtomic,
+  onDispatch,
+  externalFetch,
+}: {
+  x402Client: typeof import("@dexterai/x402/client");
+  url: string;
+  requestInit: RequestInit;
+  challenge: import("@dexterai/x402/client").PaymentChallenge;
+  wallets: Record<string, unknown>;
+  maxAmountAtomic: string;
+  onDispatch: () => void;
+  externalFetch: typeof fetch;
+}) {
+  const built = await x402Client.buildV1PaymentHeader(
+    challenge as never,
+    wallets as never,
+    { maxAmountAtomic },
+  );
+  if (!built.ok) {
+    return {
+      ok: false as const,
+      reason: built.reason,
+      detail: built.detail,
+      paymentDispatched: false,
+    };
+  }
+
+  const headers = new Headers(requestInit.headers ?? undefined);
+  headers.set("X-PAYMENT", built.headerValue);
+  const controller = new AbortController();
+  const signal = requestInit.signal
+    ? AbortSignal.any([requestInit.signal, controller.signal])
+    : controller.signal;
+  const paidInit: RequestInit = {
+    method: requestInit.method ?? "GET",
+    headers,
+    redirect: requestInit.redirect ?? "error",
+    signal,
+  };
+  if (typeof requestInit.body === "string") paidInit.body = requestInit.body;
+
+  try {
+    onDispatch();
+  } catch (error) {
+    return {
+      ok: false as const,
+      reason: "error" as const,
+      detail: error instanceof Error ? error.message : String(error),
+      paymentDispatched: false,
+    };
+  }
+
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  try {
+    const response = await externalFetch(url, paidInit);
+    clearTimeout(timeout);
+    if (!response.ok) {
+      return {
+        ok: false as const,
+        reason:
+          response.status === 402
+            ? ("merchant_rejected" as const)
+            : ("settlement_failed" as const),
+        detail: await responseFailureDetail(response),
+        paymentDispatched: true,
+      };
+    }
+    return {
+      ok: true as const,
+      paid: true as const,
+      response,
+      amountPaid: built.option.amount,
+      network: built.option.network,
+      txSignature: paymentResponseTransaction(response),
+      paymentDispatched: true,
+    };
+  } catch (error) {
+    clearTimeout(timeout);
+    return {
+      ok: false as const,
+      reason: "payment_unconfirmed" as const,
+      detail:
+        "The v1 proof-bearing request was dispatched through the guarded " +
+        `seller route, but its result is unknown (${error instanceof Error ? error.message : String(error)}).`,
+      paymentDispatched: true,
+    };
+  }
+}
+
+function receiptFromResult(
+  result: Record<string, unknown>,
+): PurchaseReceiptV1 | null {
+  const receipt = result.purchaseReceipt;
+  return receipt && typeof receipt === "object" && !Array.isArray(receipt)
+    ? (receipt as PurchaseReceiptV1)
+    : null;
+}
+
+function completedAttemptState(
+  receipt: PurchaseReceiptV1,
+): Exclude<PurchaseAttemptStateV1, "claimed" | "dispatching"> {
+  if (receipt.retry === "same_prepared_only") return "awaiting_action";
+  if (receipt.dispatch === "not_dispatched") return "failed_pre_dispatch";
+  if (receipt.retry === "none") return "completed";
+  return "reconciliation_required";
 }
 
 export async function x402Fetch(
@@ -303,14 +655,174 @@ export async function x402Fetch(
     body?: string;
     headers?: Record<string, string>;
     multipart?: MultipartInput;
+    purchase?: PreparedPurchaseV1;
   },
   wallet: WalletAdapter | null,
   runtime: RuntimeFetchOpts,
 ): Promise<Record<string, unknown>> {
   const isMultipart = Boolean(params.multipart && typeof params.multipart === "object");
+  let validatedPurchase: ValidatedPurchaseV1 | null = null;
+  let attemptStore: PurchaseAttemptStoreV1 | null = null;
+  let attemptClaimed = false;
+  let attemptCompleted = false;
+  const explicitExternalFetch: typeof fetch =
+    runtime.explicitExternalFetch
+    ?? (async (input, init) => {
+      const rawUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      return fetchPublicExternalUrl(rawUrl, init, {
+        maxRedirects: 0,
+        timeoutMs: 120_000,
+      });
+    });
+
+  if (params.purchase) {
+    if (isMultipart) {
+      return {
+        status: 400,
+        mode: "purchase_contract_error",
+        phase: "pre_dispatch",
+        retryable: false,
+        error: "prepared_purchase_multipart_not_supported",
+        message:
+          "A multipart purchase needs a prepared manifest containing file hashes. Nothing was dispatched.",
+        payment: { dispatched: false, settled: false },
+      };
+    }
+    const validation = validatePurchaseExecution({
+      purchase: params.purchase,
+      url: params.url,
+      method: params.method || "GET",
+      payload: params.body ?? null,
+      approvedAmountCeilingAtomic: runtime.maxAmountAtomic ?? "",
+      allowedModes: PURCHASE_MODES,
+    });
+    if (!validation.ok) {
+      return {
+        status: 400,
+        mode: "purchase_contract_error",
+        phase: "pre_dispatch",
+        retryable: false,
+        error: validation.code,
+        message: validation.message,
+        payment: { dispatched: false, settled: false },
+      };
+    }
+    validatedPurchase = validation.value;
+    if (
+      validatedPurchase.mode === "gateway_cash" ||
+      validatedPurchase.mode === "gateway_credit"
+    ) {
+      return buildPurchaseIntegrationRequired(
+        validatedPurchase,
+        `${validatedPurchase.mode}_adapter_required`,
+      );
+    }
+    attemptStore = runtime.purchaseAttempts ?? null;
+    if (!attemptStore) {
+      return buildPurchaseIntegrationRequired(
+        validatedPurchase,
+        "durable_purchase_attempt_store_required",
+      );
+    }
+    let claim;
+    try {
+      claim = attemptStore.begin(validatedPurchase);
+    } catch {
+      return buildPurchaseIntegrationRequired(
+        validatedPurchase,
+        "durable_purchase_attempt_store_unavailable",
+      );
+    }
+    if (!claim.acquired) {
+      if (claim.receipt) {
+        return {
+          status: 409,
+          mode: "purchase_attempt_already_recorded",
+          phase: "idempotency",
+          retryable: false,
+          error: "prepared_purchase_already_used",
+          message:
+            "This prepared purchase already has a durable attempt. No new request was dispatched.",
+          purchaseReceipt: claim.receipt,
+        };
+      }
+      const uncertain = [
+        "claimed",
+        "dispatching",
+        "reconciliation_required",
+        "unknown",
+      ].includes(claim.state);
+      const result = attachPurchaseReceipt(
+        {
+          status: 409,
+          mode: "purchase_attempt_already_recorded",
+          phase: "idempotency",
+          retryable: false,
+          error: uncertain
+            ? "prepared_purchase_requires_reconciliation"
+            : "prepared_purchase_already_used",
+          message: uncertain
+            ? "A prior attempt with this prepared identity may have dispatched. Reconcile it; do not retry."
+            : "This prepared identity was already used before dispatch. Prepare a new purchase.",
+          payment: uncertain
+            ? { settled: "unknown", retrySafe: false }
+            : { dispatched: false, settled: false },
+        },
+        validatedPurchase,
+      );
+      return result;
+    }
+    attemptClaimed = true;
+  }
+
+  const withPurchase = (result: Record<string, unknown>): Record<string, unknown> => {
+    const withReceipt =
+      validatedPurchase ? attachPurchaseReceipt(result, validatedPurchase) : result;
+    if (
+      !validatedPurchase
+      || !attemptStore
+      || !attemptClaimed
+      || attemptCompleted
+    ) {
+      return withReceipt;
+    }
+    const receipt = receiptFromResult(withReceipt);
+    if (!receipt) return withReceipt;
+    attemptCompleted = true;
+    try {
+      attemptStore.complete(
+        validatedPurchase,
+        completedAttemptState(receipt),
+        receipt,
+      );
+      return withReceipt;
+    } catch {
+      return {
+        ...withReceipt,
+        retryable: false,
+        attemptState: "reconciliation_required",
+        attemptError: "purchase_attempt_record_update_failed",
+      };
+    }
+  };
+
+  const markAttemptDispatching = (): boolean => {
+    if (!validatedPurchase || !attemptStore || !attemptClaimed) return false;
+    try {
+      attemptStore.markDispatching(validatedPurchase);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   if (isMultipart && params.method !== "POST" && params.method !== "PUT") {
-    return { status: 400, error: "multipart_requires_post_or_put" };
+    return withPurchase({ status: 400, error: "multipart_requires_post_or_put" });
   }
 
   const requestHeaders: Record<string, string> = {
@@ -338,20 +850,73 @@ export async function x402Fetch(
       // streams are not consumed twice.
       fetchOpts.body = await buildMultipartFormData(params.multipart!);
     } catch (err: any) {
-      return { status: 400, error: err?.message || "multipart_build_failed" };
+      return withPurchase({ status: 400, error: err?.message || "multipart_build_failed" });
     }
   } else if (params.body && params.method !== "GET") {
     fetchOpts.body = params.body;
   }
 
   const probeTimeoutMs = isMultipart ? 60_000 : 15_000;
-  const probeRes = await fetch(params.url, {
-    ...fetchOpts,
-    signal: AbortSignal.timeout(probeTimeoutMs),
-  });
+  const probeUrl = validatedPurchase?.route.resolvedUrl ?? params.url;
+  let probeRes: Response;
+  try {
+    const probeInit = {
+      ...fetchOpts,
+      ...(validatedPurchase ? { redirect: "error" as const } : {}),
+      signal: AbortSignal.timeout(probeTimeoutMs),
+    };
+    probeRes = validatedPurchase
+      ? await explicitExternalFetch(probeUrl, probeInit)
+      : await fetch(probeUrl, probeInit);
+  } catch (error) {
+    if (validatedPurchase && error instanceof UnsafeExternalUrlError) {
+      return withPurchase({
+        status: 400,
+        mode: "purchase_contract_error",
+        phase: "pre_dispatch",
+        retryable: false,
+        error: "prepared_resolved_url_not_public_https",
+        message:
+          "The prepared seller route is not a public HTTPS destination. Nothing was dispatched.",
+        payment: { dispatched: false, settled: false },
+      });
+    }
+    return withPurchase({
+      status: 502,
+      mode: "purchase_probe_failed",
+      phase: "pre_dispatch",
+      retryable: false,
+      error: "seller_probe_failed",
+      message:
+        error instanceof Error
+          ? `The seller could not be reached before payment dispatch: ${error.message}`
+          : "The seller could not be reached before payment dispatch.",
+      payment: { dispatched: false, settled: false },
+    });
+  }
+  const paymentChallengeResponse =
+    probeRes.status === 402 ? probeRes.clone() : null;
+
+  const freshResolvedUrl = probeRes.url || probeUrl;
+  if (
+    validatedPurchase
+    && freshResolvedUrl !== validatedPurchase.route.resolvedUrl
+  ) {
+    return withPurchase({
+      status: 409,
+      mode: "purchase_route_changed",
+      phase: "pre_dispatch",
+      retryable: false,
+      error: "seller_resolved_url_changed",
+      message:
+        "The seller route resolved to a different URL than the prepared " +
+        "purchase. Nothing was dispatched; check current terms again.",
+      payment: { dispatched: false, settled: false },
+    });
+  }
 
   if (probeRes.status !== 402) {
-    return { status: probeRes.status, data: await parseResponse(probeRes) };
+    return withPurchase({ status: probeRes.status, data: await parseResponse(probeRes) });
   }
 
   let body402: unknown = null;
@@ -363,7 +928,48 @@ export async function x402Fetch(
     } catch {}
   }
 
-  const { requirements } = parse402(body402);
+  const { requirements } = parse402(
+    body402,
+    probeRes.headers.get("payment-required"),
+  );
+  let selectedRequirements = requirements;
+  let selectedAccept: Record<string, unknown> | null = null;
+  let selectedAcceptIndex = -1;
+  if (validatedPurchase) {
+    const accepts = Array.isArray(requirements?.accepts)
+      ? (requirements.accepts as Array<Record<string, unknown>>)
+      : [];
+    const matchingAccepts = accepts
+      .map((accept, index) => ({ accept, index }))
+      .filter(({ accept }) =>
+        sellerOfferMatches(validatedPurchase!.route.sellerOffer, accept),
+      );
+    if (matchingAccepts.length === 1) {
+      selectedAccept = matchingAccepts[0].accept;
+      selectedAcceptIndex = matchingAccepts[0].index;
+    }
+    if (
+      Number(requirements?.x402Version ?? 2) !==
+        validatedPurchase.route.sellerOffer.x402Version ||
+      !selectedAccept
+    ) {
+      return withPurchase({
+        status: 409,
+        mode: "purchase_terms_changed",
+        phase: "pre_dispatch",
+        retryable: false,
+        error: "selected_seller_offer_not_found",
+        message:
+          "The seller no longer offers the exact route that was prepared. Nothing was dispatched; check current terms again.",
+        payment: { dispatched: false, settled: false },
+        requirements,
+      });
+    }
+    selectedRequirements = {
+      ...(requirements || {}),
+      accepts: [selectedAccept],
+    };
+  }
 
   // ── Tab lane (before any exact payment) ─────────────────────────────
   // The consumer-custodied tab lane gets first look at every parsed 402.
@@ -377,21 +983,92 @@ export async function x402Fetch(
   // response. A lane crash must never take down the paid path.
   let tabNote: Record<string, unknown> | undefined;
   let tabOffer: TabOfferMaterials | undefined;
-  if (runtime.tabLane && !isMultipart) {
+  const strictNativeTab = validatedPurchase?.mode === "native_tab";
+  const executionUrl =
+    validatedPurchase?.route.resolvedUrl ?? params.url;
+  if (strictNativeTab && !runtime.tabLane) {
+    return withPurchase({
+      status: 501,
+      mode: "native_tab_unavailable",
+      phase: "pre_dispatch",
+      retryable: false,
+      error: "native_tab_adapter_unavailable",
+      message: "Native Tab is selected, but no Tab adapter is available. Nothing was dispatched.",
+      payment: { dispatched: false, settled: false },
+      requirements: selectedRequirements,
+    });
+  }
+  if (strictNativeTab && !markAttemptDispatching()) {
+    return withPurchase({
+      status: 503,
+      mode: "purchase_attempt_store_error",
+      phase: "pre_dispatch",
+      retryable: false,
+      error: "purchase_attempt_dispatch_mark_failed",
+      message:
+        "OpenDexter could not durably mark this Native Tab attempt before dispatch. Nothing was sent.",
+      payment: { dispatched: false, settled: false },
+      requirements: selectedRequirements,
+    });
+  }
+  if (
+    runtime.tabLane &&
+    !isMultipart &&
+    (!validatedPurchase || strictNativeTab)
+  ) {
     try {
       const outcome = await runtime.tabLane(
         {
-          url: params.url,
+          url: executionUrl,
           method: params.method || "GET",
           headers: requestHeaders,
           body: typeof fetchOpts.body === "string" ? fetchOpts.body : undefined,
+          ...(strictNativeTab
+            ? { externalFetch: explicitExternalFetch }
+            : {}),
         },
-        requirements,
+        selectedRequirements,
       );
-      if (outcome.done) return outcome.result;
+      if (outcome.done) return withPurchase(outcome.result);
+      if (strictNativeTab) {
+        return withPurchase({
+          status: 402,
+          mode: outcome.offer?.mode ?? "native_tab_unavailable",
+          phase: "pre_dispatch",
+          retryable: false,
+          error: "native_tab_not_ready",
+          message:
+            "Native Tab was selected, but this Tab is not ready for dispatch. " +
+            "Open or approve the Tab, then resume this same prepared purchase.",
+          payment: { dispatched: false, settled: false },
+          requirements: selectedRequirements,
+          ...(outcome.note ? { tab: outcome.note } : {}),
+          ...(outcome.offer
+            ? {
+                tab_offer: buildAttachedTabOffer(outcome.offer),
+                connect_url: outcome.offer.connectUrl,
+              }
+            : {}),
+        });
+      }
       tabNote = outcome.note;
       tabOffer = outcome.offer;
     } catch (err: any) {
+      if (strictNativeTab) {
+        return withPurchase({
+          status: 502,
+          mode: "native_tab_error",
+          phase: "dispatch_unknown",
+          retryable: false,
+          error: "native_tab_adapter_failed",
+          message:
+            "Native Tab failed after entering its dispatch adapter. The " +
+            "voucher outcome is unknown; reconcile this prepared attempt " +
+            `and do not retry. (${err?.message ?? String(err)})`,
+          payment: { settled: "unknown", retrySafe: false },
+          requirements: selectedRequirements,
+        });
+      }
       tabNote = {
         rail: "tab",
         used: false,
@@ -399,17 +1076,17 @@ export async function x402Fetch(
       };
     }
   }
-  if (tabOffer && isTabOnly(requirements)) {
-    return buildTabOfferResponse(
+  if (tabOffer && isTabOnly(selectedRequirements)) {
+    return withPurchase(buildTabOfferResponse(
       tabOffer,
       { url: params.url, method: params.method || "GET", body: params.body },
-      requirements,
-    );
+      selectedRequirements,
+    ));
   }
   const withTab = (r: Record<string, unknown>): Record<string, unknown> => {
     let out = tabNote ? { ...r, tab: tabNote } : r;
     if (tabOffer) out = { ...out, tab_offer: buildAttachedTabOffer(tabOffer) };
-    return out;
+    return withPurchase(out);
   };
 
   // Mode 1: Wallet auto-pay
@@ -417,11 +1094,11 @@ export async function x402Fetch(
     try {
       const policyCheck = await evaluatePaymentRequirements(
         wallet,
-        requirements,
+        selectedRequirements,
         runtime.maxAmountUsdc,
       );
       if (!policyCheck.ok) {
-        return withTab({ status: 402, error: policyCheck.error, requirements });
+        return withTab({ status: 402, error: policyCheck.error, requirements: selectedRequirements });
       }
 
       // Rolling-budget gate. The per-call cap above only asks "is THIS call
@@ -440,7 +1117,7 @@ export async function x402Fetch(
               `${fmtUsd(callPrice)}; ${fmtUsd(spent)} of the ` +
               `${fmtUsd(budget)} 24h budget is already spent through ` +
               `this tool. Raise dailyBudgetUsdc or wait for the window to roll.`,
-            requirements,
+            requirements: selectedRequirements,
           });
         }
       }
@@ -452,17 +1129,20 @@ export async function x402Fetch(
           error:
             "Wallet does not expose private keys for auto-pay. " +
             "Settle the payment externally and retry, or configure a wallet that supports auto-pay.",
-          requirements,
+          requirements: selectedRequirements,
         });
       }
 
-      // payAndFetch is the SDK's version-agnostic payment seam — it probes
-      // once, detects x402 v1 (challenge in the body) vs v2 (challenge in
-      // the PAYMENT-REQUIRED header), handles Sign-In-With-X transparently,
-      // and pays via the matching strategy. Routing through it (rather than
-      // the v2-only wrapFetch) is what makes the CLI able to pay v1 servers.
-      const { payAndFetch, createKeypairWallet, createEvmKeypairWallet } =
-        await import("@dexterai/x402/client");
+      // Legacy calls retain payAndFetch's version-agnostic behavior. Explicit
+      // Direct Exact calls use a route-pinned adapter: v1 consumes one
+      // filtered parsed option; v2 builds the selected raw accept directly
+      // and never performs the SDK's network-only second probe.
+      const x402Client = await import("@dexterai/x402/client");
+      const {
+        payAndFetch,
+        createKeypairWallet,
+        createEvmKeypairWallet,
+      } = x402Client;
 
       // Build the WalletSet payAndFetch expects, from whatever keys the
       // adapter exposes — same factories wrapFetch used internally.
@@ -477,6 +1157,9 @@ export async function x402Fetch(
       // payAndFetch does its own probe + paid retry. Multipart bodies are
       // single-use streams, so rebuild a fresh FormData for this call path.
       const paidFetchOpts: RequestInit = { ...fetchOpts };
+      if (validatedPurchase) {
+        paidFetchOpts.redirect = "error";
+      }
       if (isMultipart) {
         try {
           paidFetchOpts.body = await buildMultipartFormData(params.multipart!);
@@ -485,12 +1168,114 @@ export async function x402Fetch(
         }
       }
 
-      const payResult = await payAndFetch(
-        params.url,
-        paidFetchOpts,
-        walletSet as never,
-        {},
-      );
+      let payResult;
+      if (validatedPurchase?.mode === "direct_exact") {
+        if (!paymentChallengeResponse) {
+          return withTab({
+            status: 409,
+            mode: "purchase_terms_changed",
+            phase: "pre_dispatch",
+            retryable: false,
+            error: "payment_challenge_missing",
+            message: "The prepared payment challenge is no longer available. Nothing was dispatched.",
+            payment: { dispatched: false, settled: false },
+          });
+        }
+        const strategy = await x402Client.detectStrategy(
+          paymentChallengeResponse.clone(),
+        );
+        const challenge = strategy
+          ? await strategy.parseChallenge(paymentChallengeResponse.clone())
+          : null;
+        const selected = validatedPurchase.route.sellerOffer;
+        const selectedOption = challenge?.options[selectedAcceptIndex];
+        const selectedOptionMatches = selectedOption
+          ? (() => {
+              const networkMatches =
+                selectedOption.network.caip2 === selected.network
+                || selectedOption.network.bare === selected.network;
+              return (
+                selectedOption.scheme === selected.scheme
+                && networkMatches
+                && selectedOption.amount === selected.amountAtomic
+                && selectedOption.asset === selected.asset
+                && selectedOption.payTo === selected.payTo
+              );
+            })()
+          : false;
+        if (
+          !strategy
+          || !challenge
+          || !selectedOption
+          || !selectedOptionMatches
+        ) {
+          return withTab({
+            status: 409,
+            mode: "purchase_terms_changed",
+            phase: "pre_dispatch",
+            retryable: false,
+            error: "selected_strategy_offer_not_found",
+            message:
+              "The payment strategy could not preserve the one prepared seller offer. Nothing was dispatched.",
+            payment: { dispatched: false, settled: false },
+            requirements: selectedRequirements,
+          });
+        }
+        if (challenge.x402Version === 2) {
+          if (!selectedAccept) {
+            return withTab({
+              status: 409,
+              mode: "purchase_terms_changed",
+              phase: "pre_dispatch",
+              retryable: false,
+              error: "selected_raw_offer_not_found",
+              message:
+                "The selected raw seller offer is no longer available. Nothing was dispatched.",
+              payment: { dispatched: false, settled: false },
+              requirements: selectedRequirements,
+            });
+          }
+          payResult = await paySelectedV2Offer({
+            x402Client,
+            url: executionUrl,
+            requestInit: paidFetchOpts,
+            requirements: selectedRequirements,
+            selectedAccept,
+            wallets: walletSet,
+            maxAmountAtomic:
+              validatedPurchase.approvedAmountCeilingAtomic,
+            onDispatch: () => {
+              if (!markAttemptDispatching()) {
+                throw new Error("purchase_attempt_dispatch_mark_failed");
+              }
+            },
+            externalFetch: explicitExternalFetch,
+          });
+        } else {
+          payResult = await paySelectedV1Offer({
+            x402Client,
+            url: executionUrl,
+            requestInit: paidFetchOpts,
+            challenge: { ...challenge, options: [selectedOption] },
+            wallets: walletSet,
+            maxAmountAtomic:
+              validatedPurchase.approvedAmountCeilingAtomic,
+            onDispatch: () => {
+              if (!markAttemptDispatching()) {
+                throw new Error("purchase_attempt_dispatch_mark_failed");
+              }
+            },
+            externalFetch: explicitExternalFetch,
+          });
+        }
+      } else {
+        payResult = await payAndFetch(
+          params.url,
+          paidFetchOpts,
+          walletSet as never,
+          {},
+        );
+      }
 
       if (!payResult.ok) {
         // `payment_unconfirmed` is NOT a plain payment failure: the payment
@@ -510,19 +1295,40 @@ export async function x402Fetch(
               "deciding what to do." +
               (payResult.detail ? ` (${payResult.detail})` : ""),
             payment: { settled: "unconfirmed", retrySafe: false },
-            requirements,
+            requirements: selectedRequirements,
           });
         }
         // A typed, expected failure — never a thrown error. SIW-X endpoints
         // surface here too (the v1/v2 strategies don't recognise an
         // identity-only challenge as payable). These reasons all mean no
         // money moved (or the merchant rejected the payload) — retry-safe.
+        const dispatchProof = (
+          payResult as { paymentDispatched?: boolean }
+        ).paymentDispatched;
+        const dispatchedFailure =
+          dispatchProof === true ||
+          payResult.reason === "merchant_rejected" ||
+          payResult.reason === "settlement_failed" ||
+          (
+            validatedPurchase !== null
+            && payResult.reason === "error"
+            && dispatchProof !== false
+          );
         return withTab({
           status: 402,
           error: `Payment failed: ${payResult.reason}${
             payResult.detail ? ` — ${payResult.detail}` : ""
           }`,
-          requirements,
+          ...(dispatchedFailure
+            ? {
+                payment: { settled: "unconfirmed", retrySafe: false },
+                retryable: false,
+              }
+            : {
+                payment: { dispatched: false, settled: false },
+                retryable: false,
+              }),
+          requirements: selectedRequirements,
         });
       }
 
@@ -562,7 +1368,7 @@ export async function x402Fetch(
                 : {}),
             },
           },
-          requirements,
+          requirements: selectedRequirements,
         });
       }
 
@@ -634,7 +1440,17 @@ export async function x402Fetch(
 
       return withTab(result);
     } catch (err: any) {
-      return withTab({ status: 402, error: `Payment failed: ${err.message}`, requirements });
+      return withTab({
+        status: 402,
+        error: `Payment failed: ${err.message}`,
+        ...(validatedPurchase
+          ? {
+              payment: { settled: "unknown", retrySafe: false },
+              retryable: false,
+            }
+          : {}),
+        requirements: selectedRequirements,
+      });
     }
   }
 
@@ -643,7 +1459,7 @@ export async function x402Fetch(
     status: 402,
     message:
       "Payment required. Provide payment-signature manually or configure a wallet for automatic settlement.",
-    requirements,
+    requirements: selectedRequirements,
   });
 }
 
@@ -655,8 +1471,8 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
     opts.getMaxAmountUsdc ?? (() => Number.POSITIVE_INFINITY);
 
   const description = hasWallet
-    ? "Call any x402-protected API with automatic USDC payment across Solana, Base, Polygon, Arbitrum, Optimism, and Avalanche. " +
-      "Signs and pays using the configured wallet. Returns the API response directly."
+    ? "Call an x402 API after x402_check and explicit approval. Preserve the prepared purchase, selected seller offer, route, mode, request digest, and atomic ceiling. " +
+      "direct_exact and native_tab use distinct adapters; gateway_cash and gateway_credit fail before dispatch until their adapters are connected. OpenDexter never silently changes modes."
     : "Call any x402-protected API. Returns payment requirements when settlement is needed. " +
       (opts.walletlessHint ?? "Provision a wallet for this MCP session to enable automatic payment.");
 
@@ -680,15 +1496,25 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
       .number()
       .positive()
       .optional()
-      .describe("Optional per-call spend cap override in USDC."),
+      .describe("Legacy local settings override in display USDC."),
+    maxAmountAtomic: z
+      .string()
+      .regex(/^[1-9]\d{0,19}$/)
+      .optional()
+      .describe(
+        "User-approved atomic-unit ceiling for purchase. Required whenever purchase is present.",
+      ),
+    purchase: preparedPurchaseSchema
+      .optional()
+      .describe(
+        "Exact prepared purchase returned by x402_check. Pins the seller offer, route, mode, URL, method, body digest, and prepared identity.",
+      ),
     tab: z
       .boolean()
       .optional()
       .describe(
-        "Whether to pay via an open spend-tab when the seller offers scheme " +
-          "'tab' and one is connected (default true). Set false to force the " +
-          "one-shot exact payment for THIS call — the escape hatch when a tab " +
-          "is refusing vouchers and you just need the single call to go through.",
+        "Legacy compatibility only. Automatic Tab-first behavior applies only " +
+          "when purchase is omitted. New calls choose direct_exact or native_tab through purchase.mode.",
       ),
     multipart: z
       .object({
@@ -737,6 +1563,8 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
     body?: string;
     headers?: Record<string, string>;
     maxAmountUsdc?: number;
+    maxAmountAtomic?: string;
+    purchase?: PreparedPurchaseV1;
     tab?: boolean;
     multipart?: MultipartInput;
   }) => {
@@ -746,8 +1574,9 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
       // current ledger read). Absent hook = budget disabled.
       const budget = opts.getBudgetRuntime?.();
       // Resolve the tab lane fresh per call too — a tab approved while the
-      // server is running becomes payable without a restart. `tab: false` is
-      // the per-call opt-out (the exact-payment escape hatch).
+      // server is running becomes payable without a restart. For an explicit
+      // purchase, mode selects whether this adapter is used; `tab` only
+      // controls the legacy no-purchase path.
       const tabLane = args.tab === false ? null : (opts.getTabLane?.() ?? null);
       const result = await x402Fetch(
         {
@@ -756,10 +1585,13 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
           body: args.body,
           headers: args.headers,
           multipart: args.multipart,
+          purchase: args.purchase,
         },
         wallet,
         {
           maxAmountUsdc: effectiveMax,
+          maxAmountAtomic: args.maxAmountAtomic,
+          purchaseAttempts: opts.getPurchaseAttemptStore?.() ?? null,
           ...(budget
             ? {
                 dailyBudgetUsdc: budget.dailyBudgetUsdc,
@@ -783,13 +1615,17 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
     }
   };
 
-  server.tool("x402_fetch", description, inputSchema, runFetch).update({ _meta: meta });
+  server
+    .tool("x402_fetch", description, inputSchema, runFetch)
+    ?.update?.({ _meta: meta });
 
   server.tool(
     "x402_pay",
     "Alias of x402_fetch for clients that want an explicit payment verb. " +
-      "Uses the same wallet x402 payment flow and returns the same settlement/result payload.",
+      "Accepts the same prepared purchase, explicit mode, selected seller offer, " +
+      "route, and atomic ceiling, and returns the same mode-specific receipt. " +
+      "Never call both aliases for one intended purchase.",
     inputSchema,
     runFetch,
-  ).update({ _meta: meta });
+  )?.update?.({ _meta: meta });
 }

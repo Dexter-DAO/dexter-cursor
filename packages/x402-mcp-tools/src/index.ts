@@ -70,6 +70,7 @@ export type {
   ToolBaseOpts,
   SearchToolOpts,
   CheckToolOpts,
+  PurchasePreparationStoreV1,
   FetchToolOpts,
   BudgetRuntime,
   TabLaneHook,
@@ -80,6 +81,33 @@ export type {
   WalletToolOpts,
 } from "./types.js";
 export { DEFAULT_CAPABILITY_PATH } from "./types.js";
+
+// Explicit purchase-mode contract shared by check, fetch/pay, stdio hosts,
+// and the npm CLI. Atomic amounts remain decimal strings throughout.
+export {
+  PURCHASE_CONTRACT_VERSION,
+  PURCHASE_MODES,
+  preparedPurchaseSchema,
+  purchasePayloadSha256,
+  sellerAcceptSha256,
+  buildPurchaseOptions,
+  validatePurchaseExecution,
+  sellerOfferMatches,
+  attachPurchaseReceipt,
+  buildUnavailablePurchaseReceipt,
+  buildPurchaseIntegrationRequired,
+  type PurchaseMode,
+  type AtomicAmount,
+  type SellerOfferV1,
+  type PurchaseRouteV1,
+  type PreparedPurchaseV1,
+  type ValidatedPurchaseV1,
+  type PreparedPurchaseOptionV1,
+  type PurchaseReceiptV1,
+  type PurchaseAttemptStateV1,
+  type PurchaseAttemptClaimV1,
+  type PurchaseAttemptStoreV1,
+} from "./purchase-contract.js";
 
 // Re-export types from x402-core so consumers only need one import path
 export type {

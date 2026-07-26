@@ -10,8 +10,9 @@ instructions to this surface.
 Treat discovery, inspection, and execution as separate decisions:
 
 1. Search using the user's actual job.
-2. Check the exact URL and method immediately before a paid call.
-3. Call once with the intended input and spending limit.
+2. Check the exact URL, method, and request body immediately before a paid call.
+3. Choose one ready `purchaseOption`, preserve its `preparedPurchase`, and call
+   once with the approved atomic ceiling.
 4. If any request has left the process and its outcome is uncertain, reconcile
    the first attempt. Never retry automatically.
 
@@ -74,18 +75,49 @@ check as reserving a price or approving a future payment.
 
 ## Fetch and pay
 
-The paid-call operation accepts:
+For a new call, choose one explicit mode returned by `x402_check`:
 
-- exact URL and HTTP method;
-- JSON body when required;
-- provider headers such as an API key when the user has authorized one;
-- an optional per-call USDC cap;
-- optional multipart fields and local file paths for POST/PUT uploads;
-- an optional tab preference when a seller offers that payment scheme.
+- `direct_exact`: pay only the selected seller Exact offer.
+- `native_tab`: issue only the selected seller Tab voucher.
+- `gateway_cash`: preserve the downstream seller Exact offer and use Gateway
+  cash when its adapter is available.
+- `gateway_credit`: preserve that seller offer and use Gateway credit when its
+  adapter is available.
 
-The tool probes the endpoint, applies the local policy, signs with the local
-wallet, and returns the provider response. When settlement succeeds, surface
-the amount, network, transaction identifier, and provider result.
+Pass the selected `preparedPurchase` unchanged as `purchase`, and the approved
+atomic-unit ceiling as `maxAmountAtomic`. The tool rejects any changed URL,
+method, body digest, mode, route, seller offer, or ceiling before dispatch. A
+non-GET check needs the exact body before an option is execution-ready.
+
+Before Direct Exact or Native Tab can dispatch, the local MCP durably claims
+the prepared identity and its complete route/offer fingerprint under:
+
+```text
+~/.dexterai-mcp/purchase-attempts-v1
+```
+
+`x402_fetch` and its `x402_pay` alias share that claim. A completed attempt
+returns its stored receipt without sending again. A process interruption,
+uncertain dispatch, or already-active claim is reconciliation-only. A pending
+Native Tab approval may continue only with the same `preparedId` and unchanged
+fingerprint.
+
+For x402 v2 Direct Exact, the local adapter signs and submits only the raw
+accepted offer preserved by that prepared purchase. It does not let a later SDK
+strategy re-probe or choose a different asset or route.
+
+Direct Exact never invokes Tab. Native Tab never falls through to Exact.
+Gateway modes fail before probing or dispatch while their adapters are absent.
+Do not switch modes on the user's behalf. Calls that omit `purchase` keep the
+prior local compatibility behavior and are not the mode-aware path.
+
+The `purchaseReceipt` is mode-specific:
+
+- Direct reports seller settlement.
+- Native Tab reports voucher state separately from seller cash settlement.
+- Gateway cash reports buyer cash separately from seller settlement.
+- Gateway credit reports exposure, buyer obligation, and seller settlement
+  separately.
 
 Safety rules:
 

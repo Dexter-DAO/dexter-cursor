@@ -1,9 +1,14 @@
-import { x402Fetch } from "@dexterai/x402-mcp-tools";
+import {
+  preparedPurchaseSchema,
+  x402Fetch,
+  type PreparedPurchaseV1,
+} from "@dexterai/x402-mcp-tools";
 import { loadOrCreateWallet } from "../wallet/index.js";
 import { createNpmWalletAdapter } from "../wallet/adapter.js";
 import { loadSettings } from "../settings.js";
 import { recordSpend, spentLast24h } from "../spend-ledger.js";
 import { createTabLane } from "../tabs/lane.js";
+import { createPurchaseAttemptStore } from "../purchase-attempt-ledger.js";
 
 /**
  * CLI entrypoint for the `opendexter fetch` and `opendexter pay`
@@ -13,10 +18,10 @@ import { createTabLane } from "../tabs/lane.js";
  * shared @dexterai/x402-mcp-tools package and are mounted in
  * src/server/index.ts. This file owns only the npm-CLI-flavored output.
  *
- * Payment order: when the 402 offers scheme 'tab' AND this CLI custodies
- * an active grant for the seller (`opendexter tab connect`), the call pays
- * by tab voucher; otherwise exact, exactly as before. `--no-tab` forces
- * the exact path.
+ * New calls pass one prepared purchase from `opendexter check`; its explicit
+ * mode selects exactly one adapter and never falls through to another mode.
+ * Calls without `--purchase` retain the prior automatic Tab/Exact behavior
+ * for compatibility only.
  */
 export async function cliFetch(
   url: string,
@@ -25,6 +30,8 @@ export async function cliFetch(
     body?: string;
     dev: boolean;
     maxAmountUsdc?: number;
+    maxAmountAtomic?: string;
+    purchase?: string;
     noTab?: boolean;
   },
 ): Promise<void> {
@@ -38,17 +45,31 @@ export async function cliFetch(
       spentLast24hUsdc: spentLast24h(),
       recordSpend,
     };
+    let purchase: PreparedPurchaseV1 | undefined;
+    if (opts.purchase) {
+      const parsed = preparedPurchaseSchema.safeParse(JSON.parse(opts.purchase));
+      if (!parsed.success) {
+        throw new Error("--purchase must contain one preparedPurchase returned by opendexter check");
+      }
+      purchase = parsed.data as PreparedPurchaseV1;
+      if (!opts.maxAmountAtomic) {
+        throw new Error("--max-amount-atomic is required with --purchase");
+      }
+    }
     const tabLane = opts.noTab
       ? null
       : createTabLane({
           getMaxAmountUsdc: () => effectiveMax,
           getBudgetRuntime: () => budgetRuntime,
         });
+    const purchaseAttempts = createPurchaseAttemptStore();
     const result = await x402Fetch(
-      { url, method: opts.method, body: opts.body },
+      { url, method: opts.method, body: opts.body, purchase },
       adapter,
       {
         maxAmountUsdc: effectiveMax,
+        maxAmountAtomic: opts.maxAmountAtomic,
+        purchaseAttempts,
         dailyBudgetUsdc: settings.dailyBudgetUsdc,
         spentLast24hUsdc: budgetRuntime.spentLast24hUsdc,
         recordSpend,

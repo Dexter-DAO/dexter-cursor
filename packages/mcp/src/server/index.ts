@@ -11,6 +11,7 @@ import { loadOrCreateWallet } from "../wallet/index.js";
 import { createNpmWalletAdapter } from "../wallet/adapter.js";
 import { loadSettings } from "../settings.js";
 import { recordSpend, spentLast24h } from "../spend-ledger.js";
+import { createPurchaseAttemptStore } from "../purchase-attempt-ledger.js";
 import { createTabLane } from "../tabs/lane.js";
 import { registerSettingsTool } from "../tools/settings.js";
 import { registerWidgetResources } from "../resources/widgets.js";
@@ -78,6 +79,7 @@ export async function startServer(opts: ServerOptions): Promise<void> {
       recordSpend,
     }),
   });
+  const purchaseAttempts = createPurchaseAttemptStore();
 
   composeAllTools(server, {
     apiBaseUrl: getApiBase(opts.dev),
@@ -96,6 +98,7 @@ export async function startServer(opts: ServerOptions): Promise<void> {
       recordSpend,
     }),
     getTabLane: () => tabLane,
+    getPurchaseAttemptStore: () => purchaseAttempts,
     walletlessHint:
       "Configure DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (Base/Polygon/etc) for automatic settlement.",
     noWalletTip:

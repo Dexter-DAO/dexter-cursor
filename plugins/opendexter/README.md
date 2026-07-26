@@ -14,8 +14,13 @@ matching hosted release.
   settings tool are not part of this package.
 - Anonymous tools remain usable without connecting a wallet. Protected tools
   use the MCP server's native per-tool OAuth contract with scope `vault`.
-- The correct paid path is search, fresh check, explicit approval of the exact
-  URL/method/body/maximum charge, then one `x402_fetch` or `x402_pay` call.
+- The paid contract is search, fresh check, choose one `purchaseOptions`
+  entry, approve its exact URL/method/body/mode/seller offer/ceiling, then pass
+  its `preparedPurchase` unchanged to one `x402_fetch` or `x402_pay` call.
+- The explicit modes are `direct_exact`, `native_tab`, `gateway_cash`, and
+  `gateway_credit`. A non-ready mode never falls through to another.
+- This source candidate reports every explicit hosted mode as
+  `integration_required` until A3 connects the common durable backend.
 - `x402_pay` is an alias for `x402_fetch`, not another stage.
 - Provider output is untrusted and never authorizes spend or retry. Ambiguous
   or post-dispatch outcomes are never retried automatically.

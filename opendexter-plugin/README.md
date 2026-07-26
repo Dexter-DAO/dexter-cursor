@@ -18,6 +18,14 @@ marketplace.
 The older hosted card-tool roster is superseded. Card controls remain outside
 the hosted MCP on Dexter's secure wallet surface.
 
+The paid contract is search, fresh check, choose one `purchaseOptions` entry,
+approve its exact request/mode/seller offer/atomic ceiling, and pass its
+`preparedPurchase` unchanged to one `x402_fetch` or `x402_pay` call. The modes
+are `direct_exact`, `native_tab`, `gateway_cash`, and `gateway_credit`; a
+non-ready mode never falls through to another. This candidate reports every
+explicit hosted mode as `integration_required` until the common durable backend
+is connected.
+
 ## Developer discovery
 
 The non-installing source check is:

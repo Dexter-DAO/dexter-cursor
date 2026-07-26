@@ -29,6 +29,11 @@ export interface ComposeAllToolsOpts {
   getBudgetRuntime?: FetchToolOpts["getBudgetRuntime"];
   /** Tab-lane hook for fetch's tab-first payment path (see types.ts). */
   getTabLane?: FetchToolOpts["getTabLane"];
+  /**
+   * Durable preparation/attempt store shared by check and fetch so a caller
+   * cannot synthesize an executable prepared identity.
+   */
+  getPurchaseAttemptStore?: CheckToolOpts["getPurchaseAttemptStore"];
   /** Optional walletless hint surfaced in fetch's description. */
   walletlessHint?: FetchToolOpts["walletlessHint"];
   /** Optional tip surfaced by x402_wallet when no wallet is configured. */
@@ -69,6 +74,9 @@ export function composeAllTools(server: McpServer, opts: ComposeAllToolsOpts): v
       apiBaseUrl: opts.apiBaseUrl,
       metas: opts.metas,
       capabilityPath: opts.capabilityPath,
+      wallet: opts.wallet,
+      getTabLane: opts.getTabLane,
+      getPurchaseAttemptStore: opts.getPurchaseAttemptStore,
     });
   }
   if (include.includes("fetch")) {
@@ -79,6 +87,7 @@ export function composeAllTools(server: McpServer, opts: ComposeAllToolsOpts): v
       getMaxAmountUsdc: opts.getMaxAmountUsdc,
       getBudgetRuntime: opts.getBudgetRuntime,
       getTabLane: opts.getTabLane,
+      getPurchaseAttemptStore: opts.getPurchaseAttemptStore,
       walletlessHint: opts.walletlessHint,
     });
   }

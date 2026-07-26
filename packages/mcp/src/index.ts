@@ -106,11 +106,17 @@ async function main() {
           .option("method", {
             choices: ["GET", "POST", "PUT", "DELETE"] as const,
             default: "GET" as const,
+          })
+          .option("body", {
+            type: "string",
+            description:
+              "Exact JSON object to price for POST/PUT/DELETE. Required for an execution-bound prepared purchase.",
           }),
       async (args) => {
         const { cliCheck } = await import("./tools/check.js");
         await cliCheck(args.url!, {
           method: args.method,
+          body: args.body,
           dev: args.dev,
         });
       },
@@ -214,7 +220,7 @@ async function main() {
     )
     .command(
       "fetch <url>",
-      "Fetch an x402-protected resource with automatic payment (tab-first when a tab is open with the seller)",
+      "Fetch an x402 resource using an explicit prepared purchase mode",
       (y) =>
         y
           .positional("url", { type: "string", demandOption: true })
@@ -224,14 +230,23 @@ async function main() {
           })
           .option("max-amount", {
             type: "number",
-            description: "Optional per-call spend cap override in USDC",
+            description: "Legacy local settings override in display USDC",
+          })
+          .option("max-amount-atomic", {
+            type: "string",
+            description: "User-approved atomic ceiling; required with --purchase",
+          })
+          .option("purchase", {
+            type: "string",
+            description:
+              "Prepared purchase JSON returned by `opendexter check` (direct_exact, native_tab, gateway_cash, or gateway_credit)",
           })
           .option("body", { type: "string", description: "JSON request body" })
           .option("tab", {
             type: "boolean",
             default: true,
             description:
-              "Pay via an open tab when the seller offers one (--no-tab forces exact)",
+              "Legacy compatibility only when --purchase is omitted",
           }),
       async (args) => {
         const { cliFetch } = await import("./tools/fetch.js");
@@ -239,6 +254,8 @@ async function main() {
           method: args.method,
           body: args.body,
           maxAmountUsdc: args["max-amount"],
+          maxAmountAtomic: args["max-amount-atomic"],
+          purchase: args.purchase,
           noTab: args.tab === false,
           dev: args.dev,
         });
@@ -389,14 +406,23 @@ async function main() {
           })
           .option("max-amount", {
             type: "number",
-            description: "Optional per-call spend cap override in USDC",
+            description: "Legacy local settings override in display USDC",
+          })
+          .option("max-amount-atomic", {
+            type: "string",
+            description: "User-approved atomic ceiling; required with --purchase",
+          })
+          .option("purchase", {
+            type: "string",
+            description:
+              "Prepared purchase JSON returned by `opendexter check` (direct_exact, native_tab, gateway_cash, or gateway_credit)",
           })
           .option("body", { type: "string", description: "JSON request body" })
           .option("tab", {
             type: "boolean",
             default: true,
             description:
-              "Pay via an open tab when the seller offers one (--no-tab forces exact)",
+              "Legacy compatibility only when --purchase is omitted",
           }),
       async (args) => {
         const { cliFetch } = await import("./tools/fetch.js");
@@ -404,6 +430,8 @@ async function main() {
           method: args.method,
           body: args.body,
           maxAmountUsdc: args["max-amount"],
+          maxAmountAtomic: args["max-amount-atomic"],
+          purchase: args.purchase,
           noTab: args.tab === false,
           dev: args.dev,
         });

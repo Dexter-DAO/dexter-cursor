@@ -5,34 +5,17 @@
 <h1 align="center">@dexterai/x402-mcp-tools</h1>
 
 <p align="center">
-  <strong>Shared MCP tool registrations for the Dexter ecosystem.</strong>
+  <strong>Composable MCP registrations for finding, pricing, and calling x402 services.</strong>
 </p>
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/@dexterai/x402-mcp-tools"><img src="https://img.shields.io/npm/v/@dexterai/x402-mcp-tools.svg" alt="npm"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E=18-brightgreen.svg" alt="Node"></a>
-  <a href="https://dexter.cash"><img src="https://img.shields.io/badge/Marketplace-dexter.cash-blueviolet" alt="Marketplace"></a>
-</p>
+This is the shared registration library used by the local
+[`@dexterai/opendexter`](https://www.npmjs.com/package/@dexterai/opendexter)
+CLI/MCP package. It provides tool schemas and adapters; it does not provide a
+wallet, durable store, or hosted account by itself.
 
-<p align="center">
-  <a href="https://dexter.cash"><strong>Browse Dexter →</strong></a>
-</p>
-
----
-
-## What is `@dexterai/x402-mcp-tools`?
-
-The shared tool-registration layer for every Dexter MCP surface. One `register*Tool` function per tool, plus an adapter contract that lets each consumer wire its own wallet, session, and storage backend behind a uniform interface.
-
-Today this package powers three production surfaces:
-
-- **[`@dexterai/opendexter`](https://www.npmjs.com/package/@dexterai/opendexter)** — the npm CLI that exposes Dexter's full toolset to local AI clients (Cursor, Claude Code, Codex, VS Code, etc.).
-- **The hosted public MCP server** at `https://open.dexter.cash/mcp` — anonymous session-bound wallets.
-- **The hosted authenticated MCP server** — Supabase-managed wallets for signed-in users.
-
-All three consume the same registrars from this package. Their tool surfaces look identical to clients because the *logic* is shared; what differs is each consumer's wallet adapter, session storage, and widget URI scheme.
-
----
+The hosted OpenDexter connector has its own reviewed server lineage. Sharing a
+wire contract does not mean the local and hosted runtimes have identical wallet
+or execution capabilities.
 
 ## Install
 
@@ -40,145 +23,138 @@ All three consume the same registrars from this package. Their tool surfaces loo
 npm install @dexterai/x402-mcp-tools
 ```
 
-Peer-friendly with `@dexterai/dextercard`, `@dexterai/x402-core`, and `@modelcontextprotocol/sdk`.
-
-## Quickstart
+## Register the x402 tools
 
 ```ts
 import {
-  composeAllTools,
-  composeCardTools,
   buildToolMetas,
-  buildCardToolMetas,
+  composeAllTools,
 } from "@dexterai/x402-mcp-tools";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const server = new McpServer({ name: "my-dexter-server", version: "1.0.0" });
+const server = new McpServer({
+  name: "my-opendexter-server",
+  version: "1.0.0",
+});
 
-// x402 tools (search, check, fetch, access, wallet)
 composeAllTools(server, {
   apiBaseUrl: "https://x402.dexter.cash",
-  metas: buildToolMetas(myWidgetUris),
-  wallet: myWalletAdapter,
-});
-
-// Dextercard tools (status, issue, link-wallet, freeze)
-composeCardTools(server, {
-  cards: myCardsAdapter,
-  metas: buildCardToolMetas(myCardWidgetUris),
+  metas: buildToolMetas(widgetUris),
+  wallet,
+  getTabLane,
+  getPurchaseAttemptStore,
+  getMaxAmountUsdc,
+  getBudgetRuntime,
 });
 ```
 
----
+`composeAllTools` installs five registrar families. The fetch registrar exposes
+both `x402_fetch` and its exact alias `x402_pay`, for six MCP tool names:
 
-## Tools
+| Tool | What it does | Can move money |
+|---|---|---|
+| `x402_search` | Finds services by capability | No |
+| `x402_check` | Reads current terms and prepares explicit purchase choices | No payment |
+| `x402_access` | Presents a wallet-control proof to SIWX services | No payment |
+| `x402_fetch` | Executes one approved prepared purchase | Yes |
+| `x402_pay` | Exact alias of `x402_fetch` | Yes |
+| `x402_wallet` | Reads the injected wallet view | No |
 
-This package exposes nine MCP tools across two domains.
+There are no Dextercard MCP registrars. Card operations retained in this
+package support non-tool wallet/card surfaces and legacy consumers only.
 
-### x402 Marketplace Tools
+## The purchase contract
 
-| Tool | Description |
-|------|-------------|
-| `x402_search` | Semantic capability search over the Dexter x402 marketplace. Returns strong + related matches with synonym expansion and cross-encoder LLM rerank. |
-| `x402_check` | Probe an endpoint for x402 payment requirements without paying. Returns pricing per chain plus input/output schemas. |
-| `x402_fetch` | Call any x402 endpoint with automatic USDC settlement. |
-| `x402_pay` | Alias of `x402_fetch` for clients that want an explicit payment verb. |
-| `x402_access` | Access identity-gated endpoints with Sign-In-With-X (Solana / EVM) instead of payment. |
-| `x402_wallet` | Show wallet addresses, USDC balances per chain, and deposit hints. |
+`x402_check` returns `purchaseOptions`. Each option uses one explicit mode:
 
-### Dextercard Tools
+- `direct_exact`
+- `native_tab`
+- `gateway_cash`
+- `gateway_credit`
 
-| Tool | Description |
-|------|-------------|
-| `card_status` | Show current card state: stage indicator, account, card metadata, linked wallets, recent transactions. |
-| `card_issue` | Stage-aware issuance orchestrator. Takes the next correct action automatically based on the user's current onboarding state. |
-| `card_link_wallet` | Authorize a wallet to fund card transactions up to a per-wallet cap. |
-| `card_freeze` | Pause or resume the card with a single `frozen: boolean` argument. |
+The option preserves:
 
----
+- the original and resolved public HTTPS URL;
+- method and request-body digest;
+- the complete seller accept through `rawAcceptSha256`;
+- network, asset, atomic amount, recipient, and expiry;
+- route, offer, mode, and prepared identities.
 
-## Adapter Contracts
+Amounts and ceilings are positive decimal strings. They are never reconstructed
+from display prices.
 
-Tools never reach into a global wallet, filesystem, or environment variable. Each consumer provides three adapters:
+A mode is `ready` only when its concrete wallet/adapter exists and its prepared
+identity has been written to the injected durable store. Missing capabilities
+produce `integration_required` or `unavailable`; a caller must not silently
+switch modes.
 
-### `WalletAdapter`
+After explicit approval, pass the selected option's `preparedPurchase`
+unchanged to `x402_fetch.purchase` and pass the approved atomic ceiling as
+`maxAmountAtomic`. MCP consumers normally call `composeAllTools` and inject the
+same durable store into check and fetch.
 
-Resolves balances and signers for the active session. Implementations:
-- **npm CLI**: file-backed local keypair at `~/.dexterai-mcp/wallet.json`
-- **hosted public**: session-bound anonymous wallet
-- **hosted authed**: Supabase-managed managed wallet
+## Required adapters
 
-```ts
-interface WalletAdapter {
-  getInfo(): WalletInfo;
-  getAvailableUsdc(network: string): Promise<number>;
-  getAllBalances(): Promise<WalletBalances>;
-  getSolanaSigner(): SolanaSigner | null;
-  getEvmSigner(): EvmSigner | null;
-}
-```
+### Wallet
 
-### `CardsAdapter` and `CardOperations`
+`WalletAdapter` supplies verified balances and the signers that actually exist
+on the current surface. Passing `null` makes money execution unavailable.
 
-Resolves a {@link CardOperations} instance bound to the active user (or `null` when no session is configured). Returning `null` makes the card tools no-op gracefully with a configurable hint, instead of erroring.
+### Durable purchase store
 
-```ts
-interface CardsAdapter {
-  getOperations(): Promise<CardOperations | null> | CardOperations | null;
-  describe?(): Promise<string | null> | string | null;
-}
-```
+The preparation/attempt store must:
 
-`CardOperations` is the small subset of the Dextercard SDK surface that the registrars actually call — exposed as an interface so consumers can plug in either:
+1. persist a prepared identity before check reports it as ready;
+2. atomically claim that same identity before execution;
+3. mark dispatching before sending a proof or voucher;
+4. preserve terminal and reconciliation receipts;
+5. reject caller-synthesized or mismatched identities.
 
-- `LocalCardOperations(dextercardClient)` — wraps a real `Dextercard` instance (npm CLI; any environment that holds the carrier session in-process).
-- `createRemoteCardOperations({ baseUrl, userId, hmacSecret })` — calls a remote `/internal/dextercard/*` HMAC-gated surface (hosted MCP servers that intentionally don't hold carrier sessions in-process). Translates HTTP errors back to the SDK's typed exceptions, so registrars work identically with either adapter.
+There is intentionally no in-memory fallback for explicit purchases.
 
-> **Migrating from 0.2.x:** `getClient(): Dextercard | null` was renamed to `getOperations(): CardOperations | null`. To preserve old behavior, wrap your existing Dextercard with `new LocalCardOperations(dextercard)`.
+### Native Tab
 
-### Widget URIs
+`getTabLane` supplies the local Native Tab executor. If it is absent,
+`native_tab` is not ready. Native Tab never falls through to Direct Exact after
+selection or consequential dispatch.
 
-Each consumer computes its own content-hashed `ui://` URIs (typically by SHA-1 of the widget HTML). The `buildToolMetas` and `buildCardToolMetas` helpers turn those URIs into the dual-format metadata blobs that work with both the MCP Apps standard (Cursor, Claude Desktop, VS Code) and the OpenAI Apps SDK (ChatGPT).
+## Receipts and retries
 
-```ts
-const metas = buildCardToolMetas({
-  status: "ui://dexter/card-status-abc12345",
-  issue: "ui://dexter/card-issue-def67890",
-  linkWallet: "ui://dexter/card-link-wallet-ghi13579",
-});
-```
+Receipts keep four different facts separate:
 
----
+- Direct Exact seller settlement;
+- Native Tab voucher acceptance and seller cash settlement;
+- Gateway cash commitment and seller settlement;
+- Gateway credit exposure, buyer obligation, and seller settlement.
 
-## Compose Helpers
+An unknown or post-dispatch outcome is reconciliation-only. Do not
+automatically send the request again. A new prepared identity is not permission
+to duplicate an uncertain prior attempt.
 
-Most consumers register tools with one call.
+See [PURCHASE-CONTRACT.md](./PURCHASE-CONTRACT.md) for the typed integration
+contract.
 
-| Helper | Tools registered |
-|--------|------------------|
-| `composeAllTools(server, opts)` | x402_search, x402_check, x402_fetch, x402_access, x402_wallet |
-| `composeCardTools(server, opts)` | card_status, card_issue, card_link_wallet, card_freeze |
+## Widget metadata
 
-Both helpers accept an optional `include` array if you want to surface only a subset.
+`buildToolMetas` creates the dual metadata used by MCP Apps hosts and ChatGPT
+Apps SDK hosts. Each consumer supplies its own content-hashed `ui://` resource
+URIs.
 
----
+## Package boundary
 
-## Status
+This package contains registrars and contracts. It does not:
 
-`0.x.x` — surface stable, breaking changes pre-1.0 will be called out in the changelog. The Dextercard tools were added in `0.2.x` and depend on `@dexterai/dextercard@^0.3.0`.
-
----
+- create or migrate wallets;
+- choose a user's funding mode;
+- implement Gateway/CrossPay;
+- provide the hosted OpenDexter OAuth connector;
+- deploy, publish, or mutate a running MCP server.
 
 ## Links
 
-- [@dexterai/opendexter](https://www.npmjs.com/package/@dexterai/opendexter) — the npm CLI that consumes this package
-- [@dexterai/dextercard](https://www.npmjs.com/package/@dexterai/dextercard) — the card-issuance SDK
-- [@dexterai/x402-core](https://www.npmjs.com/package/@dexterai/x402-core) — the underlying HTTP/format layer
-- [Dexter Marketplace](https://dexter.cash)
-- [Dexter Facilitator](https://x402.dexter.cash)
-- [x402 Protocol](https://x402.org)
-- [Twitter](https://twitter.com/dexteraisol)
-- [Telegram](https://t.me/dexterdao)
+- [OpenDexter local package](https://www.npmjs.com/package/@dexterai/opendexter)
+- [Dexter](https://dexter.cash)
+- [x402](https://x402.org)
 
 ## License
 

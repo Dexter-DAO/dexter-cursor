@@ -11,6 +11,20 @@
 
 import type { ToolMetas } from "./widget-meta.js";
 import type { WalletAdapter, GetMaxAmountUsdc } from "./wallet-adapter.js";
+import type {
+  PreparedPurchaseV1,
+  PurchaseAttemptStoreV1,
+} from "./purchase-contract.js";
+
+export interface PurchasePreparationStoreV1
+  extends PurchaseAttemptStoreV1 {
+  /**
+   * Persist a check-produced prepared identity before the option is
+   * advertised as executable. Implementations must fail closed on an
+   * identity collision or unavailable durable storage.
+   */
+  prepare(purchase: PreparedPurchaseV1): void;
+}
 
 export interface ToolBaseOpts {
   /** Resolved API base URL (e.g. https://x402.dexter.cash). No trailing slash. */
@@ -27,6 +41,18 @@ export interface SearchToolOpts extends ToolBaseOpts {
 export interface CheckToolOpts extends ToolBaseOpts {
   /** Capability search path appended to apiBaseUrl. Default: /api/x402gle/capability */
   capabilityPath?: string;
+  /** Wallet whose actual Direct Exact signing capabilities gate readiness. */
+  wallet?: WalletAdapter | null;
+  /** Native Tab executor capability, resolved fresh for each pricing result. */
+  getTabLane?: () => TabLaneHook | null | undefined;
+  /**
+   * Durable preparation/attempt store. Direct Exact and Native Tab are not
+   * advertised as ready unless their exact prepared identity is recorded.
+   */
+  getPurchaseAttemptStore?: () =>
+    | PurchasePreparationStoreV1
+    | null
+    | undefined;
 }
 
 export interface FetchToolOpts extends ToolBaseOpts {
@@ -64,6 +90,12 @@ export interface FetchToolOpts extends ToolBaseOpts {
    * exact path — the lane decides whether a stored tab covers the seller.
    */
   getTabLane?: () => TabLaneHook | null | undefined;
+  /**
+   * Durable prepared-identity store. Required for every explicit
+   * direct_exact or native_tab execution; there is intentionally no
+   * in-memory fallback.
+   */
+  getPurchaseAttemptStore?: () => PurchaseAttemptStoreV1 | null | undefined;
 }
 
 /** The request slice a tab lane needs to re-issue the call with a voucher. */
@@ -72,6 +104,12 @@ export interface TabLaneRequest {
   method: string;
   headers?: Record<string, string>;
   body?: string;
+  /**
+   * Route-bound transport for an explicit Native Tab purchase. B-owned lanes
+   * must use this instead of global fetch so DNS and redirect policy cannot
+   * change between pricing and the voucher-bearing request.
+   */
+  externalFetch?: typeof fetch;
 }
 
 /**
