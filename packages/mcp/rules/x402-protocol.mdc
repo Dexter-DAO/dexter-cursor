@@ -21,5 +21,9 @@ x402-protocol:
 - Amounts are always in atomic units. 1 USDC = `1000000` (6 decimals).
 - The Dexter facilitator at `https://x402.dexter.cash` handles verification and on-chain settlement. Endpoints: `/verify`, `/settle`, `/supported`, `/healthz`.
 - The SDK package is `@dexterai/x402` with subpath exports: `/client`, `/server`, `/react`, `/adapters`, `/utils`.
-- The MCP gateway is `@dexterai/opendexter` — install with `npx @dexterai/opendexter install`.
+- The local MCP/CLI package is `@dexterai/opendexter` — configure it with
+  `npx @dexterai/opendexter@latest setup`.
 - Seven tools: `x402_search` (find APIs), `x402_check` (see pricing), `x402_fetch` (call and pay), `x402_pay` (alias for fetch), `x402_wallet` (check balance), `x402_access` (wallet-auth endpoints), `x402_settings` (spending limits).
+- A current check returns explicit `purchaseOptions`. Execute only a ready
+  option, preserve its `preparedPurchase`, and never silently fall back to a
+  different purchase mode.

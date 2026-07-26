@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 /**
- * Post-build: copy the 4 x402 widget HTML files into dist/widgets/
+ * Post-build: copy the four registered x402 widget HTML files into dist/widgets/
  * so they ship inside the @dexterai/opendexter package.
  *
  * These are served as MCP Apps ui:// resources at runtime.
  *
  * Source priority:
- *   1. DEXTER_MCP_ROOT env var (explicit override)
- *   2. ../../../dexter-mcp/public/apps-sdk (sibling repo on dev machines)
- *   3. ./assets/widgets (committed fallback copies — STALE WARNING)
+ *   1. DEXTER_WIDGET_SOURCE env var (exact directory containing all 4 HTML)
+ *   2. DEXTER_MCP_ROOT/public/apps-sdk (legacy repository override)
+ *   3. ../../../dexter-mcp/public/apps-sdk (sibling repo on dev machines)
+ *   4. ./assets/widgets (committed fallback copies — STALE WARNING)
  */
 
-import { cpSync, mkdirSync, existsSync, statSync } from 'node:fs';
+import { cpSync, mkdirSync, existsSync, rmSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,10 +25,11 @@ const WIDGETS = [
   'x402-fetch-result.html',
   'x402-pricing.html',
   'x402-wallet.html',
-  'card-status.html',
-  'card-issue.html',
-  'card-link-wallet.html',
 ];
+
+const EXPLICIT_SOURCE = process.env.DEXTER_WIDGET_SOURCE
+  ? resolve(process.env.DEXTER_WIDGET_SOURCE)
+  : null;
 
 const LIVE_SOURCE = process.env.DEXTER_MCP_ROOT
   ? join(process.env.DEXTER_MCP_ROOT, 'public', 'apps-sdk')
@@ -35,13 +37,28 @@ const LIVE_SOURCE = process.env.DEXTER_MCP_ROOT
 
 const FALLBACK_SOURCE = join(PKG_ROOT, 'assets', 'widgets');
 
-const liveExists = existsSync(join(LIVE_SOURCE, WIDGETS[0]));
-const fallbackExists = existsSync(join(FALLBACK_SOURCE, WIDGETS[0]));
+const hasEveryWidget = (dir) =>
+  WIDGETS.every((file) => existsSync(join(dir, file)));
+const liveExists = hasEveryWidget(LIVE_SOURCE);
+const fallbackExists = hasEveryWidget(FALLBACK_SOURCE);
 
 let srcDir;
 let usingFallback = false;
 
-if (liveExists) {
+if (EXPLICIT_SOURCE) {
+  const missing = WIDGETS.filter(
+    (file) => !existsSync(join(EXPLICIT_SOURCE, file)),
+  );
+  if (missing.length > 0) {
+    console.error('');
+    console.error(`FATAL: DEXTER_WIDGET_SOURCE is incomplete: ${EXPLICIT_SOURCE}`);
+    for (const file of missing) console.error(`  Missing: ${file}`);
+    console.error('');
+    process.exit(1);
+  }
+  srcDir = EXPLICIT_SOURCE;
+  console.log(`Widget source: ${srcDir} (explicit DEXTER_WIDGET_SOURCE)`);
+} else if (liveExists) {
   srcDir = LIVE_SOURCE;
   console.log(`Widget source: ${srcDir} (live from dexter-mcp build)`);
 } else if (fallbackExists) {
@@ -68,21 +85,20 @@ if (liveExists) {
   process.exit(1);
 }
 
+// Recreate the directory so a retired widget from an earlier build cannot
+// survive and leak into the next package.
+rmSync(DEST, { recursive: true, force: true });
 mkdirSync(DEST, { recursive: true });
 
 let copied = 0;
 for (const file of WIDGETS) {
   const src = join(srcDir, file);
-  if (existsSync(src)) {
-    cpSync(src, join(DEST, file));
-    copied++;
-    const age = usingFallback
-      ? ` (fallback copy from ${statSync(src).mtime.toISOString().slice(0, 10)})`
-      : '';
-    console.log(`  ✓ ${file}${age}`);
-  } else {
-    console.error(`  ✗ MISSING: ${file} — this widget will have NO renderer`);
-  }
+  cpSync(src, join(DEST, file));
+  copied++;
+  const age = usingFallback
+    ? ` (fallback copy from ${statSync(src).mtime.toISOString().slice(0, 10)})`
+    : '';
+  console.log(`  ✓ ${file}${age}`);
 }
 
 console.log(`\nCopied ${copied}/${WIDGETS.length} widget HTML files to dist/widgets/`);

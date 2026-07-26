@@ -39,6 +39,7 @@ export {
   LocalCardOperations,
   type CardOperations,
 } from "./card-operations.js";
+export type { CardsAdapter } from "./cards-adapter.js";
 export {
   createRemoteCardOperations,
   DextercardLoginRequiredError,

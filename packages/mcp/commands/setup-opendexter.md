@@ -1,59 +1,67 @@
 ---
 name: setup-opendexter
-description: Install the OpenDexter MCP server to give your AI agent x402 payment tools.
+description: Configure the local OpenDexter MCP server and verify its seven-tool surface.
 ---
 
 # Install OpenDexter MCP
 
-Set up the x402 gateway so your AI agent can search, price-check, and pay for any x402 API.
+Set up the local OpenDexter server so the agent can search compatible x402
+services, inspect current terms, and execute one explicitly selected purchase.
 
 ## Steps
 
-1. Run the installer — it auto-detects your AI client and writes the MCP config:
+1. Run the guided setup:
 
 ```bash
-npx @dexterai/opendexter@latest install
+npx @dexterai/opendexter@latest setup
 ```
 
-Supports: Cursor, Claude Code, Codex, VS Code, Windsurf, Gemini CLI. Claude Code gets full plugin support (MCP server + 6 skills) in a single install.
+To target one client, use:
 
-2. The installer creates two wallets (Solana + EVM) at `~/.dexterai-mcp/wallet.json`. Note both addresses it prints.
-
-3. Fund either wallet with USDC. Send to the Solana or EVM address from step 2.
-
-4. Verify it works — in your AI client, ask the agent to run:
-
-```
-x402_wallet
+```bash
+npx @dexterai/opendexter@latest install --client cursor
 ```
 
-It should show your wallet address and USDC balance.
+Supported client names are `cursor`, `claude-code`, `codex`, `vscode`,
+`windsurf`, and `gemini-cli`. Codex uses TOML, so the installer prints the
+exact block instead of editing it.
 
-5. Test a search:
+2. Verify discovery by asking the client to list the OpenDexter tools. The
+local runtime has exactly seven:
+
+`x402_search`, `x402_check`, `x402_access`, `x402_fetch`, `x402_pay`,
+`x402_wallet`, and `x402_settings`.
+
+3. Run `x402_wallet`. A failed balance read is unavailable, not zero. Fund only
+a receive address returned by the current wallet result and only on a network
+accepted by the current endpoint check.
+
+4. Test the non-paying path:
 
 ```
-x402_search("test")
+x402_search("extract tables from a PDF")
 ```
 
-## Manual Configuration
+Choose one result, then call `x402_check` for its exact URL, HTTP method, and
+request body. Search does not authorize payment.
 
-If the installer doesn't support your client, add this to your MCP config:
+5. For a paid call, choose only a `purchaseOption` whose `availability.state`
+is `ready`. Preserve its `preparedPurchase` unchanged and obtain approval for
+the atomic ceiling before calling `x402_fetch`. Never switch among
+`direct_exact`, `native_tab`, `gateway_cash`, or `gateway_credit` after
+selection. Never automatically retry after consequential dispatch.
 
-```json
-{
-  "mcpServers": {
-    "opendexter": {
-      "command": "npx",
-      "args": ["-y", "@dexterai/opendexter@latest"]
-    }
-  }
-}
-```
+## Authority boundary
 
-## Environment Variables
+The local server pays with the local wallet file or configured environment
+keys. The optional `connect` flow is view-only for hosted wallet reads and
+does not change the local payment signer.
 
 | Variable | Description |
 |----------|-------------|
 | `DEXTER_PRIVATE_KEY` | Override wallet (base58 Solana private key) |
 | `SOLANA_PRIVATE_KEY` | Alias for DEXTER_PRIVATE_KEY |
+| `EVM_PRIVATE_KEY` | Override EVM wallet (0x-prefixed private key) |
 | `SOLANA_RPC_URL` | Custom Solana RPC endpoint |
+
+Never ask the user to paste a private key into the conversation.

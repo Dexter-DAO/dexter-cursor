@@ -190,25 +190,3 @@ export interface WalletToolOpts extends ToolBaseOpts {
 
 /** Default capability search path on dexter-api. */
 export const DEFAULT_CAPABILITY_PATH = "/api/x402gle/capability";
-
-/**
- * Options shared by all four card tool registrars. Consumers build
- * one of these, pass it to {@link composeCardTools} or each
- * registrar individually.
- */
-export interface CardToolOpts {
-  /**
-   * Adapter that resolves the active Dextercard client. Pass null at
-   * the consumer level to skip card tools entirely (the helpers
-   * gracefully no-op when adapter.getClient() returns null).
-   */
-  cards: import("./cards-adapter.js").CardsAdapter | null;
-  /** Pre-built widget metadata blobs for the card tools. */
-  metas: import("./card-widget-meta.js").CardToolMetas;
-  /**
-   * Optional one-line tip surfaced when no Dextercard session is
-   * configured. Lets the npm CLI show a different hint than hosted
-   * servers (e.g., "Run `dextercard login` first").
-   */
-  noSessionTip?: string;
-}

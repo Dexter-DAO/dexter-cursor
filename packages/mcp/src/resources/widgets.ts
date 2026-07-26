@@ -132,8 +132,6 @@ export function registerWidgetResources(server: McpServer): void {
                   connectDomains: [
                     "https://x402.dexter.cash",
                     "https://dexter.cash",
-                    // Dextercard widgets may fetch live status updates from the carrier.
-                    "https://agents.moonpay.com",
                   ],
                 },
               },

@@ -22,6 +22,10 @@ x402-coding:
   - `insufficient_balance`, `payment_rejected`, `missing_fee_payer`, `no_matching_payment_option`
 - Solana payments require `feePayer` in the `extra` field (provided by the facilitator). EVM payments do not.
 - `wrapFetch` supports dual-chain: pass `walletPrivateKey` for Solana and `evmPrivateKey` for EVM simultaneously.
-- When using OpenDexter tools, follow this workflow: `x402_search` → `x402_check` → `x402_fetch` → `x402_wallet` when needed.
-- Most marketplace APIs cost $0.01–$0.10 per call. Creative/compute-heavy endpoints cost more.
+- When using OpenDexter tools, follow this workflow: `x402_search` →
+  `x402_check` → choose one ready `purchaseOption` → pass its unchanged
+  `preparedPurchase` and the approved `maxAmountAtomic` to `x402_fetch`.
+- Keep `direct_exact`, `native_tab`, `gateway_cash`, and `gateway_credit`
+  distinct. Never switch modes after selection or automatically retry after a
+  consequential or uncertain dispatch.
 - The local wallet lives at `~/.dexterai-mcp/wallet.json`. Override with `DEXTER_PRIVATE_KEY` or `SOLANA_PRIVATE_KEY` env vars.

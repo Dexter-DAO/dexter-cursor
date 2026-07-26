@@ -304,12 +304,19 @@ describe("siwx access flow", () => {
 describe("install config", () => {
   it("generates correct Cursor config", async () => {
     const { getClientConfig } = await import("../src/cli/install/clients.js");
+    const { VERSION } = await import("../src/config.js");
     const config = getClientConfig("cursor", false);
 
     expect(config.configPath).toContain(".cursor");
     expect(config.configPath).toContain("mcp.json");
     expect(config.sectionKey).toBe("mcpServers");
-    expect(config.entry).toEqual({ command: "npx", args: ["-y", "@dexterai/opendexter@latest"] });
+    expect(config.entry).toEqual({
+      command: "npx",
+      args: ["-y", `@dexterai/opendexter@${VERSION}`],
+    });
+    expect((config.entry as { args: string[] }).args).not.toContain(
+      "@dexterai/opendexter@latest",
+    );
     expect(config.manual).toBeUndefined();
   });
 
@@ -319,6 +326,23 @@ describe("install config", () => {
 
     expect(config.configPath).toContain(".claude.json");
     expect(config.sectionKey).toBe("mcpServers");
+  });
+
+  it("pins every generated non-Claude release config to this candidate version", async () => {
+    const { getClientConfig } = await import("../src/cli/install/clients.js");
+    const { VERSION } = await import("../src/config.js");
+    for (const client of [
+      "cursor",
+      "codex",
+      "vscode",
+      "windsurf",
+      "gemini-cli",
+    ] as const) {
+      expect(getClientConfig(client, false).entry).toEqual({
+        command: "npx",
+        args: ["-y", `@dexterai/opendexter@${VERSION}`],
+      });
+    }
   });
 
   it("marks Codex as manual (TOML)", async () => {

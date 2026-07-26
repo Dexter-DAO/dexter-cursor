@@ -30,14 +30,15 @@ function walk(dir) {
   return out;
 }
 
-let found = [];
+let files = [];
 try {
-  found = walk(DIST).filter((f) => f.endsWith(".map"));
+  files = walk(DIST);
 } catch (err) {
   console.error(`[check-no-sourcemaps] dist/ unreadable: ${err.message}`);
   process.exit(1);
 }
 
+const found = files.filter((f) => f.endsWith(".map"));
 if (found.length > 0) {
   console.error("[check-no-sourcemaps] ABORTING: sourcemaps found in dist/");
   for (const f of found) console.error("  - " + relative(ROOT, f));
@@ -47,4 +48,19 @@ if (found.length > 0) {
   process.exit(1);
 }
 
-console.log("[check-no-sourcemaps] dist/ is sourcemap-free ✓");
+const retiredRegistrars = files.filter((file) =>
+  /(?:^|[/\\])(?:compose-cards|card-widget-meta)\.d\.ts$|[/\\]tools[/\\]cards[/\\]/.test(
+    relative(ROOT, file),
+  ),
+);
+if (retiredRegistrars.length > 0) {
+  console.error(
+    "[check-no-sourcemaps] ABORTING: retired Dextercard registrar declarations found in dist/",
+  );
+  for (const file of retiredRegistrars) {
+    console.error("  - " + relative(ROOT, file));
+  }
+  process.exit(1);
+}
+
+console.log("[check-no-sourcemaps] dist/ has no sourcemaps or card registrar declarations ✓");

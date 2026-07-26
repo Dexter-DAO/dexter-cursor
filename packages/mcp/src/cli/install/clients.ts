@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
+import { VERSION } from "../../config.js";
 
 export type ClientId =
   | "cursor"
@@ -67,7 +68,7 @@ interface ClientConfig {
 
 const SERVER_CMD = {
   command: "npx",
-  args: ["-y", "@dexterai/opendexter@latest"],
+  args: ["-y", `@dexterai/opendexter@${VERSION}`],
 };
 
 const SERVER_CMD_DEV = {

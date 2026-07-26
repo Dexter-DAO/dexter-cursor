@@ -357,6 +357,26 @@ review the candidate routes before running it.
 To build an x402 client or server, use
 [`@dexterai/x402`](https://www.npmjs.com/package/@dexterai/x402).
 
+## Candidate verification
+
+The source checkout includes release checks that do not install a user plugin
+or contact the npm registry:
+
+```bash
+DEXTER_WIDGET_SOURCE=/absolute/path/to/pinned-vite-output npm run build
+npm run pack:verify
+npm pack --dry-run --json
+```
+
+`pack:verify` requires exactly the four registered x402 widget resources and
+rejects source maps, retired card widgets, and card-tool registrar
+declarations. To inspect a locally produced candidate tarball as a clean
+package fixture, without running it or contacting a service:
+
+```bash
+bash scripts/test-fresh-install.sh /absolute/path/to/dexterai-opendexter-VERSION.tgz
+```
+
 ## License
 
 MIT

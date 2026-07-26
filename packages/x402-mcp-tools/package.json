@@ -38,7 +38,6 @@
   "license": "MIT",
   "dependencies": {
     "@dexterai/dextercard": "^0.5.0",
-    "@dexterai/mcp-instructions": "^2.0.1",
     "@dexterai/x402": "^5.4.2",
     "@dexterai/x402-core": "^1.5.0",
     "@modelcontextprotocol/sdk": "^1.17.4",

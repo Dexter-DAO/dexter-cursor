@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { intro, outro, log, select, spinner } from "@clack/prompts";
 import chalk from "chalk";
+import { VERSION } from "../../config.js";
 import { loadOrCreateWallet } from "../../wallet/index.js";
 import { getClientConfig, CLIENTS, detectInstalledClients, type ClientId } from "./clients.js";
 import { buildClaudeCodeMcpCommand } from "./claude.js";
@@ -126,7 +127,7 @@ function installCursorPlugin(dev: boolean): { ok: boolean; message: string } {
   // Write mcp.json inside the plugin directory
   const mcpEntry = dev
     ? { command: "node", args: [process.cwd() + "/dist/index.js", "--dev"] }
-    : { command: "npx", args: ["-y", "@dexterai/opendexter@latest"] };
+    : { command: "npx", args: ["-y", `@dexterai/opendexter@${VERSION}`] };
 
   writeFileSync(
     join(target, "mcp.json"),
