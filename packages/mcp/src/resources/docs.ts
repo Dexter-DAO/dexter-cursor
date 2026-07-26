@@ -9,10 +9,9 @@
  * follows the pointer locally gets the doc, not resource-not-found
  * (drift register B4).
  *
- * `test/docs.test.ts` enforces that the served workflow names only the local
- * seven-tool roster. The installable skill is intentionally dual-surface
- * because the legacy Claude package currently links to the same skill source;
- * its exact hosted/local union is tested separately.
+ * `test/docs.test.ts` enforces that both the served workflow and installable
+ * npm skill name only the local seven-tool roster. Hosted Codex and Claude
+ * packages carry their own self-contained skills and do not share this source.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

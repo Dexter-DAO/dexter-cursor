@@ -1,0 +1,20 @@
+{
+  "name": "dexter",
+  "interface": {
+    "displayName": "Dexter"
+  },
+  "plugins": [
+    {
+      "name": "opendexter",
+      "source": {
+        "source": "local",
+        "path": "./plugins/opendexter"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Finance"
+    }
+  ]
+}

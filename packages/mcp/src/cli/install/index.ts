@@ -6,6 +6,7 @@ import { intro, outro, log, select, spinner } from "@clack/prompts";
 import chalk from "chalk";
 import { loadOrCreateWallet } from "../../wallet/index.js";
 import { getClientConfig, CLIENTS, detectInstalledClients, type ClientId } from "./clients.js";
+import { buildClaudeCodeMcpCommand } from "./claude.js";
 
 interface InstallOpts {
   client?: string;
@@ -143,11 +144,8 @@ function installCursorPlugin(dev: boolean): { ok: boolean; message: string } {
 }
 
 // ---------------------------------------------------------------------------
-// Claude Code plugin installation via CC CLI
+// Claude Code local MCP installation via CC CLI
 // ---------------------------------------------------------------------------
-
-const MARKETPLACE_REPO = "Dexter-DAO/opendexter-ide";
-const PLUGIN_ID = "opendexter";
 
 async function tryExec(cmd: string, args: string[]): Promise<{ ok: boolean; output: string }> {
   const { execFile } = await import("node:child_process");
@@ -162,44 +160,24 @@ async function tryExec(cmd: string, args: string[]): Promise<{ ok: boolean; outp
   });
 }
 
-async function installClaudeCodePlugin(): Promise<{ ok: boolean; message: string }> {
-  // Try shelling out to the CC CLI — works non-interactively
-  const addResult = await tryExec("claude", ["plugins", "marketplace", "add", MARKETPLACE_REPO]);
-
-  if (!addResult.ok) {
-    // claude CLI not on PATH or command failed — fall back to instructions
+async function installClaudeCodeMcp(dev: boolean): Promise<{ ok: boolean; message: string }> {
+  const command = buildClaudeCodeMcpCommand(dev);
+  const result = await tryExec(command.command, command.args);
+  if (!result.ok) {
     return {
       ok: false,
       message: [
-        "Could not run the Claude Code CLI automatically.",
+        `Could not add the local OpenDexter MCP through Claude Code: ${result.output}`,
         "",
-        "Run these commands manually to install the OpenDexter plugin:",
-        "",
-        `  claude plugins marketplace add ${MARKETPLACE_REPO}`,
-        `  claude plugins install ${PLUGIN_ID}`,
-        "",
-        "Then restart Claude Code.",
-      ].join("\n"),
-    };
-  }
-
-  const installResult = await tryExec("claude", ["plugins", "install", PLUGIN_ID]);
-
-  if (!installResult.ok) {
-    return {
-      ok: false,
-      message: [
-        `Marketplace added, but plugin install failed: ${installResult.output}`,
-        "",
-        "Try running manually:",
-        `  claude plugins install ${PLUGIN_ID}`,
+        "Run this command manually:",
+        `  ${command.command} ${command.args.join(" ")}`,
       ].join("\n"),
     };
   }
 
   return {
     ok: true,
-    message: `Plugin installed via Claude Code CLI (marketplace: ${MARKETPLACE_REPO})`,
+    message: "Local OpenDexter stdio MCP added to Claude Code at user scope",
   };
 }
 
@@ -284,17 +262,17 @@ export async function runInstall(opts: InstallOpts): Promise<void> {
 
   for (const clientId of targetClients) {
     if (clientId === "claude-code") {
-      // CC uses its own plugin system — don't write to ~/.claude.json MCP config.
-      // Instead, use the CC CLI to add the marketplace and install the plugin.
+      // Use Claude Code's supported MCP command. The repository plugin is the
+      // separate hosted product and must not be installed by this local CLI.
       const ps = spinner();
-      ps.start("Installing OpenDexter plugin via Claude Code CLI");
-      const pluginResult = await installClaudeCodePlugin();
-      if (pluginResult.ok) {
-        ps.stop("Plugin installed via Claude Code CLI");
-        successes.push(pluginResult.message);
+      ps.start("Adding local OpenDexter MCP to Claude Code");
+      const mcpResult = await installClaudeCodeMcp(opts.dev);
+      if (mcpResult.ok) {
+        ps.stop("Local MCP added through Claude Code");
+        successes.push(mcpResult.message);
       } else {
-        ps.stop("Automatic plugin install unavailable");
-        failures.push(pluginResult.message);
+        ps.stop("Automatic Claude Code MCP setup unavailable");
+        failures.push(mcpResult.message);
       }
     } else if (clientId === "cursor") {
       // Cursor gets full plugin install (skills, rules, agents, commands, MCP)

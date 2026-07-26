@@ -75,17 +75,16 @@ Valid client names are `cursor`, `claude-code`, `codex`, `vscode`, `windsurf`,
 and `gemini-cli`. Use `--all` to process every supported client detected on the
 machine.
 
-The current full Claude Code plugin adds repository skills and commands and
-launches this local npm MCP. To install only the local MCP connection, without
-the additional plugin files, use:
+For Claude Code, `setup` and `install --client claude-code` add this local stdio
+MCP through Claude's supported CLI. To add the same connection directly, use:
 
 ```bash
-claude mcp add opendexter -- npx -y @dexterai/opendexter@latest
+claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@latest
 ```
 
-`setup` and `install --all` use the full-plugin route when they detect Claude
-Code. A separately prepared hosted-only plugin is still a release candidate and
-is not installed by these published-package commands.
+The separately prepared repository plugin is hosted-only and remains a release
+candidate. These published-package commands never install it, so a local wallet
+setup cannot silently become a hosted-wallet connection.
 
 ### Manual stdio MCP
 

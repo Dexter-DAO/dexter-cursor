@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — hosted plugin release candidates
+
+- Added Codex `0.4.0-rc.1` and Claude Code `2.0.0-rc.1` source packages for
+  the ten-tool hosted OpenDexter contract.
+- Replaced the Claude Code npm-latest launcher with the remote HTTP MCP at
+  `https://open.dexter.cash/mcp`.
+- Materialized Claude Code skills inside the package; removed escaping
+  symlinks to the older local SDK/tooling lineage.
+- Removed hosted card and local settings routes from active package guidance.
+- Kept the published Claude installer on the local seven-tool stdio MCP instead
+  of silently installing the separate hosted package.
+- Added release-pinned OAuth/tool drift tests and disposable marketplace
+  discovery validation.
+- Retired the v0.3.0 sixteen-tool model reports from active release evidence.
+
 ## 1.4.0
 
 - Moved `@dexterai/opendexter` and `@dexterai/x402-discovery` npm package source into this repo

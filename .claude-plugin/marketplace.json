@@ -1,8 +1,7 @@
 {
-  "schema_version": "1.0",
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "opendexter",
-  "displayName": "OpenDexter",
-  "description": "x402 payments for AI agents — search, pay, and build with paid APIs across Solana and EVM chains.",
+  "description": "Developer distribution for the hosted OpenDexter MCP and its bounded x402 workflows.",
   "owner": {
     "name": "Dexter",
     "email": "dev@dexter.cash"

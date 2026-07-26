@@ -1,0 +1,8 @@
+interface:
+  display_name: "OpenDexter x402 Protocol"
+  short_description: "Interpret x402 requirements and settlement evidence"
+  brand_color: "#E67C3E"
+  default_prompt: "Use $x402-protocol to explain these x402 requirements without making a payment."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,46 @@
+{
+  "name": "opendexter",
+  "version": "0.4.0-rc.1",
+  "description": "Discover x402 APIs, inspect current terms, use a passkey-controlled Dexter Wallet, and execute only explicitly bounded calls.",
+  "author": {
+    "name": "Dexter Labs Corporation",
+    "email": "dev@dexter.cash",
+    "url": "https://dexter.cash"
+  },
+  "homepage": "https://dexter.cash/opendexter",
+  "repository": "https://github.com/Dexter-DAO/opendexter-ide",
+  "license": "MIT",
+  "keywords": [
+    "opendexter",
+    "x402",
+    "paid-apis",
+    "passkey-wallet",
+    "solana",
+    "skills"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "OpenDexter",
+    "developerName": "Dexter",
+    "category": "Finance",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "shortDescription": "Passkey wallet and safely bounded x402 API calls.",
+    "longDescription": "OpenDexter connects the assistant to the hosted x402 marketplace and a passkey-controlled Dexter Wallet on Solana. It can search without paying, inspect the exact endpoint and current terms, and execute a paid call only after the user approves the URL, method, body, and maximum charge.\n\nThe hosted contract has ten tools. Search, price checks, wallet-proof access, wallet status, passkey compatibility, and reusable-skill workflows remain distinct from payment. The older card-tool roster is not part of this package; card controls remain on Dexter's secure wallet surface.\n\nProtected tools use the MCP server's native OAuth contract. Wallet keys, passkey material, bearer tokens, one-time codes, and other authentication secrets never belong in the conversation. Ambiguous or post-dispatch payment results are never retried automatically.",
+    "defaultPrompt": [
+      "Find an x402 API for this job and show me its current terms.",
+      "Show my OpenDexter wallet.",
+      "Draft a reusable skill for this x402 provider without publishing it."
+    ],
+    "websiteURL": "https://dexter.cash/opendexter",
+    "privacyPolicyURL": "https://dexter.cash/privacy",
+    "termsOfServiceURL": "https://dexter.cash/terms",
+    "brandColor": "#E67C3E",
+    "composerIcon": "./assets/app-icon.png",
+    "logo": "./assets/logo.png"
+  }
+}

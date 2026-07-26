@@ -1,0 +1,8 @@
+interface:
+  display_name: "OpenDexter Debugging"
+  short_description: "Diagnose OAuth, wallet, provider, and payment failures"
+  brand_color: "#E67C3E"
+  default_prompt: "Use $x402-debugging to identify this OpenDexter failure without retrying a possibly dispatched payment."
+
+policy:
+  allow_implicit_invocation: true

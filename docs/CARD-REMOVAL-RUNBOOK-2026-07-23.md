@@ -51,11 +51,11 @@ instruction change first, installs it, then removes the tools.
   upgrade (no drift in our repos; natural migration).
 
 ### 4. Claude plugin (`opendexter` marketplace entry)
-- The plugin's MCP points at the same hosted/npm server, so cards vanish there once
-  steps 2–3 ship. Bump the plugin version; republish the marketplace entry.
-- Its bundled skills swap to the verified v2 skill set (already built in
-  `codex-plugin/skills/`) — this is the #82 skill-rewrite deliverable landing on the
-  Claude surface. Card content already absent from v2.
+- The current developer package points only at the hosted MCP; it does not
+  launch the local npm server.
+- Its self-contained skills live at `opendexter-plugin/skills/` and match the
+  hosted Codex guidance under `plugins/opendexter/skills/`. Card content remains
+  absent from both.
 
 ### 5. Verify no standalone card TOOL anywhere
 - Hosted wire: 10 tools. Local published tarball: no `card_*` registrars.

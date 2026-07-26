@@ -6,19 +6,12 @@ import { DOCS_ASSETS_DIR } from "../src/resources/docs.js";
 import { LOCAL_TOOL_ROSTER } from "../src/server/index.js";
 
 const LOCAL_TOOLS = [...LOCAL_TOOL_ROSTER].sort();
-const HOSTED_TOOLS = [
+const HOSTED_ONLY_TOOLS = [
   "dexter_passkey",
   "dexter_passkey_probe",
   "promote_skill",
-  "x402_access",
-  "x402_check",
   "x402_compose_skill",
-  "x402_fetch",
-  "x402_pay",
-  "x402_search",
-  "x402_wallet",
-].sort();
-const DUAL_SURFACE_TOOLS = [...new Set([...LOCAL_TOOLS, ...HOSTED_TOOLS])].sort();
+];
 
 const TOOL_NAME =
   /\b(?:x402_[a-z_]+|card_[a-z_]+|dexter_passkey(?:_probe)?|promote_skill)\b/g;
@@ -77,22 +70,18 @@ describe("docs resources", () => {
 
   it.each([
     ["package README", packageReadme],
+    ["installable skill", stripFrontmatter(skill)],
     ["served workflow", workflow],
   ])("%s documents exactly the local seven-tool roster", (_name, text) => {
     expect(namedTools(text)).toEqual(LOCAL_TOOLS);
   });
 
-  it("keeps the installable skill truthful for both current rosters", () => {
-    expect(namedTools(stripFrontmatter(skill))).toEqual(DUAL_SURFACE_TOOLS);
-    expect(skill).toContain("`x402_settings` is available | Local npm");
-    expect(skill).toContain("`dexter_passkey` is available | Hosted connector");
-    expect(skill).toContain("Exactly one sentinel must be present");
-    expect(skill).toContain(
-      "If both `x402_settings` and\n`dexter_passkey` are available, or neither is available",
-    );
-    expect(skill).toContain(
-      "Do not\napply the local workflow resource to the hosted wallet or tool roster",
-    );
+  it("keeps hosted-only tools out of the local skill", () => {
+    for (const tool of HOSTED_ONLY_TOOLS) {
+      expect(skill).not.toContain(`\`${tool}\``);
+    }
+    expect(skill).toContain("local Solana/EVM wallet");
+    expect(skill).toContain("Do not apply hosted-connector setup");
   });
 
   it.each([
@@ -163,7 +152,7 @@ describe("docs resources", () => {
   });
 
   it("labels the hosted connector as a release candidate", () => {
-    expect(rootReadme).toMatch(
+    expect(plainText(rootReadme)).toMatch(
       /release candidates? pending final client-host validation/,
     );
     expect(rootReadme).toContain("### Hosted release candidate");

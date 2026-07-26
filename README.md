@@ -35,11 +35,10 @@ OpenDexter has two deliberately different ways to hold payment authority.
 | Setup | Add one MCP URL; the client handles OAuth when a protected tool needs it | Run the setup command below |
 | Spending policy | Managed by the hosted wallet experience | Default per-call limit and optional rolling 24-hour budget stored on this machine |
 
-The public npm package is ready to install today. The repository's current
-Claude Code plugin also launches that local package. The hosted connector
-contract shown here, and the rebuilt hosted-only Codex and Claude packages, are
-release candidates pending final client-host validation; they are not public
-marketplace releases.
+The public npm package is ready to install today. The repository's Codex and
+Claude Code packages connect to the hosted service instead; they do not launch
+the local npm wallet. Those hosted packages are release candidates pending
+final client-host validation and are not public marketplace releases.
 
 ### Local: start in one command
 
@@ -55,17 +54,16 @@ plus the shortest path to a first search. To target one client:
 npx @dexterai/opendexter@latest install --client cursor
 ```
 
-Use `codex`, `vscode`, `windsurf`, or `gemini-cli` in place of `cursor`.
-For a guaranteed local Claude Code connection, add the stdio server directly:
+Use `claude-code`, `codex`, `vscode`, `windsurf`, or `gemini-cli` in place of
+`cursor`. The Claude Code route adds only the local stdio MCP. To add that
+connection directly:
 
 ```bash
-claude mcp add opendexter -- npx -y @dexterai/opendexter@latest
+claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@latest
 ```
 
-The current `--client claude-code` route installs the repository's full plugin:
-skills and commands plus the same local npm MCP. The direct command above is the
-smaller MCP-only route. It does not install those additional plugin files. For
-a manual stdio MCP configuration in another client:
+This local installer never adds the repository's hosted Claude Code plugin.
+For a manual stdio MCP configuration in another client:
 
 ```json
 {
@@ -107,6 +105,40 @@ events:
 Connecting does not itself approve a payment. A hosted release must pass its
 client OAuth and wallet-result checks before this setup is treated as available.
 Never paste a bearer token into the MCP configuration.
+
+The connector and OAuth identities are related but deliberately not
+interchangeable:
+
+- MCP resource and connector: `https://open.dexter.cash/mcp`
+- authorization-server issuer: `https://mcp.dexter.cash/mcp`
+- access-token issuer: `https://dexter.cash`
+
+### Test the hosted source packages
+
+The source checkout contains distinct developer candidates for Codex and
+Claude Code. These commands modify the active client's plugin configuration,
+so use them only in a disposable client profile or when a release owner has
+authorized a developer install.
+
+Codex, from the repository root:
+
+```bash
+codex plugin marketplace add "$PWD"
+codex plugin list
+codex plugin add opendexter@dexter
+```
+
+Claude Code, from the repository root:
+
+```bash
+claude plugin marketplace add "$PWD" --scope user
+claude plugin install opendexter@opendexter --scope user
+claude plugin details opendexter@opendexter
+```
+
+Start a fresh task so the client can discover the package. Protected hosted
+tools then use the client's native MCP OAuth action. The local npm package and
+the hosted plugin should not both register an `opendexter` server in one client.
 
 ## From request to result
 
@@ -209,6 +241,9 @@ npx @dexterai/opendexter@latest settings --max-amount 2.50 --daily-budget 20
 | Path | Audience |
 |---|---|
 | [`packages/mcp`](./packages/mcp) | Published local CLI and stdio MCP package |
+| [`plugins/opendexter`](./plugins/opendexter) | Developer-distributed Codex package for the hosted MCP |
+| [`opendexter-plugin`](./opendexter-plugin) | Developer-distributed Claude Code package for the hosted MCP |
+| [`chatgpt-app-binding`](./chatgpt-app-binding) | Publisher-side ChatGPT app identity; not a portable plugin |
 | [`packages/x402-mcp-tools`](./packages/x402-mcp-tools) | Shared MCP tool implementations |
 | [`packages/mcp-instructions`](./packages/mcp-instructions) | Roster-aware agent instructions |
 
