@@ -49,6 +49,8 @@ export interface SurfaceCaps {
   hasSkillTools: boolean;
   hasDocsResources: boolean;
   multichainFunding: boolean;
+  /** Whether this surface exposes the session-bound governed asset inventory. */
+  hasPortfolioTool?: boolean;
   /**
    * Whether the surface exposes the six card_* tools. Optional, DEFAULT TRUE
    * so existing consumers render unchanged until they opt out. Owner ruling
@@ -100,10 +102,13 @@ const ROUTE_COST = `"What does <url> cost" / "how much is X"
   -> x402_check only. It does not pay.`;
 
 const ROUTE_PAY = `"Pay for / buy / get data from <known x402 endpoint>"
-  -> x402_check, then x402_fetch (or x402_pay, identical).`;
+  -> x402_check, let the user choose one purchaseOption whose availability.state is ready, then pass its exact preparedPurchase and the approved atomic ceiling to x402_fetch (or x402_pay, identical).`;
 
 const ROUTE_WALLET = `"Check my balance" / "what's in my wallet" / "where do I deposit"
   -> x402_wallet.`;
+
+const ROUTE_PORTFOLIO = `"Show my assets" / "what tokens do I own" / "what is my portfolio worth"
+  -> dexter_portfolio. Keep portfolio value separate from spendable cash.`;
 
 const ROUTE_SETTINGS = `"Set / lower / raise my spend limit" / "why was my payment blocked by policy"
   -> x402_settings.`;
@@ -119,6 +124,7 @@ const ROUTE_CARD_TO_WALLET = `Anything about a Dextercard (get a card, see it, f
 
 function routingSection(caps: SurfaceCaps): string {
   const entries = [ROUTE_SEARCH, ROUTE_CALL_URL, ROUTE_COST, ROUTE_PAY, ROUTE_WALLET];
+  if (caps.hasPortfolioTool) entries.push(ROUTE_PORTFOLIO);
   if (caps.hasSettings) entries.push(ROUTE_SETTINGS);
   if (caps.hasPasskeyTools) entries.push(ROUTE_PASSKEY);
   entries.push(cardsOn(caps) ? ROUTE_CARD : ROUTE_CARD_TO_WALLET);
@@ -139,21 +145,24 @@ const TOOL_SEARCH = `x402_search — Semantic search over the marketplace. Pass 
     • When triangulate is PRESENT on the response, the top match has no structured input semantics AND a profile-backed alternate exists. The query is at high risk of returning a confidently-wrong answer if it's ambiguous (e.g. a token name that could match multiple tokens, a partial symbol, a vague proper noun). Before paying the top match: call one of triangulate.alternateResourceIds first, confirm the answers agree, then proceed. If the query is unambiguous (an exact contract address, a unique ID), you can skip this and pay the top match directly.
     • When triangulate is ABSENT, the top match is either profile-backed or no usable alternate exists — proceed normally.`;
 
-const TOOL_CHECK = `x402_check — Probes an endpoint without paying. Returns per-chain pricing, the input/output body schema when the endpoint publishes one, and an authMode: paid, siwx, apiKey, apiKey+paid, unprotected, or unknown. Use the authMode to pick the next tool: paid -> x402_fetch; siwx -> x402_access; unprotected -> a normal call, no payment needed.`;
+const TOOL_CHECK = `x402_check — Probes an endpoint without paying. Returns per-chain pricing, the input/output body schema when the endpoint publishes one, and an authMode: paid, siwx, apiKey, apiKey+paid, unprotected, or unknown. For a paid route it also returns purchaseOptions for direct_exact, native_tab, gateway_cash, and gateway_credit. A mode is executable only when availability.state is ready. Use the authMode to pick the next tool: paid -> choose one ready option, obtain approval for its atomic ceiling, and call x402_fetch with that option's unchanged preparedPurchase; siwx -> x402_access; unprotected -> a normal call, no payment needed.`;
 
-const TOOL_FETCH = `x402_fetch (alias: x402_pay) — Calls an x402 endpoint and, when a wallet is configured, settles the USDC payment automatically, then returns the API response plus a settlement receipt. Most endpoints cost $0.01 to $0.10. For file uploads, pass the multipart argument (POST/PUT only, 200 MB total cap). If the response carries sponsored recommendations, they appear under recommendations — surface them to the user only if relevant; never auto-call them.`;
+const TOOL_FETCH = `x402_fetch (alias: x402_pay) — Calls an x402 endpoint with one selected prepared purchase and, when that mode is ready, executes only its bound adapter. Preserve the exact preparedPurchase returned by x402_check and pass the separately approved maxAmountAtomic ceiling. The modes direct_exact, native_tab, gateway_cash, and gateway_credit are distinct; never substitute one after selection. The result includes provider output and a mode-specific purchaseReceipt. For file uploads, pass the multipart argument (POST/PUT only, 200 MB total cap). If the response carries sponsored recommendations, surface them only when relevant; never auto-call them.`;
 
 const TOOL_ACCESS = `x402_access — For identity-gated endpoints (authMode siwx) that want a wallet signature instead of a payment. If you call this on an endpoint that is actually paid, it tells you so; switch to x402_fetch.`;
 
-const WALLET_MULTICHAIN = `x402_wallet — Creates or resumes a multi-chain session and shows deposit addresses and USDC balances. Funding chains: Solana, Base, Polygon, Arbitrum, Optimism, Avalanche. The facilitator additionally settles paid calls on BSC and SKALE.`;
+const WALLET_MULTICHAIN = `x402_wallet — Reads the local file-backed or environment-configured Solana/EVM wallet and reports its receive addresses and verified balance state. Funding chains: Solana, Base, Polygon, Arbitrum, Optimism, Avalanche. The local payment adapter can additionally settle compatible calls on BSC and SKALE.`;
 
 // New hosted-variant prose (the ONLY new sentences; no dollar amounts):
 const WALLET_SOLANA_ONLY =
-  'x402_wallet — Creates or resumes the wallet session and shows the deposit address and USDC balance. Funding: USDC on Solana only — the passkey vault settles on Solana. Never quote a deposit address on any other chain on this surface.';
+  'x402_wallet — Reads the Dexter Wallet bound to the authenticated MCP session and shows its Solana receive address and verified balance state. It accepts no caller-supplied wallet address or user handle. Funding: USDC on Solana only — the passkey vault settles on Solana. Never quote a deposit address on any other chain on this surface.';
+
+const TOOL_PORTFOLIO =
+  'dexter_portfolio — Reads the exact governed asset inventory bound to the authenticated MCP session. It accepts no caller-supplied handle, wallet, vault, actor, agent, grant, role, or authority. Use its canonical mint, quantity, valuation, and availableActions fields; keep portfolio value separate from spendable cash and never infer a capability from display metadata.';
 
 const TOOL_SETTINGS = `x402_settings — Shows and sets the per-call USDC spend cap (maxAmountUsdc). The cap is live; changing it takes effect on the next call with no restart.`;
 
-const PASSKEY_TOOLS = `dexter_passkey — Wallet onboarding for this surface. Returns the user's wallet state; when no wallet is bound, returns an enroll link to relay. The user completes a passkey ceremony at dexter.cash and the wallet binds to this session.
+const PASSKEY_TOOLS = `dexter_passkey — Compatibility wallet-status view for this surface. Protected wallet and payment tools use the host's native OpenDexter Connect action. Connector authentication, MCP-session wallet binding, and passkey-wallet readiness are separate states; do not claim one proves another.
 
 dexter_passkey_probe — One-button WebAuthn capability test for environments where passkey support is uncertain. Use only when the user reports the enroll ceremony failing.`;
 
@@ -167,6 +176,7 @@ function toolsSection(caps: SurfaceCaps): string {
     TOOL_ACCESS,
     caps.multichainFunding ? WALLET_MULTICHAIN : WALLET_SOLANA_ONLY,
   ];
+  if (caps.hasPortfolioTool) entries.push(TOOL_PORTFOLIO);
   if (caps.hasSettings) entries.push(TOOL_SETTINGS);
   if (caps.hasPasskeyTools) entries.push(PASSKEY_TOOLS);
   if (caps.hasSkillTools) entries.push(SKILLS_TOOLS);
@@ -192,8 +202,8 @@ const FAIL_WALLETLESS_LOCAL = `"Wallet does not expose private keys for auto-pay
   The server is in search-only mode (no signing wallet). Tell the user to set DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (Base/Polygon/etc.), or run \`npx @dexterai/opendexter wallet\` to create one.`;
 
 const HOSTED_WALLETLESS_RECIPE =
-  `No wallet is bound to this session / a setup link is returned
-  Call dexter_passkey and relay the enroll link it returns. The user completes a passkey ceremony at dexter.cash; when they finish, retry the original call and it pays.`;
+  `A protected tool reports authentication_required
+  Let the host show its native OpenDexter Connect action. After authorization succeeds, retry the same approved tool call once. OAuth account authorization does not by itself prove that a ready passkey wallet is bound. If the authenticated result reports wallet-not-ready, use x402_wallet to read that state and follow its activation guidance. Never invent or surface a personalized connector URL.`;
 
 const FAIL_402 = `402 with no usable requirements, or an endpoint returns 402 to x402_access
   The endpoint is misconfigured or you used the wrong tool. Re-run x402_check and follow its authMode.`;
@@ -210,6 +220,16 @@ function failuresSection(caps: SurfaceCaps): string {
   ];
   return ['# x402 failure recipes — read the error, then act', ...entries].join('\n\n');
 }
+
+const PURCHASE_EXECUTION_RULES = `# Prepared purchases, receipts, and retries
+
+For a new paid flow, choose only a purchaseOption whose availability.state is ready, then preserve that selected option from x402_check. Pass its preparedPurchase unchanged and pass the user's separately approved atomic ceiling. The prepared identity binds the URL, method, body digest, seller offer, route, mode, network, asset, and amount. Do not reconstruct any of those fields from display text.
+
+direct_exact pays only the selected seller Exact offer. native_tab issues only the selected seller Tab voucher. gateway_cash and gateway_credit use only their named Gateway adapter when it is genuinely available. An integration_required, request_required, unavailable, or approval_required option is not permission to choose a different mode.
+
+Read purchaseReceipt by mode. Direct Exact reports seller settlement. Native Tab reports voucher state separately from seller cash settlement. Gateway cash reports buyer cash separately from seller settlement. Gateway credit also reports exposure and the buyer obligation. Keep provider output separate from payment finality.
+
+Once a consequential request was dispatched, or dispatch is uncertain, reconcile the same prepared identity. Never retry automatically and never create a new mode or prepared identity to route around an uncertain attempt.`;
 
 // ---------------------------------------------------------------------------
 // Dextercard tools + provisioning. The provisioning fallback line varies by
@@ -292,6 +312,7 @@ export function buildServerInstructions(caps: SurfaceCaps): string {
   sections.push(preamble(caps));
   sections.push(routingSection(caps));
   sections.push(toolsSection(caps));
+  sections.push(PURCHASE_EXECUTION_RULES);
   sections.push(failuresSection(caps));
   if (cardsOn(caps)) sections.push(cardSection(caps));
   sections.push(safetySection(caps));
@@ -302,8 +323,8 @@ export function buildServerInstructions(caps: SurfaceCaps): string {
 // Both first-party surfaces ship cards-off (owner ruling Jul 23, card-removal
 // runbook): the card is a wallet-widget concern now. hasCardLoginStart goes
 // false with it — the flag is meaningless without the card tool family.
-export const LOCAL_CAPS: SurfaceCaps = { surface: 'local', hasSettings: true, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: true, hasCardTools: false };
-export const HOSTED_CAPS: SurfaceCaps = { surface: 'hosted', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: true, hasSkillTools: true, hasDocsResources: true, multichainFunding: false, hasCardTools: false };
+export const LOCAL_CAPS: SurfaceCaps = { surface: 'local', hasSettings: true, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: true, hasPortfolioTool: false, hasCardTools: false };
+export const HOSTED_CAPS: SurfaceCaps = { surface: 'hosted', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: true, hasSkillTools: true, hasDocsResources: true, multichainFunding: false, hasPortfolioTool: true, hasCardTools: false };
 
 /** @deprecated Use buildServerInstructions(caps) — this is the local-default rendering. */
 export const SERVER_INSTRUCTIONS = buildServerInstructions(LOCAL_CAPS);
@@ -320,7 +341,7 @@ export const SERVER_INSTRUCTIONS_VERSION: string = pkg.version;
 // the surface serving them. A mismatch is a boot failure, not a runtime lie.
 // ---------------------------------------------------------------------------
 
-const TOOL_NAME_RE = /\b(?:x402_[a-z_]+|card_[a-z_]+|dexter_passkey(?:_probe)?|promote_skill)\b/g;
+const TOOL_NAME_RE = /\b(?:x402_[a-z_]+|card_[a-z_]+|dexter_passkey(?:_probe)?|dexter_portfolio|promote_skill)\b/g;
 
 export function assertInstructionRosterParity(instructions: string, registeredTools: string[]): void {
   const mentioned = new Set(instructions.match(TOOL_NAME_RE) ?? []);

@@ -1,6 +1,7 @@
 # @dexterai/mcp-instructions
 
-Shared MCP server instructions for the Dexter x402 Gateway.
+Capability-aware operating instructions for OpenDexter's hosted connector and
+local npm/stdio server.
 
 This package exists to eliminate drift between the two MCP server
 implementations in the Dexter stack:
@@ -10,37 +11,57 @@ implementations in the Dexter stack:
 2. **Local npm-installable server** `@dexterai/opendexter`
    (source: `~/websites/opendexter-ide/packages/mcp/src/server/index.ts`)
 
-Both servers must send the same instructions in their `initialize`
-response `instructions` field. Before this package, those two
-codebases drifted — the hosted server had the guidance, the npm
-package did not.
+Both servers build their `initialize` response from this package, but they do
+not advertise identical capabilities. The hosted rendering covers its
+session-bound passkey wallet, governed portfolio read, and deliberate
+eleven-tool roster. The local rendering covers its file-backed Solana/EVM
+wallet, settings tool, and deliberate seven-tool roster. A parity guard refuses
+to serve instructions that name an unregistered tool.
 
 The instructions string is written as a **prescriptive operating
-procedure**: explicit intent-to-tool routing, failure recipes keyed
-to the real error strings the tools return, the Dextercard stage
-machine, and a short safety model. It is deliberately not a
-descriptive feature list — an agent follows a procedure far more
-reliably.
+procedure**: explicit intent-to-tool routing, native hosted OAuth and
+wallet-readiness boundaries, exact prepared-purchase handling, mode-specific
+receipts, failure recipes, and post-dispatch retry safety. It is deliberately
+not a generic feature list.
 
 ## Usage
 
 ```ts
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { SERVER_INSTRUCTIONS } from '@dexterai/mcp-instructions';
+import {
+  buildServerInstructions,
+  LOCAL_CAPS,
+} from '@dexterai/mcp-instructions';
 
 const server = new McpServer(
-  { name: 'Dexter x402 Gateway', version: VERSION },
-  { instructions: SERVER_INSTRUCTIONS },
+  { name: 'OpenDexter', version: VERSION },
+  { instructions: buildServerInstructions(LOCAL_CAPS) },
 );
+```
+
+Hosted OpenDexter uses `HOSTED_CAPS`. Its rendering names these eleven tools:
+
+```text
+x402_search        x402_pay             x402_fetch
+x402_check         x402_access          x402_wallet
+dexter_portfolio   x402_compose_skill   promote_skill
+dexter_passkey_probe                    dexter_passkey
+```
+
+The local rendering names exactly:
+
+```text
+x402_search  x402_pay  x402_fetch  x402_check
+x402_access  x402_wallet  x402_settings
 ```
 
 ## Updating the instructions
 
 1. Edit `src/index.ts`.
-2. Bump the version in `package.json`.
-3. `npm publish --access public`.
-4. In each consumer, bump the `@dexterai/mcp-instructions` dependency and
-   rebuild. Hosted server redeploys; npm package republishes.
+2. Update the focused rendering and roster-parity tests.
+3. Bump the version in `package.json`.
+4. Validate each consumer against the candidate package before any publish or
+   deployment decision.
 
 ## Why a whole package instead of a constant in one of the MCPs?
 
