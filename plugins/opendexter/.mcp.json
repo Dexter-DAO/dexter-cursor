@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "opendexter": {
-      "type": "http",
-      "url": "https://open.dexter.cash/mcp"
-    }
-  }
-}

@@ -1,6 +1,6 @@
 {
   "name": "@dexterai/opendexter",
-  "version": "1.22.1",
+  "version": "1.22.2-rc.1",
   "description": "Local OpenDexter MCP for x402 discovery, current terms, explicitly prepared purchase modes, wallet reads, and spending policy.",
   "type": "module",
   "main": "dist/index.js",
@@ -38,7 +38,7 @@
     "@dexterai/x402-core": "^1.5.0",
     "@dexterai/x402-mcp-tools": "^0.7.1",
     "@modelcontextprotocol/ext-apps": "^1.2.2",
-    "@modelcontextprotocol/sdk": "^1.17.4",
+    "@modelcontextprotocol/sdk": "^1.24.0",
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.98.0",
     "@x402/core": "^2.6.0",
@@ -50,7 +50,7 @@
     "tweetnacl": "^1.0.3",
     "viem": "^2.0.0",
     "yargs": "^17.7.2",
-    "zod": "^3.23.0"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -62,7 +62,7 @@
     "vitest": "^4.0.18"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "keywords": [
     "opendexter",

@@ -66,6 +66,24 @@ assert(
       expected.dependencies?.["@dexterai/x402-mcp-tools"],
   "candidate has the wrong shared tool dependency",
 );
+assert(
+  pkg.dependencies?.["@dexterai/x402-core"] === "^1.5.0" &&
+    pkg.dependencies?.["@dexterai/x402-core"] ===
+      expected.dependencies?.["@dexterai/x402-core"],
+  "candidate has the wrong x402 core dependency",
+);
+assert(
+  pkg.dependencies?.["@modelcontextprotocol/sdk"] === "^1.24.0" &&
+    pkg.dependencies?.["@modelcontextprotocol/sdk"] ===
+      expected.dependencies?.["@modelcontextprotocol/sdk"],
+  "candidate has the wrong MCP SDK dependency",
+);
+assert(
+  pkg.dependencies?.zod === "^3.25.76" &&
+    pkg.dependencies?.zod === expected.dependencies?.zod,
+  "candidate has the wrong Zod dependency",
+);
+assert(pkg.engines?.node === ">=20", "candidate does not require Node.js 20 or newer");
 assert(existsSync(join(root, "dist", "index.js")), "missing stdio entrypoint");
 assert(existsSync(join(root, "skills", "opendexter", "SKILL.md")), "missing local OpenDexter skill");
 assert(existsSync(join(root, "cursor-mcp.json")), "missing Cursor MCP configuration");

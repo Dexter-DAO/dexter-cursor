@@ -3,7 +3,7 @@
 This is the developer-distributed Codex package for the hosted
 OpenDexter MCP at `https://open.dexter.cash/mcp`.
 
-Version `0.4.0-rc.2` targets the eleven-tool hosted manifest `0.3.0`. It is a
+Version `0.4.0-rc.3` targets the eleven-tool hosted manifest `0.3.0`. It is a
 pre-release source candidate, not proof that the matching server version is
 deployed. Do not distribute or install it against production until Dexter
 announces the matching hosted release.
@@ -36,7 +36,6 @@ The committed machine-readable contract is
 ```text
 plugins/opendexter/
 ├── .codex-plugin/plugin.json
-├── .mcp.json
 ├── assets/
 └── skills/
     ├── opendexter/
@@ -44,7 +43,11 @@ plugins/opendexter/
     └── x402-protocol/
 ```
 
-The package deliberately uses `.mcp.json` for the portable Codex connection.
+The plugin manifest carries Codex's documented inline `mcpServers` map for the
+portable connection. This avoids a companion-format ambiguity between current
+Codex documentation and older validators. Claude's separate source uses
+Claude's `.mcp.json` `mcpServers` wrapper; do not substitute a client-level
+TOML configuration or install both packages into one client.
 The owner-account `.app.json` under `chatgpt-app-binding/` is separate publisher
 evidence and is not loaded with this package. Do not configure a second copy of
 the same endpoint in one client, and never edit plugin cache directories.

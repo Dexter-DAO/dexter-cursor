@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
   "displayName": "OpenDexter",
-  "version": "1.22.1",
+  "version": "1.22.2-rc.1",
   "description": "Run the local OpenDexter MCP: search for x402 services, check exact terms, choose one prepared purchase mode, make a bounded call, and inspect the local wallet and policy. Includes x402 integration guidance.",
   "author": {
     "name": "Dexter",

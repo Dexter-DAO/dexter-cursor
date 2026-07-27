@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@dexterai/opendexter"><img src="https://img.shields.io/npm/v/@dexterai/opendexter.svg" alt="npm version"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D18-339933" alt="Node 18 or newer"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-339933" alt="Node 20 or newer"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-111111" alt="MIT license"></a>
 </p>
 

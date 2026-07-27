@@ -2,7 +2,7 @@
 
 ## Unreleased — hosted plugin release candidates
 
-- Updated Codex to `0.4.0-rc.2` and Claude Code to `2.0.0-rc.2` for the
+- Updated Codex to `0.4.0-rc.3` and Claude Code to `2.0.0-rc.3` for the
   eleven-tool hosted OpenDexter contract, including the authenticated,
   session-bound `dexter_portfolio` read.
 - Replaced the Claude Code npm-latest launcher with the remote HTTP MCP at
@@ -17,7 +17,7 @@
 - Retired the v0.3.0 sixteen-tool model reports from active release evidence.
 - Prepared `@dexterai/mcp-instructions@2.3.0`,
   `@dexterai/x402-mcp-tools@0.7.1`, and
-  `@dexterai/opendexter@1.22.1` as one ordered local release candidate.
+  `@dexterai/opendexter@1.22.2-rc.1` as one ordered local release candidate.
 - Made the local package rebuild its four declared widgets from an explicitly
   pinned source and validate the exact packed tarball without a registry,
   client install, network request, or live wallet.

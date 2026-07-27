@@ -3,6 +3,88 @@
 Status: B3 local candidate. This document records inclusion and integration
 boundaries; it is not deployment or live-host proof.
 
+## Frozen release-candidate surfaces
+
+The hosted contract fixture is frozen at eleven tools:
+
+`x402_search`, `x402_pay`, `x402_fetch`, `x402_check`, `x402_access`,
+`x402_wallet`, `dexter_portfolio`, `x402_compose_skill`, `promote_skill`,
+`dexter_passkey_probe`, and `dexter_passkey`.
+
+The local npm/stdio runtime remains a separate seven-tool product:
+
+`x402_search`, `x402_pay`, `x402_fetch`, `x402_check`, `x402_access`,
+`x402_wallet`, and `x402_settings`.
+
+The Codex manifest uses its documented inline `mcpServers` map. The separate
+Claude package uses Claude's `.mcp.json` `mcpServers` wrapper.
+Both point to the one hosted connector at `https://open.dexter.cash/mcp`;
+neither package embeds the local stdio runtime or revives hosted card tools.
+The publisher-side ChatGPT app
+binding stays separate because its current `asdk_app_...` identity is not a
+portable Codex/Claude app registration. A current `plugin_asdk_app_...`
+registration, if required by the target host, is a publisher proof rather than
+something this source candidate may fabricate.
+
+The local package candidate is `@dexterai/opendexter@1.22.2-rc.1` on Node.js 20 or
+newer. Its coordinated Dexter source train is:
+
+- `@dexterai/x402-core@1.5.0`;
+- `@dexterai/mcp-instructions@2.3.0`;
+- `@dexterai/x402-mcp-tools@0.7.1`;
+- `@dexterai/opendexter@1.22.2-rc.1`.
+
+The B3 disposable source-integration proof used MCP SDK `1.29.0`, MCP Apps
+extension `1.6.0`, and Zod `3.25.76`. This is local test evidence, not proof of
+registry availability or a deployed graph; the hosted registry lock must
+reproduce those exact runtime versions before deployment.
+
+Registry publication and a registry-resolved lock are separate release gates.
+Local source builds and tarball inspection do not claim those packages are
+already available from npm.
+
+The local tarball carries the four current widget HTML entrypoints. They load
+hashed assets from Dexter's hosted app-asset origin, so successful tarball
+inspection is not proof that those exact hashes have been copied to the host.
+Asset publication and one clean Codex/Claude/ChatGPT render remain release
+proofs after the hosted candidate is deployed.
+
+## Local source receipt
+
+The `1.22.2-rc.1` candidate was rebuilt in a disposable combined source graph
+with the exact `@dexterai/x402-core@1.5.0` package. The current receipt is:
+
+- MCP instructions typecheck/build and 23/23 tests;
+- Dextercard build;
+- x402 core build;
+- shared x402 MCP tools typecheck/build;
+- OpenDexter typecheck/build and 175/175 tests;
+- 10/10 source-package contract tests;
+- Codex plugin-creator validation plus Claude plugin and marketplace
+  validation;
+- tarball pack verification, 33-file archive inspection, and execution of the
+  extracted `dist/index.js --help` entrypoint against that same dependency
+  graph.
+
+This proves a runnable local source artifact and disposable package discovery.
+It is not npm-registry publication, a clean registry dependency resolution, a
+user-client install, or live-host OAuth/rendering proof.
+
+## Lineage resolution
+
+- Portfolio `023f7fd` is externally verified in the hosted source ancestry; it
+  is not an object in this package repository.
+- Auth `183609b9` was externally verified as replayed and hardened in the
+  hosted candidate; its
+  per-tool schemes, protected-resource metadata, runtime challenges, and strict
+  finalizer are semantically included rather than cherry-picked again.
+- Productization `24530fa2` is an external hosted-source lineage superseded by
+  the later hosted/local package contracts. Its old sixteen-tool/card
+  assumptions are deliberately excluded.
+- The governed money-adapter foundation is preserved in isolated B3 branches,
+  unregistered and fail-closed. Its next integration contract is
+  [OPENDXTER-GOVERNED-MONEY-ADAPTER.md](./OPENDXTER-GOVERNED-MONEY-ADAPTER.md).
+
 ## Universal Purchasing Parity — current slice
 
 Included in this candidate:

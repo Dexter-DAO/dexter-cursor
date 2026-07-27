@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
   "displayName": "OpenDexter",
-  "version": "2.0.0-rc.2",
+  "version": "2.0.0-rc.3",
   "description": "Use the hosted OpenDexter MCP to discover x402 APIs, inspect current terms, view a session-bound Dexter portfolio, and execute only explicitly bounded calls.",
   "author": {
     "name": "Dexter",

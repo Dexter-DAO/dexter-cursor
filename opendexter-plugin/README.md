@@ -3,7 +3,7 @@
 This is the developer-distributed Claude Code package for the hosted OpenDexter MCP at
 `https://open.dexter.cash/mcp`.
 
-Version `2.0.0-rc.2` targets the eleven-tool hosted manifest `0.3.0`. It
+Version `2.0.0-rc.3` targets the eleven-tool hosted manifest `0.3.0`. It
 replaces the old `npx @dexterai/opendexter@latest` launcher with an exact
 remote HTTP MCP connection so package behavior cannot drift with an npm latest
 tag.

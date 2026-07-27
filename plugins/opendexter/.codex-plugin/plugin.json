@@ -1,6 +1,6 @@
 {
   "name": "opendexter",
-  "version": "0.4.0-rc.2",
+  "version": "0.4.0-rc.3",
   "description": "Discover x402 APIs, inspect current terms, view a session-bound Dexter portfolio, and execute only explicitly bounded calls.",
   "author": {
     "name": "Dexter Labs Corporation",
@@ -19,7 +19,12 @@
     "skills"
   ],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": {
+    "opendexter": {
+      "type": "http",
+      "url": "https://open.dexter.cash/mcp"
+    }
+  },
   "interface": {
     "displayName": "OpenDexter",
     "developerName": "Dexter",

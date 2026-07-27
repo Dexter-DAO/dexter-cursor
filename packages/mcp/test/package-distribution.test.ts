@@ -33,6 +33,10 @@ describe("local package distribution", () => {
     expect(existsSync(join(packageRoot, manifest.logo))).toBe(true);
     expect(pkg.dependencies["@dexterai/mcp-instructions"]).toBe("^2.3.0");
     expect(pkg.dependencies["@dexterai/x402-mcp-tools"]).toBe("^0.7.1");
+    expect(pkg.dependencies["@dexterai/x402-core"]).toBe("^1.5.0");
+    expect(pkg.dependencies["@modelcontextprotocol/sdk"]).toBe("^1.24.0");
+    expect(pkg.dependencies.zod).toBe("^3.25.76");
+    expect(pkg.engines.node).toBe(">=20");
     expect(mcp.mcpServers.opendexter).toEqual({
       command: "npx",
       args: ["-y", `@dexterai/opendexter@${pkg.version}`],
@@ -79,6 +83,10 @@ describe("local package distribution", () => {
     expect(script).toContain("pkg.version === expected.version");
     expect(script).toContain('"@dexterai/mcp-instructions"] === "^2.3.0"');
     expect(script).toContain('"@dexterai/x402-mcp-tools"] === "^0.7.1"');
+    expect(script).toContain('"@dexterai/x402-core"] === "^1.5.0"');
+    expect(script).toContain('"@modelcontextprotocol/sdk"] === "^1.24.0"');
+    expect(script).toContain('pkg.dependencies?.zod === "^3.25.76"');
+    expect(script).toContain('pkg.engines?.node === ">=20"');
     expect(script).not.toContain("npx @dexterai/opendexter@latest");
     expect(script).not.toContain("HOME=$TEST_HOME");
   });

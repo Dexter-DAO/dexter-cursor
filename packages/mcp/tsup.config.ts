@@ -4,7 +4,7 @@ export default defineConfig([
   {
     entry: ["src/index.ts"],
     format: ["esm"],
-    target: "node18",
+    target: "node20",
     outDir: "dist",
     clean: true,
     dts: false,
@@ -16,7 +16,7 @@ export default defineConfig([
   {
     entry: ["src/wallet/vanity-worker.ts"],
     format: ["esm"],
-    target: "node18",
+    target: "node20",
     outDir: "dist/wallet",
     clean: false,
     dts: false,

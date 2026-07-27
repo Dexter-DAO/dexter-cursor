@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  access,
   cp,
   lstat,
   mkdtemp,
@@ -114,7 +115,6 @@ async function packageSkillNames(root) {
 
 async function activeText(root) {
   const paths = [
-    resolve(root, ".mcp.json"),
     resolve(
       root,
       root === codexRoot
@@ -122,6 +122,7 @@ async function activeText(root) {
         : ".claude-plugin/plugin.json",
     ),
   ];
+  if (root !== codexRoot) paths.push(resolve(root, ".mcp.json"));
   for (const skill of EXPECTED_SKILLS) {
     paths.push(resolve(root, "skills", skill, "SKILL.md"));
   }
@@ -234,20 +235,17 @@ test("release fixture pins the exact eleven-tool OAuth contract", async () => {
 
 test("Codex package uses one portable remote MCP and mixed-auth marketplace policy", async () => {
   const manifest = await readJson(resolve(codexRoot, ".codex-plugin/plugin.json"));
-  const mcp = await readJson(resolve(codexRoot, ".mcp.json"));
   const marketplace = await readJson(codexMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "0.4.0-rc.2");
-  assert.equal(manifest.mcpServers, "./.mcp.json");
+  assert.equal(manifest.version, "0.4.0-rc.3");
   assert.equal(Object.hasOwn(manifest, "apps"), false);
-  assert.deepEqual(mcp, {
-    mcpServers: {
-      opendexter: {
-        type: "http",
-        url: "https://open.dexter.cash/mcp",
-      },
+  assert.deepEqual(manifest.mcpServers, {
+    opendexter: {
+      type: "http",
+      url: "https://open.dexter.cash/mcp",
     },
   });
+  await assert.rejects(access(resolve(codexRoot, ".mcp.json")));
   const entry = marketplace.plugins.find(({ name }) => name === "opendexter");
   assert.ok(entry);
   assert.equal(entry.source.path, "./plugins/opendexter");
@@ -261,7 +259,7 @@ test("Claude package is self-contained and uses the hosted remote MCP", async ()
   const mcp = await readJson(resolve(claudeRoot, ".mcp.json"));
   const marketplace = await readJson(claudeMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "2.0.0-rc.2");
+  assert.equal(manifest.version, "2.0.0-rc.3");
   assert.deepEqual(mcp, {
     mcpServers: {
       opendexter: {
@@ -274,6 +272,36 @@ test("Claude package is self-contained and uses the hosted remote MCP", async ()
   assert.ok(entry);
   assert.equal(entry.source, "./opendexter-plugin");
   assert.equal((await inspectTree(claudeRoot)).length > 0, true);
+});
+
+test("local package candidate pins its runtime and stdio discovery identity", async () => {
+  const workspace = await readJson(resolve(repoRoot, "package.json"));
+  const pkg = await readJson(resolve(repoRoot, "packages/mcp/package.json"));
+  const mcp = await readJson(resolve(repoRoot, "mcp.json"));
+  assert.equal(workspace.packageManager, "npm@10.9.3");
+  assert.equal(workspace.engines.node, ">=20");
+  assert.equal(pkg.version, "1.22.2-rc.1");
+  assert.equal(pkg.engines.node, ">=20");
+  assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "^1.24.0");
+  assert.equal(pkg.dependencies.zod, "^3.25.76");
+  assert.equal(pkg.dependencies["@dexterai/x402-core"], "^1.5.0");
+  assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "^2.3.0");
+  assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "^0.7.1");
+  assert.deepEqual(mcp, {
+    mcpServers: {
+      opendexter: {
+        command: "npx",
+        args: ["-y", "@dexterai/opendexter@1.22.2-rc.1"],
+      },
+    },
+  });
+});
+
+test("release changelog carries every candidate identity", async () => {
+  const changelog = await readFile(resolve(repoRoot, "CHANGELOG.md"), "utf8");
+  assert.match(changelog, /Codex to `0\.4\.0-rc\.3`/);
+  assert.match(changelog, /Claude Code to `2\.0\.0-rc\.3`/);
+  assert.match(changelog, /`@dexterai\/opendexter@1\.22\.2-rc\.1`/);
 });
 
 test("both formats expose only the three hosted-contract skills", async () => {
@@ -397,8 +425,10 @@ test("disposable marketplaces discover both clean source packages", async () => 
       "opendexter",
     );
     assert.deepEqual(
-      await readJson(resolve(stagedCodex, ".mcp.json")),
-      await readJson(resolve(codexRoot, ".mcp.json")),
+      (await readJson(resolve(stagedCodex, ".codex-plugin/plugin.json")))
+        .mcpServers,
+      (await readJson(resolve(codexRoot, ".codex-plugin/plugin.json")))
+        .mcpServers,
     );
     assert.deepEqual(
       await readJson(resolve(stagedClaude, ".mcp.json")),
