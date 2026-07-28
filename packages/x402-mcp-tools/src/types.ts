@@ -96,6 +96,13 @@ export interface FetchToolOpts extends ToolBaseOpts {
    * in-memory fallback.
    */
   getPurchaseAttemptStore?: () => PurchaseAttemptStoreV1 | null | undefined;
+  /**
+   * Register the historical `x402_pay` alias in addition to canonical
+   * `x402_fetch`. Defaults to true for raw compatibility consumers. New
+   * model-facing surfaces should set this false so one operation has one
+   * public name.
+   */
+  registerPayAlias?: boolean;
 }
 
 /** The request slice a tab lane needs to re-issue the call with a voucher. */

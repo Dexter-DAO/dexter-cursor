@@ -21,8 +21,11 @@ describe('hosted rendering (HOSTED_CAPS)', () => {
     expect(hosted).toContain('USDC on Solana only');
     expect(hosted).not.toContain('Funding chains: Solana, Base');
   });
-  it('documents the passkey onboarding tools', () => {
-    expect(hosted).toContain('dexter_passkey');
+  it('keeps compatibility-only passkey and skill tools out of product guidance', () => {
+    expect(hosted).not.toContain('dexter_passkey');
+    expect(hosted).not.toContain('dexter_passkey_probe');
+    expect(hosted).not.toContain('x402_compose_skill');
+    expect(hosted).not.toContain('promote_skill');
   });
   it('documents the session-bound portfolio tool without caller authority', () => {
     expect(hosted).toContain('dexter_portfolio');
@@ -78,8 +81,9 @@ describe('cards-on backward compat (hasCardTools defaulted/true)', () => {
 });
 
 describe('local rendering (LOCAL_CAPS)', () => {
-  it('keeps settings routing and the policy-block recipe', () => {
-    expect(local).toContain('x402_settings');
+  it('keeps spending policy in the explicit CLI instead of an MCP tool', () => {
+    expect(local).not.toContain('x402_settings');
+    expect(local).toContain('`opendexter settings`');
     expect(local).toContain('maxAmountUsdc');
   });
   it('keeps the env-var wallet recipe', () => {
@@ -92,7 +96,19 @@ describe('local rendering (LOCAL_CAPS)', () => {
   it('adds the connected portfolio while keeping passkey setup hosted-only', () => {
     expect(local).not.toContain('dexter_passkey');
     expect(local).toContain('dexter_portfolio');
-    expect(local).toContain('keep portfolio value separate from spendable cash');
+    expect(local.toLowerCase()).toContain('keep portfolio value separate from spendable cash');
+    expect(local).toContain('separate Dexter Wallet account linked by `opendexter connect`');
+    expect(local).toContain('x402_fetch continue to use the local file-backed or environment-configured signer');
+    expect(local).not.toContain('bound to the authenticated MCP session');
+  });
+  it('uses only the canonical six public tool names', () => {
+    for (const rendering of [local, hosted]) {
+      expect(rendering).not.toContain('x402_pay');
+      expect(rendering).not.toContain('x402_settings');
+      expect(rendering).not.toContain('dexter_passkey');
+      expect(rendering).not.toContain('x402_compose_skill');
+      expect(rendering).not.toContain('promote_skill');
+    }
   });
   it('SERVER_INSTRUCTIONS alias equals the local rendering', () => {
     expect(SERVER_INSTRUCTIONS).toBe(local);
@@ -139,8 +155,8 @@ describe('assertInstructionRosterParity', () => {
     )).toThrow(/x402_settings.*card_login_start|card_login_start.*x402_settings/);
   });
   it('both shipped renderings are self-consistent with their card-free rosters', () => {
-    const hostedRoster = ['x402_search','x402_pay','x402_fetch','x402_check','x402_access','x402_wallet','dexter_portfolio','x402_compose_skill','promote_skill','dexter_passkey_probe','dexter_passkey'];
-    const localRoster  = ['x402_search','x402_pay','x402_fetch','x402_check','x402_access','x402_wallet','dexter_portfolio','x402_settings'];
+    const hostedRoster = ['x402_search','x402_fetch','x402_check','x402_access','x402_wallet','dexter_portfolio'];
+    const localRoster  = ['x402_search','x402_fetch','x402_check','x402_access','x402_wallet','dexter_portfolio'];
     expect(() => assertInstructionRosterParity(hosted, hostedRoster)).not.toThrow();
     expect(() => assertInstructionRosterParity(local, localRoster)).not.toThrow();
   });

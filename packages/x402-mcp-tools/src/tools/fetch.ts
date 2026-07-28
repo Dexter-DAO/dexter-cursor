@@ -1619,13 +1619,15 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
     .tool("x402_fetch", description, inputSchema, runFetch)
     ?.update?.({ _meta: meta });
 
-  server.tool(
-    "x402_pay",
-    "Alias of x402_fetch for clients that want an explicit payment verb. " +
-      "Accepts the same prepared purchase, explicit mode, selected seller offer, " +
-      "route, and atomic ceiling, and returns the same mode-specific receipt. " +
-      "Never call both aliases for one intended purchase.",
-    inputSchema,
-    runFetch,
-  )?.update?.({ _meta: meta });
+  if (opts.registerPayAlias !== false) {
+    server.tool(
+      "x402_pay",
+      "Alias of x402_fetch for clients that want an explicit payment verb. " +
+        "Accepts the same prepared purchase, explicit mode, selected seller offer, " +
+        "route, and atomic ceiling, and returns the same mode-specific receipt. " +
+        "Never call both aliases for one intended purchase.",
+      inputSchema,
+      runFetch,
+    )?.update?.({ _meta: meta });
+  }
 }

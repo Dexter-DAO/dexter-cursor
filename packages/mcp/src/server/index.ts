@@ -13,7 +13,6 @@ import { loadSettings } from "../settings.js";
 import { recordSpend, spentLast24h } from "../spend-ledger.js";
 import { createPurchaseAttemptStore } from "../purchase-attempt-ledger.js";
 import { createTabLane } from "../tabs/lane.js";
-import { registerSettingsTool } from "../tools/settings.js";
 import { registerPortfolioTool } from "../tools/portfolio.js";
 import { registerWidgetResources } from "../resources/widgets.js";
 import { registerDocsResources } from "../resources/docs.js";
@@ -26,13 +25,11 @@ export interface ServerOptions {
 
 export const LOCAL_TOOL_ROSTER = [
   "x402_search",
-  "x402_pay",
   "x402_fetch",
   "x402_check",
   "x402_access",
   "x402_wallet",
   "dexter_portfolio",
-  "x402_settings",
 ] as const;
 
 export async function startServer(opts: ServerOptions): Promise<void> {
@@ -101,6 +98,7 @@ export async function startServer(opts: ServerOptions): Promise<void> {
     }),
     getTabLane: () => tabLane,
     getPurchaseAttemptStore: () => purchaseAttempts,
+    registerPayAlias: false,
     walletlessHint:
       "Configure DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (Base/Polygon/etc) for automatic settlement.",
     noWalletTip:
@@ -114,10 +112,10 @@ export async function startServer(opts: ServerOptions): Promise<void> {
   // LOCAL_CAPS (hasCardTools:false) — reintroducing a card tool without
   // flipping that cap back on trips the parity assert below at boot.
 
-  // Settings stays npm-package-specific (filesystem-backed). Hosted servers
-  // do not surface this tool.
+  // Local spending policy remains available through the explicit
+  // `opendexter settings` CLI command. It is deliberately not an MCP tool:
+  // the model-facing local and hosted surfaces share one six-tool vocabulary.
   registerPortfolioTool(server);
-  registerSettingsTool(server);
 
   registerWidgetResources(server);
 

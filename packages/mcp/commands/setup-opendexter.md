@@ -1,6 +1,6 @@
 ---
 name: setup-opendexter
-description: Configure the local OpenDexter MCP server and verify its eight-tool surface.
+description: Configure the local OpenDexter MCP server and verify its six-tool surface.
 ---
 
 # Install OpenDexter MCP
@@ -27,10 +27,13 @@ Supported client names are `cursor`, `claude-code`, `codex`, `vscode`,
 exact block instead of editing it.
 
 2. Verify discovery by asking the client to list the OpenDexter tools. The
-local runtime has exactly eight:
+local runtime has exactly six:
 
-`x402_search`, `x402_check`, `x402_access`, `x402_fetch`, `x402_pay`,
-`x402_wallet`, `dexter_portfolio`, and `x402_settings`.
+`x402_search`, `x402_check`, `x402_access`, `x402_fetch`, `x402_wallet`, and
+`dexter_portfolio`.
+
+Spending-policy changes remain an explicit terminal action through
+`opendexter settings`; they are not an MCP tool.
 
 3. Run `x402_wallet`. A failed balance read is unavailable, not zero. Fund only
 a receive address returned by the current wallet result and only on a network

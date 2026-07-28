@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-28 — local six-tool convergence candidate
+
+- Prepared `@dexterai/opendexter@1.23.0-rc.1` with the same six
+  model-facing operation names as hosted OpenDexter.
+- Removed the historical payment alias and filesystem settings mutation from
+  the local MCP roster. The existing CLI compatibility path and
+  `opendexter settings` command remain on the same signer, policy, and attempt
+  implementation.
+- Added the read-only linked `dexter_portfolio` surface without changing the
+  local file/environment payment signer.
+- Prepared the required publication train in order:
+  `@dexterai/mcp-instructions@2.4.0`,
+  `@dexterai/x402-mcp-tools@0.8.0`, then
+  `@dexterai/opendexter@1.23.0-rc.1`.
+- This entry records a source candidate. None of those three versions is
+  represented as published until registry and fresh-client proof completes.
+
 ## 2026-07-28 — hosted plugins
 
 - Released Codex `0.4.0` and Claude Code `2.0.0` for the hosted OpenDexter

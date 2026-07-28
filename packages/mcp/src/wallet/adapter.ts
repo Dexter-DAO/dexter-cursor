@@ -48,6 +48,7 @@ export function createNpmWalletAdapter(wallet: LoadedWallet): WalletAdapter {
       return {
         solanaAddress: wallet.info.solanaAddress ?? null,
         evmAddress: wallet.info.evmAddress ?? null,
+        descriptor: "local_file_or_environment_payment_signer",
       };
     },
 

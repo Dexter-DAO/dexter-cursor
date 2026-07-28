@@ -21,7 +21,7 @@ This package runs on your machine. It combines:
 - a free price and requirements check for an exact endpoint;
 - wallet-proof access for identity-gated services;
 - bounded USDC settlement for compatible x402 calls;
-- the core local operations as CLI commands and an eight-tool MCP surface.
+- the core local operations as CLI commands and a six-tool MCP surface.
 
 It is the local OpenDexter surface. For the remote, passkey-wallet connector,
 start at the [repository guide](../../README.md).
@@ -100,9 +100,9 @@ MCP through Claude's supported CLI. To add the same connection directly, use:
 claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@latest
 ```
 
-The separately prepared repository plugin is hosted-only and remains a release
-candidate. These published-package commands never install it, so a local wallet
-setup cannot silently become a hosted-wallet connection.
+The stable repository plugin is hosted-only. These local-package commands never
+install it, so a local wallet setup cannot silently become a hosted-wallet
+connection.
 
 ### Manual stdio MCP
 
@@ -188,9 +188,6 @@ settlement, Tab accrual, Gateway cash, and Gateway credit obligation separate.
 Calls that omit `purchase` retain a legacy compatibility path. New MCP and CLI
 flows should use the explicit prepared contract.
 
-`x402_pay` is an exact alias. It is not a second stage and must not be called
-after a successful fetch.
-
 Once any request has left the process, a timeout can hide provider mutation or
 payment. Do not retry automatically unless the result explicitly proves the
 attempt was rejected before dispatch and marks a retry safe. Reconcile an
@@ -201,7 +198,7 @@ uncertain first attempt; another call could duplicate work or payment.
 `x402_access` handles Sign-In-With-X endpoints. It proves control of the local
 wallet without making a payment, then returns the protected response.
 
-## Eight MCP tools
+## Six MCP tools
 
 | Tool | Purpose | Payment |
 |---|---|---|
@@ -209,13 +206,13 @@ wallet without making a payment, then returns the protected response.
 | `x402_check` | Inspect current price, route, schema, and auth mode | Never |
 | `x402_access` | Present a wallet-control proof | No payment |
 | `x402_fetch` | Call and settle a compatible x402 charge when required | Possible |
-| `x402_pay` | Alias of `x402_fetch` | Possible |
 | `x402_wallet` | Show addresses and verified balance reads | Never |
 | `dexter_portfolio` | Read the governed portfolio from the separately connected Dexter Wallet | Never |
-| `x402_settings` | Read or change local spending policy | Never |
 
 There are no Dextercard MCP tools in this package. The server's tool list is
-the authority; old sixteen-tool examples are obsolete.
+the authority; old alias, settings-tool, and sixteen-tool examples are
+obsolete. Local spending policy remains available through the explicit
+`opendexter settings` CLI command.
 
 ## Wallet
 
@@ -304,7 +301,10 @@ it for two view-only reads of the hosted Dexter Wallet:
   balance;
 - the local MCP's `dexter_portfolio` tool returns its governed asset inventory.
 
-This connection is **view-only for the local package today**. It does not change the payment signer used by the local MCP server, `fetch`, or `pay`. Local paid calls still use the local wallet in `wallet.json` or the configured environment keys.
+This connection is **view-only for the local package today**. It does not
+change the payment signer used by the local MCP server or paid CLI calls. Local
+paid calls still use the local wallet in `wallet.json` or the configured
+environment keys.
 
 ```bash
 npx @dexterai/opendexter@latest connect status
@@ -316,14 +316,13 @@ browser, QR, and headless-server paths.
 
 ## CLI map
 
-Every core tool has a CLI command:
+Primary CLI commands:
 
 ```text
 search <query>          Find services by capability
 check <url>             Inspect current terms without paying
 access <url>            Use wallet-proof access
 fetch <url>             Call and pay when required
-pay <url>               Alias of fetch
 wallet                  Show the active wallet view
 settings                Read or change local spending policy
 ```

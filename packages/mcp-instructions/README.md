@@ -11,12 +11,13 @@ implementations in the Dexter stack:
 2. **Local npm-installable server** `@dexterai/opendexter`
    (source: `~/websites/opendexter-ide/packages/mcp/src/server/index.ts`)
 
-Both servers build their `initialize` response from this package, but they do
-not advertise identical capabilities. The hosted rendering covers its
-session-bound passkey wallet, governed portfolio read, and deliberate
-eleven-tool roster. The local rendering covers its file-backed Solana/EVM
-wallet, settings tool, and deliberate seven-tool roster. A parity guard refuses
-to serve instructions that name an unregistered tool.
+Both servers build their `initialize` response from this package. Their
+model-facing vocabulary is the same six tools, while the wallet authority is
+deliberately different: hosted operations use the authenticated Dexter Wallet
+session; local wallet-proof and payment operations use the file or environment
+signer, and only the local portfolio read uses the separately linked hosted
+account. A parity guard refuses to serve instructions that name an
+unregistered tool.
 
 The instructions string is written as a **prescriptive operating
 procedure**: explicit intent-to-tool routing, native hosted OAuth and
@@ -39,21 +40,17 @@ const server = new McpServer(
 );
 ```
 
-Hosted OpenDexter uses `HOSTED_CAPS`. Its rendering names these eleven tools:
+Hosted OpenDexter uses `HOSTED_CAPS`. Both shipped renderings name exactly:
 
 ```text
-x402_search        x402_pay             x402_fetch
-x402_check         x402_access          x402_wallet
-dexter_portfolio   x402_compose_skill   promote_skill
-dexter_passkey_probe                    dexter_passkey
+x402_search  x402_fetch  x402_check
+x402_access  x402_wallet  dexter_portfolio
 ```
 
-The local rendering names exactly:
-
-```text
-x402_search  x402_pay  x402_fetch  x402_check
-x402_access  x402_wallet  x402_settings
-```
+The hosted runtime may retain additional raw app-only compatibility endpoints
+during a dated migration, but this package never routes a model to them. Local
+spending policy remains an explicit `opendexter settings` CLI action rather
+than an MCP tool.
 
 ## Updating the instructions
 

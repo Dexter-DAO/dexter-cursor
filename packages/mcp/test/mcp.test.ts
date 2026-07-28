@@ -78,6 +78,25 @@ describe("wallet", () => {
     writeFileSync(walletFile, "not json{{{", { mode: 0o600 });
     expect(() => JSON.parse(readFileSync(walletFile, "utf-8"))).toThrow();
   });
+
+  it("labels the MCP wallet as the local payment signer", async () => {
+    const { Keypair } = await import("@solana/web3.js");
+    const { createNpmWalletAdapter } = await import("../src/wallet/adapter.js");
+    const keypair = Keypair.generate();
+    const adapter = createNpmWalletAdapter({
+      info: {
+        solanaAddress: keypair.publicKey.toBase58(),
+        createdAt: new Date().toISOString(),
+      },
+      solanaKeypair: keypair,
+      status: "existing",
+    });
+
+    expect(adapter.getInfo()).toMatchObject({
+      solanaAddress: keypair.publicKey.toBase58(),
+      descriptor: "local_file_or_environment_payment_signer",
+    });
+  });
 });
 
 // ── Search Result Formatting Tests ────────────────────────────────────────
@@ -461,7 +480,10 @@ describe("payment policy gate", () => {
 
 // ── Integration Tests (require network) ───────────────────────────────────
 
-describe("integration", () => {
+const describeLive =
+  process.env.OPENDEXTER_RUN_LIVE_TESTS === "1" ? describe : describe.skip;
+
+describeLive("integration", () => {
   it("searches the live capability endpoint", async () => {
     const res = await fetch(
       "https://api.dexter.cash/api/x402gle/capability?q=token%20price&limit=3",

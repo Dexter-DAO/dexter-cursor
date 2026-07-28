@@ -55,13 +55,13 @@ const expected = readJson(sourcePackageJson);
 assert(pkg.name === expected.name, "candidate package name does not match this checkout");
 assert(pkg.version === expected.version, "candidate version does not match this checkout");
 assert(
-  pkg.dependencies?.["@dexterai/mcp-instructions"] === "^2.3.0" &&
+  pkg.dependencies?.["@dexterai/mcp-instructions"] === "2.4.0" &&
     pkg.dependencies?.["@dexterai/mcp-instructions"] ===
       expected.dependencies?.["@dexterai/mcp-instructions"],
   "candidate has the wrong MCP instructions dependency",
 );
 assert(
-  pkg.dependencies?.["@dexterai/x402-mcp-tools"] === "^0.7.1" &&
+  pkg.dependencies?.["@dexterai/x402-mcp-tools"] === "0.8.0" &&
     pkg.dependencies?.["@dexterai/x402-mcp-tools"] ===
       expected.dependencies?.["@dexterai/x402-mcp-tools"],
   "candidate has the wrong shared tool dependency",
@@ -111,7 +111,8 @@ assert(JSON.stringify(widgets) === JSON.stringify([
 ]), `unexpected widget set: ${widgets.join(", ")}`);
 
 const readme = readFileSync(join(root, "README.md"), "utf8");
-assert(readme.includes("## Eight MCP tools"), "README does not declare the local roster");
+assert(readme.includes("## Six MCP tools"), "README does not declare the local roster");
+assert(!/\bx402_(?:pay|settings)\b/.test(readme), "README suggests a retired MCP alias");
 assert(!/\bcard_(?:status|issue|freeze|link_wallet)\b/.test(readme), "README revives card tools");
 
 console.log(`Candidate fixture passed: ${pkg.name}@${pkg.version}`);

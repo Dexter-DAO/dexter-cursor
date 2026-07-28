@@ -14,9 +14,9 @@ import { createPurchaseAttemptStore } from "../purchase-attempt-ledger.js";
  * CLI entrypoint for the `opendexter fetch` and `opendexter pay`
  * subcommands.
  *
- * The MCP tool registrations for `x402_fetch` and `x402_pay` live in the
- * shared @dexterai/x402-mcp-tools package and are mounted in
- * src/server/index.ts. This file owns only the npm-CLI-flavored output.
+ * The canonical MCP `x402_fetch` registration lives in the shared
+ * @dexterai/x402-mcp-tools package and is mounted without its historical alias
+ * in src/server/index.ts. This file owns only the npm-CLI-flavored output.
  *
  * New calls pass one prepared purchase from `opendexter check`; its explicit
  * mode selects exactly one adapter and never falls through to another mode.

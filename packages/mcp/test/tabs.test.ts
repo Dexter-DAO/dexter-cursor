@@ -436,6 +436,7 @@ describe("tabs/connect — consent handoff", () => {
   });
 
   it("an ACTIVE tab is left untouched on a plain re-run, and the recovery hint names --rekey", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => live402Response()));
     const g = makeGrant();
     upsertTab(g.record, dir);
     const lines: string[] = [];
@@ -450,6 +451,7 @@ describe("tabs/connect — consent handoff", () => {
   });
 
   it("--rekey over an ACTIVE tab mints a FRESH key and re-issues consent (the cumulative_exceeds_cap recovery)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => live402Response()));
     const g = makeGrant();
     upsertTab(g.record, dir);
     const lines: string[] = [];
@@ -466,6 +468,7 @@ describe("tabs/connect — consent handoff", () => {
   });
 
   it("--rekey warns before discarding an unsettled voucher receipt (mirrors `tab remove`)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => live402Response()));
     const g = makeGrant();
     upsertTab({ ...g.record, lastVoucherHeader: "aGVsZG9uLXJlY2VpcHQ=" }, dir);
     const lines: string[] = [];
@@ -482,6 +485,7 @@ describe("tabs/connect — consent handoff", () => {
   });
 
   it("re-connecting over a DEAD record warns before discarding a held receipt", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => live402Response()));
     const g = makeGrant({ status: "dead", deadReason: "tab_session_not_live" });
     upsertTab({ ...g.record, lastVoucherHeader: "aGVsZG9uLXJlY2VpcHQ=" }, dir);
     const lines: string[] = [];

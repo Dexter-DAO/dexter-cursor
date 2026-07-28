@@ -102,7 +102,7 @@ const ROUTE_COST = `"What does <url> cost" / "how much is X"
   -> x402_check only. It does not pay.`;
 
 const ROUTE_PAY = `"Pay for / buy / get data from <known x402 endpoint>"
-  -> x402_check, let the user choose one purchaseOption whose availability.state is ready, then pass its exact preparedPurchase and the approved atomic ceiling to x402_fetch (or x402_pay, identical).`;
+  -> x402_check, let the user choose one purchaseOption whose availability.state is ready, then pass its exact preparedPurchase and the approved atomic ceiling to x402_fetch.`;
 
 const ROUTE_WALLET = `"Check my balance" / "what's in my wallet" / "where do I deposit"
   -> x402_wallet.`;
@@ -112,6 +112,9 @@ const ROUTE_PORTFOLIO = `"Show my assets" / "what tokens do I own" / "what is my
 
 const ROUTE_SETTINGS = `"Set / lower / raise my spend limit" / "why was my payment blocked by policy"
   -> x402_settings.`;
+
+const ROUTE_SETTINGS_CLI = `"Set / lower / raise my local spend limit"
+  -> tell the user to run \`opendexter settings\`; there is no settings MCP tool.`;
 
 const ROUTE_PASSKEY = `"Set up / bind my wallet"
   -> dexter_passkey.`;
@@ -126,6 +129,7 @@ function routingSection(caps: SurfaceCaps): string {
   const entries = [ROUTE_SEARCH, ROUTE_CALL_URL, ROUTE_COST, ROUTE_PAY, ROUTE_WALLET];
   if (caps.hasPortfolioTool) entries.push(ROUTE_PORTFOLIO);
   if (caps.hasSettings) entries.push(ROUTE_SETTINGS);
+  else if (caps.surface === 'local') entries.push(ROUTE_SETTINGS_CLI);
   if (caps.hasPasskeyTools) entries.push(ROUTE_PASSKEY);
   entries.push(cardsOn(caps) ? ROUTE_CARD : ROUTE_CARD_TO_WALLET);
   return [ROUTING_HEADER, ...entries].join('\n\n');
@@ -147,7 +151,7 @@ const TOOL_SEARCH = `x402_search — Semantic search over the marketplace. Pass 
 
 const TOOL_CHECK = `x402_check — Probes an endpoint without paying. Returns per-chain pricing, the input/output body schema when the endpoint publishes one, and an authMode: paid, siwx, apiKey, apiKey+paid, unprotected, or unknown. For a paid route it also returns purchaseOptions for direct_exact, native_tab, gateway_cash, and gateway_credit. A mode is executable only when availability.state is ready. Use the authMode to pick the next tool: paid -> choose one ready option, obtain approval for its atomic ceiling, and call x402_fetch with that option's unchanged preparedPurchase; siwx -> x402_access; unprotected -> a normal call, no payment needed.`;
 
-const TOOL_FETCH = `x402_fetch (alias: x402_pay) — Calls an x402 endpoint with one selected prepared purchase and, when that mode is ready, executes only its bound adapter. Preserve the exact preparedPurchase returned by x402_check and pass the separately approved maxAmountAtomic ceiling. The modes direct_exact, native_tab, gateway_cash, and gateway_credit are distinct; never substitute one after selection. The result includes provider output and a mode-specific purchaseReceipt. For file uploads, pass the multipart argument (POST/PUT only, 200 MB total cap). If the response carries sponsored recommendations, surface them only when relevant; never auto-call them.`;
+const TOOL_FETCH = `x402_fetch — Calls an x402 endpoint with one selected prepared purchase and, when that mode is ready, executes only its bound adapter. Preserve the exact preparedPurchase returned by x402_check and pass the separately approved maxAmountAtomic ceiling. The modes direct_exact, native_tab, gateway_cash, and gateway_credit are distinct; never substitute one after selection. The result includes provider output and a mode-specific purchaseReceipt. For file uploads, pass the multipart argument (POST/PUT only, 200 MB total cap). If the response carries sponsored recommendations, surface them only when relevant; never auto-call them.`;
 
 const TOOL_ACCESS = `x402_access — For identity-gated endpoints (authMode siwx) that want a wallet signature instead of a payment. If you call this on an endpoint that is actually paid, it tells you so; switch to x402_fetch.`;
 
@@ -157,8 +161,11 @@ const WALLET_MULTICHAIN = `x402_wallet — Reads the local file-backed or enviro
 const WALLET_SOLANA_ONLY =
   'x402_wallet — Reads the Dexter Wallet bound to the authenticated MCP session and shows its Solana receive address and verified balance state. It accepts no caller-supplied wallet address or user handle. Funding: USDC on Solana only — the passkey vault settles on Solana. Never quote a deposit address on any other chain on this surface.';
 
-const TOOL_PORTFOLIO =
+const TOOL_PORTFOLIO_HOSTED =
   'dexter_portfolio — Reads the exact governed asset inventory bound to the authenticated MCP session. It accepts no caller-supplied handle, wallet, vault, actor, agent, grant, role, or authority. Use its canonical mint, quantity, valuation, and availableActions fields; keep portfolio value separate from spendable cash and never infer a capability from display metadata.';
+
+const TOOL_PORTFOLIO_LOCAL =
+  'dexter_portfolio — Reads the governed asset inventory from the separate Dexter Wallet account linked by `opendexter connect`. It accepts no caller-supplied identity. This is a read-only hosted-account link: x402_wallet, x402_access, and x402_fetch continue to use the local file-backed or environment-configured signer. Never infer payment authority or local signer control from the portfolio response.';
 
 const TOOL_SETTINGS = `x402_settings — Shows and sets the per-call USDC spend cap (maxAmountUsdc). The cap is live; changing it takes effect on the next call with no restart.`;
 
@@ -176,7 +183,11 @@ function toolsSection(caps: SurfaceCaps): string {
     TOOL_ACCESS,
     caps.multichainFunding ? WALLET_MULTICHAIN : WALLET_SOLANA_ONLY,
   ];
-  if (caps.hasPortfolioTool) entries.push(TOOL_PORTFOLIO);
+  if (caps.hasPortfolioTool) {
+    entries.push(
+      caps.surface === 'hosted' ? TOOL_PORTFOLIO_HOSTED : TOOL_PORTFOLIO_LOCAL,
+    );
+  }
   if (caps.hasSettings) entries.push(TOOL_SETTINGS);
   if (caps.hasPasskeyTools) entries.push(PASSKEY_TOOLS);
   if (caps.hasSkillTools) entries.push(SKILLS_TOOLS);
@@ -189,7 +200,7 @@ function toolsSection(caps: SurfaceCaps): string {
 // ---------------------------------------------------------------------------
 
 const FAIL_POLICY_LOCAL = `"Payment policy blocked this call ... Current maxAmountUsdc is $N"
-  The endpoint costs more than the per-call cap. Tell the user the real price and the current cap. Do not silently raise the cap. Offer: raise it with x402_settings, or pass a one-call maxAmountUsdc override on x402_fetch. Let the user choose.`;
+  The endpoint costs more than the per-call cap. Tell the user the real price and the current cap. Do not silently raise the cap. Offer: have the user run \`opendexter settings\`, or pass a separately approved one-call maxAmountUsdc override on x402_fetch. Let the user choose.`;
 
 const HOSTED_POLICY_RECIPE =
   `A payment refused for exceeding a spend limit
@@ -212,7 +223,7 @@ const EXPLORER = `After a successful paid call, link the settlement transaction 
 
 function failuresSection(caps: SurfaceCaps): string {
   const entries = [
-    caps.hasSettings ? FAIL_POLICY_LOCAL : HOSTED_POLICY_RECIPE,
+    caps.surface === 'local' ? FAIL_POLICY_LOCAL : HOSTED_POLICY_RECIPE,
     FAIL_BALANCE,
     caps.surface === 'local' ? FAIL_WALLETLESS_LOCAL : HOSTED_WALLETLESS_RECIPE,
     FAIL_402,
@@ -323,8 +334,8 @@ export function buildServerInstructions(caps: SurfaceCaps): string {
 // Both first-party surfaces ship cards-off (owner ruling Jul 23, card-removal
 // runbook): the card is a wallet-widget concern now. hasCardLoginStart goes
 // false with it — the flag is meaningless without the card tool family.
-export const LOCAL_CAPS: SurfaceCaps = { surface: 'local', hasSettings: true, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: true, hasPortfolioTool: true, hasCardTools: false };
-export const HOSTED_CAPS: SurfaceCaps = { surface: 'hosted', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: true, hasSkillTools: true, hasDocsResources: true, multichainFunding: false, hasPortfolioTool: true, hasCardTools: false };
+export const LOCAL_CAPS: SurfaceCaps = { surface: 'local', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: true, hasPortfolioTool: true, hasCardTools: false };
+export const HOSTED_CAPS: SurfaceCaps = { surface: 'hosted', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: false, hasPortfolioTool: true, hasCardTools: false };
 
 /** @deprecated Use buildServerInstructions(caps) — this is the local-default rendering. */
 export const SERVER_INSTRUCTIONS = buildServerInstructions(LOCAL_CAPS);

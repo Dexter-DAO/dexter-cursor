@@ -36,6 +36,8 @@ export interface ComposeAllToolsOpts {
   getPurchaseAttemptStore?: CheckToolOpts["getPurchaseAttemptStore"];
   /** Optional walletless hint surfaced in fetch's description. */
   walletlessHint?: FetchToolOpts["walletlessHint"];
+  /** Whether to expose the historical `x402_pay` alias. Defaults to true. */
+  registerPayAlias?: FetchToolOpts["registerPayAlias"];
   /** Optional tip surfaced by x402_wallet when no wallet is configured. */
   noWalletTip?: WalletToolOpts["noWalletTip"];
   /**
@@ -89,6 +91,7 @@ export function composeAllTools(server: McpServer, opts: ComposeAllToolsOpts): v
       getTabLane: opts.getTabLane,
       getPurchaseAttemptStore: opts.getPurchaseAttemptStore,
       walletlessHint: opts.walletlessHint,
+      registerPayAlias: opts.registerPayAlias,
     });
   }
   if (include.includes("access")) {

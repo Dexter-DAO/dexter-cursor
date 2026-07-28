@@ -1,6 +1,6 @@
 {
   "name": "@dexterai/mcp-instructions",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Shared MCP server instructions for the OpenDexter / Dexter x402 Gateway. Single source of truth consumed by both the hosted server (open.dexter.cash/mcp) and the npm-installable local server (@dexterai/opendexter).",
   "type": "module",
   "main": "dist/index.cjs",

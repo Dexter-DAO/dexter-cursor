@@ -352,6 +352,29 @@ describe("Direct Exact selected-offer execution", () => {
     });
   });
 
+  it("can suppress the historical x402_pay alias on canonical model surfaces", () => {
+    const names: string[] = [];
+    const server = {
+      tool: (
+        name: string,
+        _description: string,
+        _schema: unknown,
+        _handler: unknown,
+      ) => {
+        names.push(name);
+        return { update: vi.fn() };
+      },
+    };
+    registerFetchTool(server as never, {
+      apiBaseUrl: "https://x402.dexter.cash",
+      metas: { fetch: {} } as never,
+      wallet: null,
+      registerPayAlias: false,
+    });
+
+    expect(names).toEqual(["x402_fetch"]);
+  });
+
   it.each([1, 2] as const)(
     "rejects a v%s seller offer whose hidden fee-payer term changed",
     async (x402Version) => {

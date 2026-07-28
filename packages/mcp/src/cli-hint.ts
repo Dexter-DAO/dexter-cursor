@@ -2,7 +2,7 @@
  * Version-safe CLI hint.
  *
  * The tab lane is the single paid path behind BOTH the `opendexter fetch` CLI
- * and the MCP server's `x402_fetch` / `x402_pay` tools. Its outcomes — refusal
+ * and the MCP server's canonical `x402_fetch` tool. Its outcomes — refusal
  * explanations, dead-grant notes, settle receipts — ride back through the MCP
  * result and get relayed by an agent to a human whose GLOBAL `opendexter` may
  * be months stale. A bare `opendexter tab connect …` hint choked with "Unknown

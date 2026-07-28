@@ -1,7 +1,7 @@
 {
   "name": "@dexterai/opendexter",
-  "version": "1.22.2-rc.1",
-  "description": "Local OpenDexter MCP for x402 discovery, current terms, explicitly prepared purchase modes, wallet reads, and spending policy.",
+  "version": "1.23.0-rc.1",
+  "description": "Local OpenDexter MCP for x402 discovery, current terms, explicitly prepared purchase modes, local wallet reads, and linked governed portfolio reads.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -32,11 +32,11 @@
   "dependencies": {
     "@clack/prompts": "^1.1.0",
     "@dexterai/dextercard": "^0.5.0",
-    "@dexterai/mcp-instructions": "^2.3.0",
+    "@dexterai/mcp-instructions": "2.4.0",
     "@dexterai/vault": "^0.37.3",
     "@dexterai/x402": "^5.4.2",
     "@dexterai/x402-core": "^1.5.0",
-    "@dexterai/x402-mcp-tools": "^0.7.1",
+    "@dexterai/x402-mcp-tools": "0.8.0",
     "@modelcontextprotocol/ext-apps": "^1.2.2",
     "@modelcontextprotocol/sdk": "^1.24.0",
     "@solana/spl-token": "^0.4.9",

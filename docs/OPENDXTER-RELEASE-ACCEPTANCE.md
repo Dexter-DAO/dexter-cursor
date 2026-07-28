@@ -5,16 +5,18 @@ boundaries; it is not deployment or live-host proof.
 
 ## Frozen release-candidate surfaces
 
-The hosted contract fixture is frozen at eleven tools:
+The authoritative detailed matrix is
+[OPENDEXTER-SURFACE-MATRIX-2026-07-28.md](./OPENDEXTER-SURFACE-MATRIX-2026-07-28.md).
 
-`x402_search`, `x402_pay`, `x402_fetch`, `x402_check`, `x402_access`,
-`x402_wallet`, `dexter_portfolio`, `x402_compose_skill`, `promote_skill`,
-`dexter_passkey_probe`, and `dexter_passkey`.
+Hosted and local model-facing products share exactly six operation names:
 
-The local npm/stdio runtime remains a separate seven-tool product:
+`x402_search`, `x402_fetch`, `x402_check`, `x402_access`, `x402_wallet`, and
+`dexter_portfolio`.
 
-`x402_search`, `x402_pay`, `x402_fetch`, `x402_check`, `x402_access`,
-`x402_wallet`, and `x402_settings`.
+Hosted keeps five raw app-only compatibility endpoints for a dated migration;
+they are absent from model visibility and active guidance. The local candidate
+registers exactly six. Its spending settings remain an explicit CLI action,
+not an MCP tool.
 
 The Codex manifest uses its documented inline `mcpServers` map. The separate
 Claude package uses Claude's `.mcp.json` `mcpServers` wrapper.
@@ -26,16 +28,16 @@ portable Codex/Claude app registration. A current `plugin_asdk_app_...`
 registration, if required by the target host, is a publisher proof rather than
 something this source candidate may fabricate.
 
-The local package candidate is `@dexterai/opendexter@1.22.2-rc.1` on Node.js 20 or
-newer. Its coordinated Dexter source train is:
+The local package candidate is `@dexterai/opendexter@1.23.0-rc.1` on Node.js
+20 or newer. Its coordinated publication train is:
 
 - `@dexterai/x402-core@1.5.0`;
-- `@dexterai/mcp-instructions@2.3.0`;
-- `@dexterai/x402-mcp-tools@0.7.1`;
-- `@dexterai/opendexter@1.22.2-rc.1`.
+- `@dexterai/mcp-instructions@2.4.0`;
+- `@dexterai/x402-mcp-tools@0.8.0`;
+- `@dexterai/opendexter@1.23.0-rc.1`.
 
-The B3 disposable source-integration proof used MCP SDK `1.29.0`, MCP Apps
-extension `1.6.0`, and Zod `3.25.76`. This is local test evidence, not proof of
+The B3 disposable installed-graph proof resolved MCP SDK `1.30.0`, MCP Apps
+extension `1.7.5`, and Zod `3.25.76`. This is local test evidence, not proof of
 registry availability or a deployed graph; the hosted registry lock must
 reproduce those exact runtime versions before deployment.
 
@@ -51,24 +53,13 @@ proofs after the hosted candidate is deployed.
 
 ## Local source receipt
 
-The `1.22.2-rc.1` candidate was rebuilt in a disposable combined source graph
-with the exact `@dexterai/x402-core@1.5.0` package. The current receipt is:
+The prior `1.22.2-rc.1` evidence is superseded for publication purposes by the
+six-tool candidate. The required current proof is tracked in
+[OPENDEXTER-LOCAL-RELEASE-SMOKE-2026-07-28.md](./OPENDEXTER-LOCAL-RELEASE-SMOKE-2026-07-28.md).
 
-- MCP instructions typecheck/build and 23/23 tests;
-- Dextercard build;
-- x402 core build;
-- shared x402 MCP tools typecheck/build;
-- OpenDexter typecheck/build and 175/175 tests;
-- 10/10 source-package contract tests;
-- Codex plugin-creator validation plus Claude plugin and marketplace
-  validation;
-- tarball pack verification, 33-file archive inspection, and execution of the
-  extracted `dist/index.js --help` entrypoint against that same dependency
-  graph.
-
-This proves a runnable local source artifact and disposable package discovery.
-It is not npm-registry publication, a clean registry dependency resolution, a
-user-client install, or live-host OAuth/rendering proof.
+No source/workspace test may be represented as npm-registry publication, a
+clean registry dependency resolution, a user-client install, or live
+OAuth/rendering/payment proof.
 
 ## Lineage resolution
 

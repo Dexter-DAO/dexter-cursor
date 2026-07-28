@@ -2,7 +2,7 @@
  * The tab lane — tab-first payment for every paid call this CLI makes.
  *
  * Wiring: x402Fetch (the single paid path shared by the `opendexter fetch`
- * CLI command and the MCP server's x402_fetch/x402_pay tools) offers every
+ * CLI command and the MCP server's canonical x402_fetch tool) offers every
  * parsed 402 to this hook BEFORE the generic exact path. The lane pays by
  * voucher iff the 402 offers scheme 'tab' AND this CLI custodies an ACTIVE
  * grant for that seller; otherwise it falls through — exact behaves exactly

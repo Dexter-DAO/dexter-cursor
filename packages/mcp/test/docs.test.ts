@@ -12,6 +12,7 @@ const HOSTED_ONLY_TOOLS = [
   "promote_skill",
   "x402_compose_skill",
 ];
+const RETIRED_LOCAL_TOOL_NAMES = ["x402_pay", "x402_settings"];
 
 const TOOL_NAME =
   /\b(?:x402_[a-z_]+|card_[a-z_]+|dexter_[a-z_]+|promote_skill)\b/g;
@@ -45,6 +46,9 @@ const rootReadme = read("../../../README.md");
 const packageReadme = read("../README.md");
 const skill = read("../skills/opendexter/SKILL.md");
 const workflow = read("../assets/docs/workflow.md");
+const engineer = read("../agents/x402-engineer.md");
+const protocolRule = read("../rules/x402-protocol.mdc");
+const setupCommand = read("../commands/setup-opendexter.md");
 const connectMarkdown = read("../../../docs/connect-your-wallet.md");
 const connectHtml = read("../../../docs/connect-your-wallet.html");
 const onboardingSource = read("../src/cli/onboard.ts");
@@ -72,13 +76,25 @@ describe("docs resources", () => {
     ["package README", packageReadme],
     ["installable skill", stripFrontmatter(skill)],
     ["served workflow", workflow],
-  ])("%s documents exactly the local eight-tool roster", (_name, text) => {
+    ["specialist agent", stripFrontmatter(engineer)],
+    ["protocol rule", stripFrontmatter(protocolRule)],
+    ["setup command", stripFrontmatter(setupCommand)],
+  ])("%s documents exactly the local six-tool roster", (_name, text) => {
     expect(namedTools(text)).toEqual(LOCAL_TOOLS);
   });
 
-  it("keeps hosted-only tools out of the local skill", () => {
-    for (const tool of HOSTED_ONLY_TOOLS) {
-      expect(skill).not.toContain(`\`${tool}\``);
+  it("keeps compatibility-only names out of active local guidance", () => {
+    for (const text of [
+      packageReadme,
+      skill,
+      workflow,
+      engineer,
+      protocolRule,
+      setupCommand,
+    ]) {
+      for (const tool of [...HOSTED_ONLY_TOOLS, ...RETIRED_LOCAL_TOOL_NAMES]) {
+        expect(text).not.toContain(`\`${tool}\``);
+      }
     }
     expect(skill).toContain("local Solana/EVM payment wallet");
     expect(skill).toContain("connected Dexter Wallet portfolio");

@@ -312,18 +312,18 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   const mcp = await readJson(resolve(repoRoot, "mcp.json"));
   assert.equal(workspace.packageManager, "npm@10.9.3");
   assert.equal(workspace.engines.node, ">=20");
-  assert.equal(pkg.version, "1.22.2-rc.1");
+  assert.equal(pkg.version, "1.23.0-rc.1");
   assert.equal(pkg.engines.node, ">=20");
   assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "^1.24.0");
   assert.equal(pkg.dependencies.zod, "^3.25.76");
   assert.equal(pkg.dependencies["@dexterai/x402-core"], "^1.5.0");
-  assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "^2.3.0");
-  assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "^0.7.1");
+  assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.0");
+  assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.8.0");
   assert.deepEqual(mcp, {
     mcpServers: {
       opendexter: {
         command: "npx",
-        args: ["-y", "@dexterai/opendexter@1.22.2-rc.1"],
+        args: ["-y", "@dexterai/opendexter@1.23.0-rc.1"],
       },
     },
   });
@@ -333,7 +333,9 @@ test("release changelog carries stable hosted and candidate local identities", a
   const changelog = await readFile(resolve(repoRoot, "CHANGELOG.md"), "utf8");
   assert.match(changelog, /Codex `0\.4\.0`/);
   assert.match(changelog, /Claude Code `2\.0\.0`/);
-  assert.match(changelog, /`@dexterai\/opendexter@1\.22\.2-rc\.1`/);
+  assert.match(changelog, /`@dexterai\/opendexter@1\.23\.0-rc\.1`/);
+  assert.match(changelog, /`@dexterai\/mcp-instructions@2\.4\.0`/);
+  assert.match(changelog, /`@dexterai\/x402-mcp-tools@0\.8\.0`/);
 });
 
 test("both formats expose only the three hosted-contract skills", async () => {

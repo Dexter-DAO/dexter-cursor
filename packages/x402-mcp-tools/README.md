@@ -48,8 +48,19 @@ composeAllTools(server, {
 });
 ```
 
-`composeAllTools` installs five registrar families. The fetch registrar exposes
-both `x402_fetch` and its exact alias `x402_pay`, for six MCP tool names:
+`composeAllTools` installs five registrar families. For backward compatibility,
+the fetch registrar exposes both `x402_fetch` and its exact alias `x402_pay` by
+default. New product surfaces should set `registerPayAlias: false` and expose
+only the canonical fetch name:
+
+```ts
+composeAllTools(server, {
+  // ...
+  registerPayAlias: false,
+});
+```
+
+The compatibility-default roster is:
 
 | Tool | What it does | Can move money |
 |---|---|---|

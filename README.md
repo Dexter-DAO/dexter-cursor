@@ -156,7 +156,7 @@ safe.
 
 ## What the local package exposes
 
-The local product documentation routes agents through seven tools:
+The local and hosted products use the same six model-facing tool names:
 
 | Tool | What it does | Moves money? |
 |---|---|---|
@@ -165,14 +165,15 @@ The local product documentation routes agents through seven tools:
 | `x402_access` | Uses a wallet signature for Sign-In-With-X access | No payment |
 | `x402_fetch` | Calls an endpoint and settles a compatible x402 charge when required | Yes |
 | `x402_wallet` | Shows local addresses and verified balance reads | No |
-| `x402_settings` | Reads or changes this installation's spending policy | No |
 | `dexter_portfolio` | Reads the governed portfolio from an explicitly linked Dexter account | No |
 
-The hosted product deliberately differs. It does not expose the
-filesystem-backed `x402_settings` tool. It presents six model-facing tools,
-including a session-bound governed portfolio read. Five app-only compatibility
-endpoints remain raw-callable for a dated transition but are not product
-routes. The server's advertised visibility is authoritative.
+The names match; the authority does not. Hosted wallet, payment, and portfolio
+reads use the authenticated Dexter Wallet session. The local package uses its
+file or environment signer for wallet-proof and paid calls, while
+`dexter_portfolio` is a separate read-only link to the user's hosted Dexter
+Wallet. Five hosted app-only compatibility endpoints remain raw-callable for a
+dated transition but are not product routes. The server's advertised
+visibility is authoritative.
 
 ## Wallets and authority
 
