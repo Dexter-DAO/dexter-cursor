@@ -42,6 +42,9 @@ policy remain on Dexter's secure wallet surface.
 Route protocols such as x402 or MPP and funding modes such as Direct Exact,
 Native Tab, Gateway cash, or Gateway credit are returned transaction metadata.
 They do not change which wallet or authority the user selected.
+The exact mode identifiers are `direct_exact`, `native_tab`, `gateway_cash`,
+and `gateway_credit`. `integration_required`, `request_required`, or
+`unavailable` means stop before dispatch.
 
 Never switch seller, request, offer, route, protocol, or funding mode after
 preparation. Never automatically retry an ambiguous or post-dispatch failure.

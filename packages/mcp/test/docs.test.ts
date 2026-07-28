@@ -152,10 +152,16 @@ describe("docs resources", () => {
     expect(packageReadme).toContain("default limit when a call supplies no override");
   });
 
-  it("labels the hosted connector as a release candidate", () => {
-    expect(plainText(rootReadme)).toMatch(
+  it("labels the hosted connector as a released public plugin", () => {
+    expect(rootReadme).toContain("### Hosted connector");
+    expect(rootReadme).toContain(
+      "codex plugin marketplace add Dexter-DAO/opendexter-ide --ref main",
+    );
+    expect(rootReadme).toContain(
+      "claude plugin marketplace add Dexter-DAO/opendexter-ide --scope user",
+    );
+    expect(plainText(rootReadme)).not.toMatch(
       /release candidates? pending final client-host validation/,
     );
-    expect(rootReadme).toContain("### Hosted release candidate");
   });
 });
