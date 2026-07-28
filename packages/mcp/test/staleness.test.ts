@@ -72,10 +72,11 @@ describe("isNewerVersion", () => {
 });
 
 describe("staleNotice", () => {
-  it("always ends with the exact global-upgrade command", () => {
+  it("always ends with the immutable global-upgrade command", () => {
     for (const ctx of ["startup", "unknown-command"] as StaleContext[]) {
       const line = staleNotice("1.17.0", "1.0.3", ctx);
-      expect(line).toContain("npm i -g @dexterai/opendexter@latest");
+      expect(line).toContain("npm i -g @dexterai/opendexter@1.17.0");
+      expect(line).not.toContain("@latest");
       expect(line).toContain("1.17.0");
       expect(line).toContain("1.0.3");
       expect(line.split("\n")).toHaveLength(1); // one plain line
@@ -191,7 +192,8 @@ describe("checkStaleness notice", () => {
     });
     await run();
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("npm i -g @dexterai/opendexter@latest");
+    expect(lines[0]).toContain("npm i -g @dexterai/opendexter@1.17.0");
+    expect(lines[0]).not.toContain("@latest");
     expect(lines[0]).toContain("1.17.0");
     expect(lines[0]).toContain("1.0.3");
   });

@@ -168,6 +168,7 @@ describe("local package distribution", () => {
 
   it("pins relayable runtime CLI hints to the running package", async () => {
     const { cliHint } = await import("../src/cli-hint.js");
+    const { staleNotice } = await import("../src/staleness.js");
     const { VERSION } = await import("../src/config.js");
     expect(cliHint("tab connect https://seller.example")).toBe(
       `npx -y @dexterai/opendexter@${VERSION} tab connect https://seller.example`,
@@ -175,6 +176,18 @@ describe("local package distribution", () => {
     expect(cliHint("tab connect https://seller.example")).not.toContain(
       "@latest",
     );
+    expect(staleNotice("1.24.0", VERSION, "startup")).toContain(
+      "npm i -g @dexterai/opendexter@1.24.0",
+    );
+    expect(staleNotice("1.24.0", VERSION, "startup")).not.toContain("@latest");
+  });
+
+  it("keeps settings as a CLI command with no dormant MCP registrar", () => {
+    const settings = read("src/tools/settings.ts");
+    expect(settings).toContain("export async function cliSettings");
+    expect(settings).not.toContain("registerSettingsTool");
+    expect(settings).not.toContain("x402_settings");
+    expect(settings).not.toContain("server.tool");
   });
 
   it("keeps card operations but removes internal card registrar sources", () => {

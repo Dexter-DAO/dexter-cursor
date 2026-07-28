@@ -8,15 +8,14 @@ boundaries; it is not deployment or live-host proof.
 The authoritative detailed matrix is
 [OPENDEXTER-SURFACE-MATRIX-2026-07-28.md](./OPENDEXTER-SURFACE-MATRIX-2026-07-28.md).
 
-Hosted and local model-facing products share exactly six operation names:
+Hosted and local MCP products expose exactly six operation names:
 
-`x402_search`, `x402_fetch`, `x402_check`, `x402_access`, `x402_wallet`, and
+`x402_search`, `x402_check`, `x402_fetch`, `x402_access`, `x402_wallet`, and
 `dexter_portfolio`.
 
-Hosted keeps five raw app-only compatibility endpoints for a dated migration;
-they are absent from model visibility and active guidance. The local candidate
-registers exactly six. Its spending settings remain an explicit CLI action,
-not an MCP tool.
+Neither surface registers a hidden paid-call alias, compose/promote route,
+passkey probe/status tool, or card tool. Local spending settings remain an
+explicit CLI action, not an MCP tool.
 
 The Codex manifest uses its documented inline `mcpServers` map. The separate
 Claude package uses Claude's `.mcp.json` `mcpServers` wrapper.
@@ -28,13 +27,13 @@ portable Codex/Claude app registration. A current `plugin_asdk_app_...`
 registration, if required by the target host, is a publisher proof rather than
 something this source candidate may fabricate.
 
-The local package candidate is `@dexterai/opendexter@1.23.0-rc.1` on Node.js
+The local package candidate is `@dexterai/opendexter@1.23.0-rc.2` on Node.js
 20 or newer. Its coordinated publication train is:
 
 - `@dexterai/x402-core@1.5.0`;
 - `@dexterai/mcp-instructions@2.4.0`;
 - `@dexterai/x402-mcp-tools@0.8.0`;
-- `@dexterai/opendexter@1.23.0-rc.1`.
+- `@dexterai/opendexter@1.23.0-rc.2`.
 
 The B3 disposable installed-graph proof resolved MCP SDK `1.30.0`, MCP Apps
 extension `1.7.5`, and Zod `3.25.76`. This is local test evidence, not proof of

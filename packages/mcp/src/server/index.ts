@@ -25,8 +25,8 @@ export interface ServerOptions {
 
 export const LOCAL_TOOL_ROSTER = [
   "x402_search",
-  "x402_fetch",
   "x402_check",
+  "x402_fetch",
   "x402_access",
   "x402_wallet",
   "dexter_portfolio",

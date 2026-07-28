@@ -1,6 +1,6 @@
 {
   "name": "@dexterai/opendexter",
-  "version": "1.23.0-rc.1",
+  "version": "1.23.0-rc.2",
   "description": "Local OpenDexter MCP for x402 discovery, current terms, explicitly prepared purchase modes, local wallet reads, and linked governed portfolio reads.",
   "type": "module",
   "main": "dist/index.js",

@@ -40,10 +40,9 @@ The Codex and Claude plugins connect directly to
 are bound to the authenticated Dexter Wallet session. They do not read the
 local package's key file.
 
-The hosted runtime temporarily retains five raw app-only compatibility
-endpoints. They are absent from model-facing tool visibility and active skill
-guidance. The local npm candidate exposes exactly the canonical six and has no
-raw alias or settings tool.
+The hosted release contract and local npm package each expose exactly the
+canonical six MCP tools. Neither contract has a hidden paid-call alias,
+compose/promote route, passkey probe/status tool, or settings tool.
 
 ## Paid-call state
 

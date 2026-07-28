@@ -6,8 +6,8 @@ OpenDexter gives Codex a governed Dexter Wallet through the hosted MCP at
 Version `0.4.0` targets hosted manifest `0.3.0`. The public product exposes six
 model-facing tools for discovery, exact-term inspection, one bounded purchase,
 wallet-proof access, wallet state, and the session-bound governed portfolio.
-The raw server temporarily retains five app-only compatibility endpoints so
-existing clients do not break; they are absent from this plugin's routing.
+The raw hosted release contract exposes exactly those six tools, with no
+compatibility or card registrations.
 
 ## Install
 

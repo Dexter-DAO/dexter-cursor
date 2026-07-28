@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-28 — hosted exact-six contract fixture
+
+- Prepared `@dexterai/opendexter@1.23.0-rc.2` without changing local tool
+  handlers, wallet/payment semantics, or its pinned instruction/tool
+  dependencies.
+- Updated the shipped hosted contract reference to the exact six raw tools:
+  `x402_search`, `x402_check`, `x402_fetch`, `x402_access`, `x402_wallet`, and
+  `dexter_portfolio`.
+- Removed the five retired compatibility registrations from the fixture and
+  package-contract expectations so Codex, Claude, ChatGPT, Cursor, Hermes, and
+  generic MCP documentation no longer describe an eleven-tool hosted surface.
+- Made CLI upgrade notices name the exact discovered version instead of a
+  floating npm tag, and removed the unused settings-tool registrar while
+  preserving `opendexter settings` as a local CLI command.
+- Kept `@dexterai/mcp-instructions@2.4.0` and
+  `@dexterai/x402-mcp-tools@0.8.0` unchanged; this RC patch does not republish
+  either dependency.
+
 ## 2026-07-28 — local six-tool convergence candidate
 
 - Prepared `@dexterai/opendexter@1.23.0-rc.1` with the same six

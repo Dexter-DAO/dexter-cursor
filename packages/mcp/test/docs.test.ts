@@ -6,7 +6,7 @@ import { DOCS_ASSETS_DIR } from "../src/resources/docs.js";
 import { LOCAL_TOOL_ROSTER } from "../src/server/index.js";
 
 const LOCAL_TOOLS = [...LOCAL_TOOL_ROSTER].sort();
-const HOSTED_ONLY_TOOLS = [
+const RETIRED_HOSTED_TOOL_NAMES = [
   "dexter_passkey",
   "dexter_passkey_probe",
   "promote_skill",
@@ -92,7 +92,10 @@ describe("docs resources", () => {
       protocolRule,
       setupCommand,
     ]) {
-      for (const tool of [...HOSTED_ONLY_TOOLS, ...RETIRED_LOCAL_TOOL_NAMES]) {
+      for (const tool of [
+        ...RETIRED_HOSTED_TOOL_NAMES,
+        ...RETIRED_LOCAL_TOOL_NAMES,
+      ]) {
         expect(text).not.toContain(`\`${tool}\``);
       }
     }

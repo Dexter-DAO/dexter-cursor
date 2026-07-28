@@ -96,9 +96,9 @@ export function isNewerVersion(latest: string, current: string): boolean {
   return false; // equal → not newer
 }
 
-/** The one plain line. Ends with the exact upgrade command in both contexts. */
+/** The one plain line. Ends with an immutable upgrade command in both contexts. */
 export function staleNotice(latest: string, current: string, context: StaleContext): string {
-  const upgrade = `run npm i -g ${PKG_NAME}@latest`;
+  const upgrade = `run npm i -g ${PKG_NAME}@${latest}`;
   if (context === "unknown-command") {
     return `that command may need a newer OpenDexter — ${latest} is out, you're on ${current}; ${upgrade}`;
   }

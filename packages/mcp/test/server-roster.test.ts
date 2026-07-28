@@ -44,9 +44,7 @@ describe("local MCP tool registration", () => {
 
     expect(client).toBeDefined();
     const result = await client!.listTools();
-    expect(result.tools.map(({ name }) => name).sort()).toEqual(
-      [...LOCAL_TOOL_ROSTER].sort(),
-    );
+    expect(result.tools.map(({ name }) => name)).toEqual(LOCAL_TOOL_ROSTER);
 
     await client!.close();
   });

@@ -1,6 +1,6 @@
 # OpenDexter local release and client smoke checklist
 
-Candidate: `@dexterai/opendexter@1.23.0-rc.1`.
+Candidate: `@dexterai/opendexter@1.23.0-rc.2`.
 
 This is a proof checklist, not publication authority. Do not publish packages,
 edit a user's client profile, create or replace a wallet, link an account,
@@ -14,7 +14,7 @@ sign, or pay until the captain opens the corresponding gate.
       and archive inspection pass.
 - [ ] `@dexterai/x402-mcp-tools@0.8.0` typecheck, tests/consumer tests, build,
       no-sourcemap check, pack dry-run, and archive inspection pass.
-- [ ] `@dexterai/opendexter@1.23.0-rc.1` typecheck, full tests, build, widget
+- [ ] `@dexterai/opendexter@1.23.0-rc.2` typecheck, full tests, build, widget
       copy, pack verification, and archive inspection pass.
 - [ ] Each package archive contains its declared version and no escaping
       symlink, credential, source map, `.env`, or undeclared executable.
@@ -28,7 +28,7 @@ dependency graph a registry install will receive.
 - [ ] Start the extracted local stdio server.
 - [ ] `initialize` succeeds; the roster-parity guard does not throw.
 - [ ] `tools/list` is exactly:
-      `x402_search`, `x402_fetch`, `x402_check`, `x402_access`,
+      `x402_search`, `x402_check`, `x402_fetch`, `x402_access`,
       `x402_wallet`, `dexter_portfolio`.
 - [ ] `tools/list` contains neither the historical payment alias nor a settings
       tool.
@@ -121,16 +121,21 @@ These require separate authority and are not part of source publication.
 
 ## Candidate evidence recorded before publication
 
-- Shared instructions: typecheck, 24/24 tests, build, and packed archive pass.
+- Shared instructions: typecheck, 25/25 tests, build, and packed archive pass.
 - Shared tools: typecheck, build, consumer coverage, no-source-map check, and
   packed archive pass.
-- Local package: typecheck, 183/183 deterministic tests pass with three
+- Local package: typecheck, 187/187 deterministic tests pass with three
   explicitly live-only checks skipped, exact hosted-widget build, and packed
   archive pass.
 - Package contract: 10/10.
 - Disposable installed graph resolves instructions `2.4.0`, tools `0.8.0`,
-  local package `1.23.0-rc.1`, x402 core `1.5.0`, MCP SDK `1.30.0`, and Zod
-  `3.25.76`; installed instructions name exactly the canonical six.
+  local package `1.23.0-rc.2`, x402 core `1.5.0`, MCP SDK `1.30.0`, MCP Apps
+  extension `1.7.5`, and Zod `3.25.76`.
+- The packed package starts through stdio as `OpenDexter 1.23.0-rc.2`;
+  `tools/list` returns the ordered canonical six, the installed instructions
+  contain those six and no retired route name, and an unlinked
+  `dexter_portfolio` call returns `connector_session_required` without an
+  inferred portfolio.
 
 This evidence does not satisfy the registry-publication, real-client,
 production artwork, OAuth, signing, or payment checkboxes above.

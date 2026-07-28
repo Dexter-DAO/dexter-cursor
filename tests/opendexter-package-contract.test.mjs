@@ -26,30 +26,16 @@ const contractPath = resolve(
   "skills/opendexter/references/hosted-contract.json",
 );
 
-const RAW_COMPATIBILITY_TOOLS = Object.freeze([
+const HOSTED_TOOLS = Object.freeze([
   "x402_search",
-  "x402_pay",
-  "x402_fetch",
   "x402_check",
-  "x402_access",
-  "x402_wallet",
-  "dexter_portfolio",
-  "x402_compose_skill",
-  "promote_skill",
-  "dexter_passkey_probe",
-  "dexter_passkey",
-]);
-
-const PUBLIC_PRODUCT_TOOLS = Object.freeze([
-  "x402_search",
   "x402_fetch",
-  "x402_check",
   "x402_access",
   "x402_wallet",
   "dexter_portfolio",
 ]);
 
-const APP_ONLY_COMPATIBILITY_TOOLS = Object.freeze([
+const RETIRED_HOSTED_TOOLS = Object.freeze([
   "x402_pay",
   "x402_compose_skill",
   "promote_skill",
@@ -59,16 +45,11 @@ const APP_ONLY_COMPATIBILITY_TOOLS = Object.freeze([
 
 const EXPECTED_SCHEMES = Object.freeze({
   x402_search: ["noauth"],
-  x402_pay: ["oauth2:vault"],
-  x402_fetch: ["oauth2:vault"],
   x402_check: ["noauth"],
+  x402_fetch: ["oauth2:vault"],
   x402_access: ["noauth"],
   x402_wallet: ["oauth2:vault"],
   dexter_portfolio: ["oauth2:vault"],
-  x402_compose_skill: ["noauth", "oauth2:vault"],
-  promote_skill: ["oauth2:vault"],
-  dexter_passkey_probe: ["noauth"],
-  dexter_passkey: ["oauth2:vault"],
 });
 
 const EXPECTED_SKILLS = Object.freeze([
@@ -175,9 +156,9 @@ async function inspectTree(root) {
   return entries;
 }
 
-test("release fixture separates the six-tool product from raw compatibility", async () => {
+test("release fixture is the exact hosted six-tool contract", async () => {
   const contract = await readJson(contractPath);
-  assert.equal(contract.contractId, "opendexter-hosted-eleven-tool-v1");
+  assert.equal(contract.contractId, "opendexter-hosted-six-tool-v1");
   assert.equal(contract.mcp.url, "https://open.dexter.cash/mcp");
   assert.equal(contract.mcp.manifestVersion, "0.3.0");
   assert.equal(contract.mcp.resource, "https://open.dexter.cash/mcp");
@@ -208,7 +189,7 @@ test("release fixture separates the six-tool product from raw compatibility", as
   );
   assert.deepEqual(
     contract.tools.map(({ name }) => name),
-    RAW_COMPATIBILITY_TOOLS,
+    HOSTED_TOOLS,
   );
   for (const tool of contract.tools) {
     assert.deepEqual(normalizedSchemes(tool), EXPECTED_SCHEMES[tool.name]);
@@ -241,28 +222,20 @@ test("release fixture separates the six-tool product from raw compatibility", as
       widgetAccessible: false,
     },
   );
-  assert.deepEqual(contract.conditionalAuth, [
-    {
-      name: "x402_compose_skill",
-      when: "publish=true",
-      requiredScope: "vault",
-    },
-  ]);
+  assert.deepEqual(contract.conditionalAuth, []);
   assert.deepEqual(
     contract.tools
       .filter(({ visibility }) => visibility.includes("model"))
       .map(({ name }) => name),
-    PUBLIC_PRODUCT_TOOLS,
+    HOSTED_TOOLS,
   );
-  assert.deepEqual(
-    contract.tools
-      .filter(
-        ({ visibility }) =>
-          visibility.includes("app") && !visibility.includes("model"),
-      )
-      .map(({ name }) => name),
-    APP_ONLY_COMPATIBILITY_TOOLS,
-  );
+  for (const retired of RETIRED_HOSTED_TOOLS) {
+    assert.equal(
+      contract.tools.some(({ name }) => name === retired),
+      false,
+      retired,
+    );
+  }
 });
 
 test("Codex package uses one portable remote MCP and mixed-auth marketplace policy", async () => {
@@ -312,7 +285,7 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   const mcp = await readJson(resolve(repoRoot, "mcp.json"));
   assert.equal(workspace.packageManager, "npm@10.9.3");
   assert.equal(workspace.engines.node, ">=20");
-  assert.equal(pkg.version, "1.23.0-rc.1");
+  assert.equal(pkg.version, "1.23.0-rc.2");
   assert.equal(pkg.engines.node, ">=20");
   assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "^1.24.0");
   assert.equal(pkg.dependencies.zod, "^3.25.76");
@@ -323,7 +296,7 @@ test("local package candidate pins its runtime and stdio discovery identity", as
     mcpServers: {
       opendexter: {
         command: "npx",
-        args: ["-y", "@dexterai/opendexter@1.23.0-rc.1"],
+        args: ["-y", "@dexterai/opendexter@1.23.0-rc.2"],
       },
     },
   });
@@ -333,7 +306,7 @@ test("release changelog carries stable hosted and candidate local identities", a
   const changelog = await readFile(resolve(repoRoot, "CHANGELOG.md"), "utf8");
   assert.match(changelog, /Codex `0\.4\.0`/);
   assert.match(changelog, /Claude Code `2\.0\.0`/);
-  assert.match(changelog, /`@dexterai\/opendexter@1\.23\.0-rc\.1`/);
+  assert.match(changelog, /`@dexterai\/opendexter@1\.23\.0-rc\.2`/);
   assert.match(changelog, /`@dexterai\/mcp-instructions@2\.4\.0`/);
   assert.match(changelog, /`@dexterai\/x402-mcp-tools@0\.8\.0`/);
 });
@@ -354,8 +327,8 @@ test("both formats expose only the three hosted-contract skills", async () => {
       resolve(root, "skills/opendexter/SKILL.md"),
       "utf8",
     );
-    assert.deepEqual(namedTools(umbrella), [...PUBLIC_PRODUCT_TOOLS].sort());
-    for (const tool of PUBLIC_PRODUCT_TOOLS) {
+    assert.deepEqual(namedTools(umbrella), [...HOSTED_TOOLS].sort());
+    for (const tool of HOSTED_TOOLS) {
       assert.match(umbrella, new RegExp(`\\\`${tool}\\\``));
     }
     assert.doesNotMatch(
@@ -407,8 +380,8 @@ test("publisher-side app binding stays separate from portable packages", async (
     resolve(repoRoot, "chatgpt-app-binding/README.md"),
     "utf8",
   );
-  assert.match(bindingReadme, /eleven raw tools/i);
-  assert.match(bindingReadme, /six model-facing tools/i);
+  assert.match(bindingReadme, /exactly six raw tools/i);
+  assert.doesNotMatch(bindingReadme, /compatibility (?:tool|endpoint|alias)/i);
   assert.match(bindingReadme, /`dexter_portfolio`/);
   assert.doesNotMatch(bindingReadme, /\bten tools\b|\b10 tools\b/i);
 });

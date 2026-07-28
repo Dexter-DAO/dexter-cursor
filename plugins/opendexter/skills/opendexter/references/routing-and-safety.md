@@ -11,10 +11,9 @@
 | `x402_wallet` | OAuth `vault` | Reads the session-bound wallet |
 | `dexter_portfolio` | OAuth `vault` | Reads session-bound governed assets |
 
-The raw server retains app-only compatibility endpoints for one dated
-transition. They are absent from model routing and must not be selected for a
-new request. No hosted card or local-settings tool belongs to the public
-product.
+The raw hosted release contract exposes exactly the six tools above. No
+paid-call alias, compose/promote route, passkey probe/status tool, hosted card
+tool, or local settings tool belongs to the product.
 
 ## Route precedence
 

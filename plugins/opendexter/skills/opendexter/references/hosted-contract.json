@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractId": "opendexter-hosted-eleven-tool-v1",
+  "contractId": "opendexter-hosted-six-tool-v1",
   "mcp": {
     "url": "https://open.dexter.cash/mcp",
     "manifestVersion": "0.3.0",
@@ -42,13 +42,10 @@
       "widgetAccessible": true
     },
     {
-      "name": "x402_pay",
+      "name": "x402_check",
       "securitySchemes": [
         {
-          "type": "oauth2",
-          "scopes": [
-            "vault"
-          ]
+          "type": "noauth"
         }
       ],
       "annotations": {
@@ -58,9 +55,10 @@
         "openWorldHint": true
       },
       "visibility": [
+        "model",
         "app"
       ],
-      "widgetAccessible": false
+      "widgetAccessible": true
     },
     {
       "name": "x402_fetch",
@@ -83,25 +81,6 @@
         "app"
       ],
       "widgetAccessible": false
-    },
-    {
-      "name": "x402_check",
-      "securitySchemes": [
-        {
-          "type": "noauth"
-        }
-      ],
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": true
-      },
-      "visibility": [
-        "model",
-        "app"
-      ],
-      "widgetAccessible": true
     },
     {
       "name": "x402_access",
@@ -163,99 +142,9 @@
         "model"
       ],
       "widgetAccessible": false
-    },
-    {
-      "name": "x402_compose_skill",
-      "securitySchemes": [
-        {
-          "type": "noauth"
-        },
-        {
-          "type": "oauth2",
-          "scopes": [
-            "vault"
-          ]
-        }
-      ],
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": true
-      },
-      "visibility": [
-        "app"
-      ],
-      "widgetAccessible": false
-    },
-    {
-      "name": "promote_skill",
-      "securitySchemes": [
-        {
-          "type": "oauth2",
-          "scopes": [
-            "vault"
-          ]
-        }
-      ],
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": true,
-        "openWorldHint": true
-      },
-      "visibility": [
-        "app"
-      ],
-      "widgetAccessible": false
-    },
-    {
-      "name": "dexter_passkey_probe",
-      "securitySchemes": [
-        {
-          "type": "noauth"
-        }
-      ],
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": false
-      },
-      "visibility": [
-        "app"
-      ],
-      "widgetAccessible": false
-    },
-    {
-      "name": "dexter_passkey",
-      "securitySchemes": [
-        {
-          "type": "oauth2",
-          "scopes": [
-            "vault"
-          ]
-        }
-      ],
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": false
-      },
-      "visibility": [
-        "app"
-      ],
-      "widgetAccessible": false
     }
   ],
-  "conditionalAuth": [
-    {
-      "name": "x402_compose_skill",
-      "when": "publish=true",
-      "requiredScope": "vault"
-    }
-  ],
+  "conditionalAuth": [],
   "forbiddenHostedToolPatterns": [
     "^card_"
   ],

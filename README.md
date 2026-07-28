@@ -46,7 +46,7 @@ The stable npm channel remains available as `@latest`, but it does not yet
 contain this six-capability release.
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.1 setup
+npx @dexterai/opendexter@1.23.0-rc.2 setup
 ```
 
 `setup` creates or loads the local wallet, detects supported AI clients,
@@ -54,7 +54,7 @@ configures the clients it can edit safely, and prints any remaining manual step
 plus the shortest path to a first search. To target one client:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.1 install --client cursor
+npx @dexterai/opendexter@1.23.0-rc.2 install --client cursor
 ```
 
 Use `claude-code`, `codex`, `vscode`, `windsurf`, or `gemini-cli` in place of
@@ -62,7 +62,7 @@ Use `claude-code`, `codex`, `vscode`, `windsurf`, or `gemini-cli` in place of
 connection directly:
 
 ```bash
-claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.0-rc.1
+claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.0-rc.2
 ```
 
 This local installer never adds the repository's hosted Claude Code plugin.
@@ -73,7 +73,7 @@ For a manual stdio MCP configuration in another client:
   "mcpServers": {
     "opendexter": {
       "command": "npx",
-      "args": ["-y", "@dexterai/opendexter@1.23.0-rc.1"]
+      "args": ["-y", "@dexterai/opendexter@1.23.0-rc.2"]
     }
   }
 }
@@ -175,9 +175,9 @@ The names match; the authority does not. Hosted wallet, payment, and portfolio
 reads use the authenticated Dexter Wallet session. The local package uses its
 file or environment signer for wallet-proof and paid calls, while
 `dexter_portfolio` is a separate read-only link to the user's hosted Dexter
-Wallet. Five hosted app-only compatibility endpoints remain raw-callable for a
-dated transition but are not product routes. The server's advertised
-visibility is authoritative.
+Wallet. The hosted release contract and local MCP discovery each expose only
+the six product operations above; there is no hidden paid-call alias,
+compose/promote route, or passkey probe/status tool in either contract.
 
 ## Wallets and authority
 
@@ -200,7 +200,7 @@ a paid call.
 
 ### Local `connect`
 
-`npx @dexterai/opendexter@1.23.0-rc.1 connect` creates a read-only account link for
+`npx @dexterai/opendexter@1.23.0-rc.2 connect` creates a read-only account link for
 hosted wallet and portfolio views. It labels that account separately from local
 payment authority.
 
@@ -218,8 +218,8 @@ budget counts only x402 spending witnessed by this installation on this
 machine; it is not a complete view of the wallet's on-chain activity.
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.1 settings
-npx @dexterai/opendexter@1.23.0-rc.1 settings --max-amount 2.50 --daily-budget 20
+npx @dexterai/opendexter@1.23.0-rc.2 settings
+npx @dexterai/opendexter@1.23.0-rc.2 settings --max-amount 2.50 --daily-budget 20
 ```
 
 ## Build or sell
@@ -227,7 +227,7 @@ npx @dexterai/opendexter@1.23.0-rc.1 settings --max-amount 2.50 --daily-budget 2
 - **Build an x402 client or server:** use
   [`@dexterai/x402`](https://www.npmjs.com/package/@dexterai/x402).
 - **Prepare a compatible service for discovery:** run
-  `npx @dexterai/opendexter@1.23.0-rc.1 audition https://your-service.example`.
+  `npx @dexterai/opendexter@1.23.0-rc.2 audition https://your-service.example`.
   Audition performs real paid test calls, so use a testable endpoint and fund
   only the amount you intend those tests to spend.
 - **Inspect the protocol:** read the [x402 specification](https://x402.org).
