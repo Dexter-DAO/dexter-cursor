@@ -323,7 +323,7 @@ export function buildServerInstructions(caps: SurfaceCaps): string {
 // Both first-party surfaces ship cards-off (owner ruling Jul 23, card-removal
 // runbook): the card is a wallet-widget concern now. hasCardLoginStart goes
 // false with it — the flag is meaningless without the card tool family.
-export const LOCAL_CAPS: SurfaceCaps = { surface: 'local', hasSettings: true, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: true, hasPortfolioTool: false, hasCardTools: false };
+export const LOCAL_CAPS: SurfaceCaps = { surface: 'local', hasSettings: true, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: true, hasPortfolioTool: true, hasCardTools: false };
 export const HOSTED_CAPS: SurfaceCaps = { surface: 'hosted', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: true, hasSkillTools: true, hasDocsResources: true, multichainFunding: false, hasPortfolioTool: true, hasCardTools: false };
 
 /** @deprecated Use buildServerInstructions(caps) — this is the local-default rendering. */

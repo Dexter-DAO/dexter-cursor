@@ -89,9 +89,10 @@ describe('local rendering (LOCAL_CAPS)', () => {
     expect(local).toContain('local file-backed or environment-configured Solana/EVM wallet');
     expect(local).not.toContain('Creates or resumes a multi-chain session');
   });
-  it('never mentions hosted-only tools', () => {
+  it('adds the connected portfolio while keeping passkey setup hosted-only', () => {
     expect(local).not.toContain('dexter_passkey');
-    expect(local).not.toContain('dexter_portfolio');
+    expect(local).toContain('dexter_portfolio');
+    expect(local).toContain('keep portfolio value separate from spendable cash');
   });
   it('SERVER_INSTRUCTIONS alias equals the local rendering', () => {
     expect(SERVER_INSTRUCTIONS).toBe(local);
@@ -139,7 +140,7 @@ describe('assertInstructionRosterParity', () => {
   });
   it('both shipped renderings are self-consistent with their card-free rosters', () => {
     const hostedRoster = ['x402_search','x402_pay','x402_fetch','x402_check','x402_access','x402_wallet','dexter_portfolio','x402_compose_skill','promote_skill','dexter_passkey_probe','dexter_passkey'];
-    const localRoster  = ['x402_search','x402_pay','x402_fetch','x402_check','x402_access','x402_wallet','x402_settings'];
+    const localRoster  = ['x402_search','x402_pay','x402_fetch','x402_check','x402_access','x402_wallet','dexter_portfolio','x402_settings'];
     expect(() => assertInstructionRosterParity(hosted, hostedRoster)).not.toThrow();
     expect(() => assertInstructionRosterParity(local, localRoster)).not.toThrow();
   });

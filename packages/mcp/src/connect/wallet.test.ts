@@ -86,7 +86,7 @@ function tokenFetch(status: number, body: unknown) {
 }
 
 describe("connect/wallet — showConnectedWallet", () => {
-  it("prints the hosted deposit address, USDC balance, and lane: connected", async () => {
+  it("prints the hosted deposit address, USDC balance, and explicit read-only link", async () => {
     const session = seedSession();
     const log: string[] = [];
     const callHostedWallet = vi.fn(async () => hostedResult());
@@ -105,7 +105,8 @@ describe("connect/wallet — showConnectedWallet", () => {
     expect(out).toContain(DEPOSIT_PDA);
     expect(out).not.toContain(VAULT_ADDRESS);
     expect(out).toContain("$12.34");
-    expect(out).toContain("lane: connected");
+    expect(out).toContain("link: read-only");
+    expect(out).toContain("separately configured local signer");
   });
 
   it("refreshes the bearer on a 401 and retries once with the new token", async () => {
@@ -217,7 +218,7 @@ describe("wallet/index — showWalletInfo routing", () => {
     });
 
     expect(callHostedWallet).toHaveBeenCalledTimes(1);
-    expect(log.join("\n")).toContain("lane: connected");
+    expect(log.join("\n")).toContain("link: read-only");
     expect(log.join("\n")).toContain(DEPOSIT_PDA);
   });
 

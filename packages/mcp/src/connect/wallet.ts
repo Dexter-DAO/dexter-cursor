@@ -74,11 +74,12 @@ export interface HostedWalletResult {
  * content as a fallback). Throws on transport/auth failure — a 401 surfaces as
  * a StreamableHTTPError with `.code === 401`, which `isAuthError` recognizes.
  */
-export async function callHostedWalletTool(opts: {
+export async function callHostedAccountTool<T extends Record<string, unknown> = Record<string, unknown>>(opts: {
   accessToken: string;
+  toolName: "x402_wallet" | "dexter_portfolio";
   serverUrl?: string;
   fetchImpl?: typeof fetch;
-}): Promise<HostedWalletResult> {
+}): Promise<T> {
   const url = new URL(opts.serverUrl ?? HOSTED_MCP_URL);
   const transport = new StreamableHTTPClientTransport(url, {
     requestInit: {
@@ -92,12 +93,12 @@ export async function callHostedWalletTool(opts: {
   );
   try {
     await client.connect(transport);
-    const res = (await client.callTool({ name: "x402_wallet", arguments: {} })) as {
+    const res = (await client.callTool({ name: opts.toolName, arguments: {} })) as {
       structuredContent?: unknown;
       content?: Array<{ type?: string; text?: string }>;
     };
     if (res.structuredContent && typeof res.structuredContent === "object") {
-      return res.structuredContent as HostedWalletResult;
+      return res.structuredContent as T;
     }
     // Fallback: the tool always mirrors structuredContent into a text block.
     const text = Array.isArray(res.content)
@@ -105,19 +106,30 @@ export async function callHostedWalletTool(opts: {
       : undefined;
     if (text) {
       try {
-        return JSON.parse(text) as HostedWalletResult;
+        return JSON.parse(text) as T;
       } catch {
         /* fall through to empty */
       }
     }
-    return {};
+    return {} as T;
   } finally {
     await client.close().catch(() => {});
   }
 }
 
+export async function callHostedWalletTool(opts: {
+  accessToken: string;
+  serverUrl?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<HostedWalletResult> {
+  return callHostedAccountTool<HostedWalletResult>({
+    ...opts,
+    toolName: "x402_wallet",
+  });
+}
+
 /** True when an error from the hosted call means "bearer rejected / expired". */
-function isAuthError(err: unknown): boolean {
+export function isAuthError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const anyErr = err as { code?: unknown; name?: unknown; message?: unknown };
   if (anyErr.code === 401) return true;
@@ -265,14 +277,15 @@ function renderConnectedWallet(result: HostedWalletResult, log: (line: string) =
   if (result.vault_status === "not_enrolled" || result.mode === "vault_required") {
     const setupUrl = result.enroll_url || result.pairing_url || "https://dexter.cash/wallet";
     log("");
-    log("Dexter wallet");
-    log("  lane: connected");
+    log("Dexter Wallet account view");
+    log("  link: read-only");
     log("");
     log("  Your wallet isn't set up yet.");
     log(`  Finish setup at ${setupUrl}`);
     log("  then run `opendexter wallet` again.");
     log("");
-    log("Revoke this connection anytime at dexter.cash/wallet.");
+    log("Payments in this local client still use its separately configured local signer.");
+    log("Revoke this read-only link anytime at dexter.cash/wallet.");
     return;
   }
 
@@ -285,8 +298,8 @@ function renderConnectedWallet(result: HostedWalletResult, log: (line: string) =
   const activated = readActivated(result);
 
   log("");
-  log("Dexter wallet");
-  log("  lane: connected");
+  log("Dexter Wallet account view");
+  log("  link: read-only");
 
   log("");
   log("  USDC balance");
@@ -308,5 +321,6 @@ function renderConnectedWallet(result: HostedWalletResult, log: (line: string) =
   }
 
   log("");
-  log("Revoke this connection anytime at dexter.cash/wallet.");
+  log("Payments in this local client still use its separately configured local signer.");
+  log("Revoke this read-only link anytime at dexter.cash/wallet.");
 }

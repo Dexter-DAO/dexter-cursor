@@ -21,7 +21,7 @@ This package runs on your machine. It combines:
 - a free price and requirements check for an exact endpoint;
 - wallet-proof access for identity-gated services;
 - bounded USDC settlement for compatible x402 calls;
-- the same seven operations as CLI commands and MCP tools.
+- the core local operations as CLI commands and an eight-tool MCP surface.
 
 It is the local OpenDexter surface. For the remote, passkey-wallet connector,
 start at the [repository guide](../../README.md).
@@ -201,7 +201,7 @@ uncertain first attempt; another call could duplicate work or payment.
 `x402_access` handles Sign-In-With-X endpoints. It proves control of the local
 wallet without making a payment, then returns the protected response.
 
-## Seven MCP tools
+## Eight MCP tools
 
 | Tool | Purpose | Payment |
 |---|---|---|
@@ -211,6 +211,7 @@ wallet without making a payment, then returns the protected response.
 | `x402_fetch` | Call and settle a compatible x402 charge when required | Possible |
 | `x402_pay` | Alias of `x402_fetch` | Possible |
 | `x402_wallet` | Show addresses and verified balance reads | Never |
+| `dexter_portfolio` | Read the governed portfolio from the separately connected Dexter Wallet | Never |
 | `x402_settings` | Read or change local spending policy | Never |
 
 There are no Dextercard MCP tools in this package. The server's tool list is
@@ -296,10 +297,12 @@ application.
 npx @dexterai/opendexter@latest connect
 ```
 
-This optional device flow creates a connector session. The local package
-currently uses it only to read the user's hosted Dexter Wallet. After passkey approval,
-`npx @dexterai/opendexter@latest wallet` shows that wallet's Solana deposit
-address and balance.
+This optional device flow creates a connector session. The local package uses
+it for two view-only reads of the hosted Dexter Wallet:
+
+- `npx @dexterai/opendexter@latest wallet` shows its Solana deposit address and
+  balance;
+- the local MCP's `dexter_portfolio` tool returns its governed asset inventory.
 
 This connection is **view-only for the local package today**. It does not change the payment signer used by the local MCP server, `fetch`, or `pay`. Local paid calls still use the local wallet in `wallet.json` or the configured environment keys.
 

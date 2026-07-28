@@ -10,7 +10,7 @@
  * (drift register B4).
  *
  * `test/docs.test.ts` enforces that both the served workflow and installable
- * npm skill name only the local seven-tool roster. Hosted Codex and Claude
+ * npm skill name only the local eight-tool roster. Hosted Codex and Claude
  * packages carry their own self-contained skills and do not share this source.
  */
 

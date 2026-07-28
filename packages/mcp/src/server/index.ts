@@ -14,6 +14,7 @@ import { recordSpend, spentLast24h } from "../spend-ledger.js";
 import { createPurchaseAttemptStore } from "../purchase-attempt-ledger.js";
 import { createTabLane } from "../tabs/lane.js";
 import { registerSettingsTool } from "../tools/settings.js";
+import { registerPortfolioTool } from "../tools/portfolio.js";
 import { registerWidgetResources } from "../resources/widgets.js";
 import { registerDocsResources } from "../resources/docs.js";
 import { X402_WIDGET_URIS } from "../widget-uris.js";
@@ -30,6 +31,7 @@ export const LOCAL_TOOL_ROSTER = [
   "x402_check",
   "x402_access",
   "x402_wallet",
+  "dexter_portfolio",
   "x402_settings",
 ] as const;
 
@@ -114,6 +116,7 @@ export async function startServer(opts: ServerOptions): Promise<void> {
 
   // Settings stays npm-package-specific (filesystem-backed). Hosted servers
   // do not surface this tool.
+  registerPortfolioTool(server);
   registerSettingsTool(server);
 
   registerWidgetResources(server);

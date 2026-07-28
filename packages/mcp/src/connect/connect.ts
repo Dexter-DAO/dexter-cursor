@@ -261,10 +261,11 @@ async function finishConnect(
   saveSession(session, ctx.dataDir);
 
   ctx.log("");
-  ctx.log("Connected to your Dexter wallet");
+  ctx.log("Linked your Dexter Wallet for read-only account views");
   if (vaultAddress) ctx.log(`  ${vaultAddress}`);
   ctx.log("");
   ctx.log("Run `opendexter wallet` to see your balance.");
+  ctx.log("Payments in this local client still use its separately configured local signer.");
   ctx.log("Revoke anytime at dexter.cash/wallet.");
 }
 
@@ -280,8 +281,9 @@ export async function cliConnectStatus(opts: ConnectStatusOpts = {}): Promise<vo
     log("Not connected.");
     return;
   }
-  log("Connected to your Dexter wallet");
+  log("Dexter Wallet read-only link");
   log(`  ${session.vaultAddress}`);
+  log("Payment authority: this local client's separately configured signer.");
 }
 
 export async function cliConnectDisconnect(opts: ConnectStatusOpts = {}): Promise<void> {

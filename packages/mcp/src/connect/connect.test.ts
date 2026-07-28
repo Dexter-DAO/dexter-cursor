@@ -122,7 +122,8 @@ describe("connect/connect — cliConnect device flow", () => {
     expect(out).toContain("[qr]");
     expect(out).toContain(DEVICE_AUTH_BODY.user_code);
     expect(out).toContain(VAULT_ADDRESS);
-    expect(out).toContain("Connected to your Dexter wallet");
+    expect(out).toContain("Linked your Dexter Wallet for read-only account views");
+    expect(out).toContain("separately configured local signer");
   });
 
   it("offers to open the browser unless noBrowser is set", async () => {
@@ -205,6 +206,8 @@ describe("connect/connect — status + disconnect", () => {
     const log: string[] = [];
     await cliConnectStatus({ dataDir: dir, log: (l) => log.push(l) });
     expect(log.join("\n")).toContain(VAULT_ADDRESS);
+    expect(log.join("\n")).toContain("Dexter Wallet read-only link");
+    expect(log.join("\n")).toContain("Payment authority");
   });
 
   it("status reports Not connected when there is no session", async () => {

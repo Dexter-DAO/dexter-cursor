@@ -327,13 +327,14 @@ async function main() {
     )
     .command(
       "connect [subcommand]",
-      "Connect this CLI to your Dexter wallet (passkey device flow), or check/clear the connection",
+      "Link this CLI to your Dexter Wallet for read-only account views, or check/clear the link",
       (y) =>
         y
           .positional("subcommand", {
             type: "string",
             choices: ["status", "disconnect"] as const,
-            description: "Omit to connect; `status` shows the linked vault; `disconnect` clears it",
+            description:
+              "Omit to link; `status` shows the read-only account link; `disconnect` clears it",
           })
           .option("browser", {
             type: "boolean",

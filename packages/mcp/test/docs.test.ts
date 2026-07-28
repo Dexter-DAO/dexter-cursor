@@ -7,7 +7,6 @@ import { LOCAL_TOOL_ROSTER } from "../src/server/index.js";
 
 const LOCAL_TOOLS = [...LOCAL_TOOL_ROSTER].sort();
 const HOSTED_ONLY_TOOLS = [
-  "dexter_portfolio",
   "dexter_passkey",
   "dexter_passkey_probe",
   "promote_skill",
@@ -73,7 +72,7 @@ describe("docs resources", () => {
     ["package README", packageReadme],
     ["installable skill", stripFrontmatter(skill)],
     ["served workflow", workflow],
-  ])("%s documents exactly the local seven-tool roster", (_name, text) => {
+  ])("%s documents exactly the local eight-tool roster", (_name, text) => {
     expect(namedTools(text)).toEqual(LOCAL_TOOLS);
   });
 
@@ -81,8 +80,9 @@ describe("docs resources", () => {
     for (const tool of HOSTED_ONLY_TOOLS) {
       expect(skill).not.toContain(`\`${tool}\``);
     }
-    expect(skill).toContain("local Solana/EVM wallet");
-    expect(skill).toContain("Do not apply hosted-connector setup");
+    expect(skill).toContain("local Solana/EVM payment wallet");
+    expect(skill).toContain("connected Dexter Wallet portfolio");
+    expect(skill).toContain("Do not apply hosted passkey-enrollment");
   });
 
   it.each([

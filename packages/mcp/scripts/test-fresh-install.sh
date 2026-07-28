@@ -111,7 +111,7 @@ assert(JSON.stringify(widgets) === JSON.stringify([
 ]), `unexpected widget set: ${widgets.join(", ")}`);
 
 const readme = readFileSync(join(root, "README.md"), "utf8");
-assert(readme.includes("## Seven MCP tools"), "README does not declare the local roster");
+assert(readme.includes("## Eight MCP tools"), "README does not declare the local roster");
 assert(!/\bcard_(?:status|issue|freeze|link_wallet)\b/.test(readme), "README revives card tools");
 
 console.log(`Candidate fixture passed: ${pkg.name}@${pkg.version}`);
