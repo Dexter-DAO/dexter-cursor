@@ -1,10 +1,13 @@
 # Changelog
 
-## Unreleased — hosted plugin release candidates
+## 2026-07-28 — hosted plugins
 
-- Updated Codex to `0.4.0-rc.3` and Claude Code to `2.0.0-rc.3` for the
-  eleven-tool hosted OpenDexter contract, including the authenticated,
-  session-bound `dexter_portfolio` read.
+- Released Codex `0.4.0` and Claude Code `2.0.0` for the hosted OpenDexter
+  contract, including the authenticated, session-bound `dexter_portfolio`
+  read.
+- Reduced the public model-facing product to six tools. Five dated
+  compatibility endpoints remain raw app-only so existing clients do not
+  break, but they are absent from product routing and agent instructions.
 - Replaced the Claude Code npm-latest launcher with the remote HTTP MCP at
   `https://open.dexter.cash/mcp`.
 - Materialized Claude Code skills inside the package; removed escaping

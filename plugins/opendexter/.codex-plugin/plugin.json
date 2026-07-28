@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
-  "version": "0.4.0-rc.3",
-  "description": "Discover x402 APIs, inspect current terms, view a session-bound Dexter portfolio, and execute only explicitly bounded calls.",
+  "version": "0.4.0",
+  "description": "Give Codex a governed Dexter Wallet for service discovery, bounded purchases, wallet reads, and portfolio visibility.",
   "author": {
     "name": "Dexter Labs Corporation",
     "email": "dev@dexter.cash",
@@ -12,7 +12,9 @@
   "license": "MIT",
   "keywords": [
     "opendexter",
+    "agent-finance",
     "x402",
+    "mpp",
     "paid-apis",
     "passkey-wallet",
     "solana",
@@ -34,8 +36,8 @@
       "Read",
       "Write"
     ],
-    "shortDescription": "Passkey wallet and safely bounded x402 API calls.",
-    "longDescription": "OpenDexter connects the assistant to the hosted x402 marketplace and a passkey-controlled Dexter Wallet on Solana. It can search without paying, inspect current endpoint terms, view the exact governed portfolio bound to the authenticated session, and execute a paid call only after the user approves its request and maximum charge.\n\nThe hosted contract has eleven tools. Discovery, price checks, wallet-proof access, wallet status, portfolio reads, passkey compatibility, and reusable-skill workflows remain distinct from payment. The older card-tool roster is not part of this package; card controls remain on Dexter's secure wallet surface.\n\nProtected tools use the MCP server's native OAuth contract. Wallet keys, passkey material, bearer tokens, one-time codes, and other authentication secrets never belong in the conversation. Ambiguous or post-dispatch payment results are never retried automatically.",
+    "shortDescription": "Your governed Dexter Wallet inside Codex.",
+    "longDescription": "OpenDexter connects Codex to the user's passkey-controlled Dexter Wallet. It discovers services, inspects exact current terms, reads the wallet and governed portfolio bound to the authenticated session, and makes only a specifically prepared purchase under the user's limits.\n\nThe public product exposes six model-facing tools. Route protocols such as x402 or MPP and funding modes such as Direct Exact, Native Tab, Gateway cash, or Gateway credit are transaction metadata, not separate wallet identities. Older compatibility endpoints remain app-only for a dated transition and are not model routes.\n\nProtected tools use native MCP OAuth. Wallet keys, passkey material, bearer tokens, and one-time codes never belong in the conversation. Ambiguous or post-dispatch purchase results are never retried automatically.",
     "defaultPrompt": [
       "Find an x402 API for this job and show me its current terms.",
       "Show my OpenDexter wallet.",

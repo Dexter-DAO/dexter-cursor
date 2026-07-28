@@ -46,13 +46,12 @@ The modes are:
 Pass one `preparedPurchase` unchanged as `purchase`, with the separately
 approved atomic ceiling. Never silently change the offer, route, or mode.
 `integration_required`, `request_required`, and `unavailable` all stop before
-dispatch. The current hosted candidate reports every explicit mode as
-`integration_required` until the common durable backend is connected.
+dispatch. Treat only `availability.state: "ready"` as executable.
 
 ## Tool routing
 
 - `x402_check` discovers requirements and reports `authMode`.
-- `x402_fetch` and `x402_pay` handle paid requests and are aliases.
+- `x402_fetch` handles one approved paid request.
 - `x402_access` handles wallet-proof or Sign-In-With-X requests and must not be
   used to bypass a paid requirement.
 - `x402_wallet` reports the bound Dexter Wallet; it does not prove an external

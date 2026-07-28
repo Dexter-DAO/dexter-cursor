@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "opendexter",
-  "description": "Developer distribution for the hosted OpenDexter MCP and its bounded x402 workflows.",
+  "description": "OpenDexter's hosted governed-wallet integration for Claude Code.",
   "owner": {
     "name": "Dexter",
     "email": "dev@dexter.cash"

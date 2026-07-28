@@ -26,7 +26,7 @@ const contractPath = resolve(
   "skills/opendexter/references/hosted-contract.json",
 );
 
-const EXPECTED_TOOLS = Object.freeze([
+const RAW_COMPATIBILITY_TOOLS = Object.freeze([
   "x402_search",
   "x402_pay",
   "x402_fetch",
@@ -34,6 +34,23 @@ const EXPECTED_TOOLS = Object.freeze([
   "x402_access",
   "x402_wallet",
   "dexter_portfolio",
+  "x402_compose_skill",
+  "promote_skill",
+  "dexter_passkey_probe",
+  "dexter_passkey",
+]);
+
+const PUBLIC_PRODUCT_TOOLS = Object.freeze([
+  "x402_search",
+  "x402_fetch",
+  "x402_check",
+  "x402_access",
+  "x402_wallet",
+  "dexter_portfolio",
+]);
+
+const APP_ONLY_COMPATIBILITY_TOOLS = Object.freeze([
+  "x402_pay",
   "x402_compose_skill",
   "promote_skill",
   "dexter_passkey_probe",
@@ -158,7 +175,7 @@ async function inspectTree(root) {
   return entries;
 }
 
-test("release fixture pins the exact eleven-tool OAuth contract", async () => {
+test("release fixture separates the six-tool product from raw compatibility", async () => {
   const contract = await readJson(contractPath);
   assert.equal(contract.contractId, "opendexter-hosted-eleven-tool-v1");
   assert.equal(contract.mcp.url, "https://open.dexter.cash/mcp");
@@ -191,7 +208,7 @@ test("release fixture pins the exact eleven-tool OAuth contract", async () => {
   );
   assert.deepEqual(
     contract.tools.map(({ name }) => name),
-    EXPECTED_TOOLS,
+    RAW_COMPATIBILITY_TOOLS,
   );
   for (const tool of contract.tools) {
     assert.deepEqual(normalizedSchemes(tool), EXPECTED_SCHEMES[tool.name]);
@@ -231,13 +248,28 @@ test("release fixture pins the exact eleven-tool OAuth contract", async () => {
       requiredScope: "vault",
     },
   ]);
+  assert.deepEqual(
+    contract.tools
+      .filter(({ visibility }) => visibility.includes("model"))
+      .map(({ name }) => name),
+    PUBLIC_PRODUCT_TOOLS,
+  );
+  assert.deepEqual(
+    contract.tools
+      .filter(
+        ({ visibility }) =>
+          visibility.includes("app") && !visibility.includes("model"),
+      )
+      .map(({ name }) => name),
+    APP_ONLY_COMPATIBILITY_TOOLS,
+  );
 });
 
 test("Codex package uses one portable remote MCP and mixed-auth marketplace policy", async () => {
   const manifest = await readJson(resolve(codexRoot, ".codex-plugin/plugin.json"));
   const marketplace = await readJson(codexMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "0.4.0-rc.3");
+  assert.equal(manifest.version, "0.4.0");
   assert.equal(Object.hasOwn(manifest, "apps"), false);
   assert.deepEqual(manifest.mcpServers, {
     opendexter: {
@@ -259,7 +291,7 @@ test("Claude package is self-contained and uses the hosted remote MCP", async ()
   const mcp = await readJson(resolve(claudeRoot, ".mcp.json"));
   const marketplace = await readJson(claudeMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "2.0.0-rc.3");
+  assert.equal(manifest.version, "2.0.0");
   assert.deepEqual(mcp, {
     mcpServers: {
       opendexter: {
@@ -297,10 +329,10 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   });
 });
 
-test("release changelog carries every candidate identity", async () => {
+test("release changelog carries stable hosted and candidate local identities", async () => {
   const changelog = await readFile(resolve(repoRoot, "CHANGELOG.md"), "utf8");
-  assert.match(changelog, /Codex to `0\.4\.0-rc\.3`/);
-  assert.match(changelog, /Claude Code to `2\.0\.0-rc\.3`/);
+  assert.match(changelog, /Codex `0\.4\.0`/);
+  assert.match(changelog, /Claude Code `2\.0\.0`/);
   assert.match(changelog, /`@dexterai\/opendexter@1\.22\.2-rc\.1`/);
 });
 
@@ -320,10 +352,14 @@ test("both formats expose only the three hosted-contract skills", async () => {
       resolve(root, "skills/opendexter/SKILL.md"),
       "utf8",
     );
-    assert.deepEqual(namedTools(umbrella), [...EXPECTED_TOOLS].sort());
-    for (const tool of EXPECTED_TOOLS) {
+    assert.deepEqual(namedTools(umbrella), [...PUBLIC_PRODUCT_TOOLS].sort());
+    for (const tool of PUBLIC_PRODUCT_TOOLS) {
       assert.match(umbrella, new RegExp(`\\\`${tool}\\\``));
     }
+    assert.doesNotMatch(
+      umbrella,
+      /\b(?:x402_pay|x402_compose_skill|promote_skill|dexter_passkey(?:_probe)?)\b/,
+    );
     assert.match(umbrella, /fresh `x402_check`/i);
     assert.match(umbrella, /maxAmountAtomic/);
     assert.match(umbrella, /Never automatically retry/i);
@@ -369,7 +405,8 @@ test("publisher-side app binding stays separate from portable packages", async (
     resolve(repoRoot, "chatgpt-app-binding/README.md"),
     "utf8",
   );
-  assert.match(bindingReadme, /eleven tools/i);
+  assert.match(bindingReadme, /eleven raw tools/i);
+  assert.match(bindingReadme, /six model-facing tools/i);
   assert.match(bindingReadme, /`dexter_portfolio`/);
   assert.doesNotMatch(bindingReadme, /\bten tools\b|\b10 tools\b/i);
 });

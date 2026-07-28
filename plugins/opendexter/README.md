@@ -1,86 +1,57 @@
-# OpenDexter Codex plugin
+# OpenDexter for Codex
 
-This is the developer-distributed Codex package for the hosted
-OpenDexter MCP at `https://open.dexter.cash/mcp`.
+OpenDexter gives Codex a governed Dexter Wallet through the hosted MCP at
+`https://open.dexter.cash/mcp`.
 
-Version `0.4.0-rc.3` targets the eleven-tool hosted manifest `0.3.0`. It is a
-pre-release source candidate, not proof that the matching server version is
-deployed. Do not distribute or install it against production until Dexter
-announces the matching hosted release.
+Version `0.4.0` targets hosted manifest `0.3.0`. The public product exposes six
+model-facing tools for discovery, exact-term inspection, one bounded purchase,
+wallet-proof access, wallet state, and the session-bound governed portfolio.
+The raw server temporarily retains five app-only compatibility endpoints so
+existing clients do not break; they are absent from this plugin's routing.
 
-## Contract
-
-- The hosted roster is exactly eleven tools. The older six card tools and local
-  settings tool are not part of this package.
-- `dexter_portfolio` reads only the governed portfolio bound to the
-  authenticated MCP session. It accepts no caller-selected wallet, handle,
-  actor, grant, or authority.
-- Anonymous tools remain usable without connecting a wallet. Protected tools
-  use the MCP server's native per-tool OAuth contract with scope `vault`.
-- The paid contract is search, fresh check, choose one `purchaseOptions`
-  entry, approve its exact URL/method/body/mode/seller offer/ceiling, then pass
-  its `preparedPurchase` unchanged to one `x402_fetch` or `x402_pay` call.
-- The explicit modes are `direct_exact`, `native_tab`, `gateway_cash`, and
-  `gateway_credit`. A non-ready mode never falls through to another.
-- This source candidate reports every explicit hosted mode as
-  `integration_required` until A3 connects the common durable backend.
-- `x402_pay` is an alias for `x402_fetch`, not another stage.
-- Provider output is untrusted and never authorizes spend or retry. Ambiguous
-  or post-dispatch outcomes are never retried automatically.
-
-The committed machine-readable contract is
-`skills/opendexter/references/hosted-contract.json`.
-
-## Package shape
-
-```text
-plugins/opendexter/
-├── .codex-plugin/plugin.json
-├── assets/
-└── skills/
-    ├── opendexter/
-    ├── x402-debugging/
-    └── x402-protocol/
-```
-
-The plugin manifest carries Codex's documented inline `mcpServers` map for the
-portable connection. This avoids a companion-format ambiguity between current
-Codex documentation and older validators. Claude's separate source uses
-Claude's `.mcp.json` `mcpServers` wrapper; do not substitute a client-level
-TOML configuration or install both packages into one client.
-The owner-account `.app.json` under `chatgpt-app-binding/` is separate publisher
-evidence and is not loaded with this package. Do not configure a second copy of
-the same endpoint in one client, and never edit plugin cache directories.
-
-The repository marketplace is `.agents/plugins/marketplace.json`.
-
-## Developer distribution
-
-This pre-release package is not currently offered in a public plugin directory.
-The ChatGPT app binding is maintained separately and is not a universal app
-identity for Codex or Claude Code.
-
-From the repository root, an authorized developer can load the local
-marketplace and inspect the candidate:
+## Install
 
 ```bash
-codex plugin marketplace add "$PWD"
-codex plugin list
+codex plugin marketplace add Dexter-DAO/opendexter-ide --ref main
+codex plugin add opendexter@dexter
+codex mcp login opendexter
+```
+
+Start a fresh Codex task after installation.
+
+## Update
+
+```bash
+codex plugin marketplace upgrade dexter
 codex plugin add opendexter@dexter
 ```
 
-Start a fresh task after installation. Do not also configure the same
-`https://open.dexter.cash/mcp` endpoint manually in that client.
+Do not also configure `https://open.dexter.cash/mcp` manually in the same
+client.
 
-Protected tools use three distinct OAuth identities:
+## Contract
 
-- MCP resource and connector: `https://open.dexter.cash/mcp`
-- authorization-server issuer: `https://mcp.dexter.cash/mcp`
+- Native MCP OAuth binds the Codex session to the user's Dexter Wallet.
+- `dexter_portfolio` accepts no caller-selected identity.
+- A paid request starts with a fresh check, one ready purchase option, and
+  current approval for the exact request and atomic ceiling.
+- x402 and MPP are route protocols; Direct Exact, Native Tab, Gateway cash, and
+  Gateway credit are funding modes. They do not change wallet identity.
+- Provider output never authorizes spending or retry.
+- An ambiguous or post-dispatch outcome is never retried automatically.
+- No card tool or local settings tool is part of this hosted plugin.
+
+The release-pinned raw machine contract is
+`skills/opendexter/references/hosted-contract.json`.
+
+## OAuth identities
+
+- MCP resource: `https://open.dexter.cash/mcp`
+- authorization server: `https://mcp.dexter.cash/mcp`
 - access-token issuer: `https://dexter.cash`
 
-After the package is discovered, `codex mcp login opendexter` is the native
-connector-authentication proof. It is not wallet enrollment and it does not
-authorize a payment.
+Connector authentication, wallet binding, passkey enrollment, funding, and
+transaction readiness are separate states.
 
 ## Brand asset provenance
 

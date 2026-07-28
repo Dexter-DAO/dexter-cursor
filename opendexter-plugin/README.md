@@ -1,62 +1,51 @@
-# OpenDexter Claude Code plugin
+# OpenDexter for Claude Code
 
-This is the developer-distributed Claude Code package for the hosted OpenDexter MCP at
+OpenDexter gives Claude Code a governed Dexter Wallet through the hosted MCP at
 `https://open.dexter.cash/mcp`.
 
-Version `2.0.0-rc.3` targets the eleven-tool hosted manifest `0.3.0`. It
-replaces the old `npx @dexterai/opendexter@latest` launcher with an exact
-remote HTTP MCP connection so package behavior cannot drift with an npm latest
-tag.
+Version `2.0.0` targets hosted manifest `0.3.0`. The public product exposes six
+model-facing tools for discovery, exact-term inspection, one bounded purchase,
+wallet-proof access, wallet state, and the session-bound governed portfolio.
+The raw server temporarily retains five app-only compatibility endpoints so
+existing clients do not break; they are absent from this plugin's routing.
 
-The package includes the same three hosted-contract skills as the Codex
-package. Claude Code discovers them from `skills/`, connects through
-`.mcp.json`, and uses its native MCP OAuth flow for protected tools. Anonymous
-search and checks remain available without forcing connection-wide OAuth.
-
-This is pre-release source and is not currently offered in a public plugin
-marketplace.
-
-The older hosted card-tool roster is superseded. Card controls remain outside
-the hosted MCP on Dexter's secure wallet surface.
-
-`dexter_portfolio` reads only the governed portfolio bound to the authenticated
-MCP session. It accepts no caller-selected wallet, handle, actor, grant, or
-authority, and an unavailable read must not be presented as zero assets.
-
-The paid contract is search, fresh check, choose one `purchaseOptions` entry,
-approve its exact request/mode/seller offer/atomic ceiling, and pass its
-`preparedPurchase` unchanged to one `x402_fetch` or `x402_pay` call. The modes
-are `direct_exact`, `native_tab`, `gateway_cash`, and `gateway_credit`; a
-non-ready mode never falls through to another. This candidate reports every
-explicit hosted mode as `integration_required` until the common durable backend
-is connected.
-
-## Developer discovery
-
-The non-installing source check is:
+## Install
 
 ```bash
-claude --plugin-dir ./opendexter-plugin plugin details opendexter
-```
-
-For an authorized developer install, use a disposable Claude configuration or
-run the following from the repository root:
-
-```bash
-claude plugin marketplace add "$PWD" --scope user
+claude plugin marketplace add Dexter-DAO/opendexter-ide --scope user
 claude plugin install opendexter@opendexter --scope user
-claude plugin details opendexter@opendexter
+claude mcp login opendexter
 ```
 
-Restart Claude Code or start a fresh session after installation. Do not also
-configure the same hosted endpoint manually.
+Restart Claude Code or start a fresh session after installation.
 
-Protected tools use three distinct OAuth identities:
+## Update
 
-- MCP resource and connector: `https://open.dexter.cash/mcp`
-- authorization-server issuer: `https://mcp.dexter.cash/mcp`
+```bash
+claude plugin marketplace update opendexter
+claude plugin update opendexter@opendexter --scope user
+```
+
+Do not also configure `https://open.dexter.cash/mcp` manually in the same
+client.
+
+## Contract
+
+- Native MCP OAuth binds the Claude Code session to the user's Dexter Wallet.
+- `dexter_portfolio` accepts no caller-selected identity.
+- A paid request starts with a fresh check, one ready purchase option, and
+  current approval for the exact request and atomic ceiling.
+- x402 and MPP are route protocols; Direct Exact, Native Tab, Gateway cash, and
+  Gateway credit are funding modes. They do not change wallet identity.
+- Provider output never authorizes spending or retry.
+- An ambiguous or post-dispatch outcome is never retried automatically.
+- No card tool or local settings tool is part of this hosted plugin.
+
+## OAuth identities
+
+- MCP resource: `https://open.dexter.cash/mcp`
+- authorization server: `https://mcp.dexter.cash/mcp`
 - access-token issuer: `https://dexter.cash`
 
-`claude mcp login opendexter` proves only native connector authentication. It
-does not prove MCP session binding, passkey wallet enrollment, wallet
-readiness, or permission to pay.
+Connector authentication, wallet binding, passkey enrollment, funding, and
+transaction readiness are separate states.
