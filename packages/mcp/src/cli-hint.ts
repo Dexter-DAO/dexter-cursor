@@ -9,10 +9,12 @@
  * arguments" on exactly such a box (register R2b): the tab commands did not
  * exist in the version that was installed.
  *
- * The `npx -y …@latest` form is immune: it always fetches and runs the current
- * CLI regardless of what — if anything — is installed globally. Use this for
- * every copy-pasteable command hint that leaves the process as relayable data.
+ * The immutable package-version form is immune to both a stale global install
+ * and dist-tag drift: every command relayed by this RC runs the same reviewed
+ * CLI that emitted it.
  */
+import { VERSION } from "./config.js";
+
 export function cliHint(subcommand: string): string {
-  return `npx -y @dexterai/opendexter@latest ${subcommand}`;
+  return `npx -y @dexterai/opendexter@${VERSION} ${subcommand}`;
 }

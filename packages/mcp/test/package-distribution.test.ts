@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,6 +21,36 @@ function directoryEntryExists(path: string): boolean {
   }
 }
 
+function textFiles(relative: string): string[] {
+  const absolute = join(packageRoot, relative);
+  const stat = lstatSync(absolute);
+  if (stat.isFile()) return [relative];
+  return readdirSync(absolute, { withFileTypes: true }).flatMap((entry) => {
+    const child = join(relative, entry.name);
+    return entry.isDirectory() ? textFiles(child) : [child];
+  });
+}
+
+function expectExactExecutableReferences(
+  path: string,
+  text: string,
+  exact: string,
+): void {
+  expect(text, path).not.toContain("@dexterai/opendexter@latest");
+  expect(text, path).not.toContain("@dexterai/opendexter@next");
+  expect(text, path).not.toMatch(
+    /npx(?:\s+-y)?\s+@dexterai\/opendexter(?!@)/,
+  );
+  expect(text, path).not.toMatch(
+    /npm\s+(?:install|i)(?:\s+-g)?\s+@dexterai\/opendexter(?!@)/,
+  );
+  for (const reference of text.match(
+    /@dexterai\/opendexter@[0-9][0-9A-Za-z.-]*/g,
+  ) ?? []) {
+    expect(reference, path).toBe(exact);
+  }
+}
+
 describe("local package distribution", () => {
   it("ships one valid Cursor identity with a release-pinned stdio command", () => {
     const pkg = JSON.parse(read("package.json"));
@@ -37,6 +67,8 @@ describe("local package distribution", () => {
     expect(pkg.dependencies["@modelcontextprotocol/sdk"]).toBe("^1.24.0");
     expect(pkg.dependencies.zod).toBe("^3.25.76");
     expect(pkg.engines.node).toBe(">=20");
+    expect(pkg.scripts.version).toBe("npm run version:sync");
+    expect(pkg.scripts.prepack).toBe("npm run version:check");
     expect(mcp.mcpServers.opendexter).toEqual({
       command: "npx",
       args: ["-y", `@dexterai/opendexter@${pkg.version}`],
@@ -89,6 +121,60 @@ describe("local package distribution", () => {
     expect(script).toContain('pkg.engines?.node === ">=20"');
     expect(script).not.toContain("npx @dexterai/opendexter@latest");
     expect(script).not.toContain("HOME=$TEST_HOME");
+  });
+
+  it("inspects pack contents without recursively running package lifecycles", () => {
+    const verifier = read("verify-pack-no-sourcemaps.mjs");
+    expect(verifier).toContain('"--ignore-scripts"');
+    expect(verifier).toContain('"--dry-run"');
+    expect(verifier).toContain('"--json"');
+  });
+
+  it("pins every executable RC guidance reference to the package version", () => {
+    const pkg = JSON.parse(read("package.json"));
+    const exact = `@dexterai/opendexter@${pkg.version}`;
+    const guidance = [
+      "README.md",
+      ".cursor-plugin/plugin.json",
+      "cursor-mcp.json",
+      ...["agents", "assets/docs", "commands", "rules", "skills"].flatMap(textFiles),
+    ];
+
+    for (const path of guidance) {
+      expectExactExecutableReferences(path, read(path), exact);
+    }
+    for (const path of [
+      "README.md",
+      "mcp.json",
+      "docs/connect-your-wallet.md",
+      "docs/connect-your-wallet.html",
+    ]) {
+      expectExactExecutableReferences(
+        path,
+        readFileSync(join(repositoryRoot, path), "utf8"),
+        exact,
+      );
+    }
+
+    const repositoryReadme = readFileSync(join(repositoryRoot, "README.md"), "utf8");
+    expect(repositoryReadme).toContain(
+      "The stable npm channel remains available as `@latest`",
+    );
+    expect(repositoryReadme).not.toMatch(
+      /npx(?:\s+-y)?\s+@dexterai\/opendexter@latest/,
+    );
+    expect(repositoryReadme).toContain(`npx ${exact} setup`);
+  });
+
+  it("pins relayable runtime CLI hints to the running package", async () => {
+    const { cliHint } = await import("../src/cli-hint.js");
+    const { VERSION } = await import("../src/config.js");
+    expect(cliHint("tab connect https://seller.example")).toBe(
+      `npx -y @dexterai/opendexter@${VERSION} tab connect https://seller.example`,
+    );
+    expect(cliHint("tab connect https://seller.example")).not.toContain(
+      "@latest",
+    );
   });
 
   it("keeps card operations but removes internal card registrar sources", () => {

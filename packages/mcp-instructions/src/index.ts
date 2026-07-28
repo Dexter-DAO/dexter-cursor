@@ -11,7 +11,7 @@
  * Previously these two codebases drifted — the hosted server had
  * ~1,800 bytes of workflow guidance (shipped Apr 16), but the npm package
  * constructor was `new McpServer({ name, version })` with no second
- * argument, so developers running `npx @dexterai/opendexter` in Claude
+ * argument, so developers running OpenDexter through npx in Claude
  * Code / Cursor / Codex / Windsurf / Gemini CLI got six tools with no
  * usage context.
  *
@@ -210,7 +210,7 @@ const FAIL_BALANCE = `"Insufficient balance for this call"
   The cap is fine; the wallet is short of USDC on that chain. Call x402_wallet, give the user the deposit address for the chain named in the error, and the amount needed.`;
 
 const FAIL_WALLETLESS_LOCAL = `"Wallet does not expose private keys for auto-pay" / search works but x402_fetch will not pay
-  The server is in search-only mode (no signing wallet). Tell the user to set DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (Base/Polygon/etc.), or run \`npx @dexterai/opendexter wallet\` to create one.`;
+  The server is in search-only mode (no signing wallet). Tell the user to set DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (Base/Polygon/etc.), or call x402_wallet and relay its exact-version wallet setup tip. Never replace that command with a floating npm dist-tag.`;
 
 const HOSTED_WALLETLESS_RECIPE =
   `A protected tool reports authentication_required

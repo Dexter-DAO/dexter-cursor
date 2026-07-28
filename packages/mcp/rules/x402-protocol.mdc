@@ -22,7 +22,7 @@ x402-protocol:
 - The Dexter facilitator at `https://x402.dexter.cash` handles verification and on-chain settlement. Endpoints: `/verify`, `/settle`, `/supported`, `/healthz`.
 - The SDK package is `@dexterai/x402` with subpath exports: `/client`, `/server`, `/react`, `/adapters`, `/utils`.
 - The local MCP/CLI package is `@dexterai/opendexter` — configure it with
-  `npx @dexterai/opendexter@latest setup`.
+  `npx @dexterai/opendexter@1.23.0-rc.1 setup`.
 - Six tools: `x402_search` (find APIs), `x402_check` (see pricing), `x402_fetch` (call and pay), `x402_wallet` (local payment-wallet balance), `dexter_portfolio` (connected Dexter Wallet assets), and `x402_access` (wallet-auth endpoints).
 - A current check returns explicit `purchaseOptions`. Execute only a ready
   option, preserve its `preparedPurchase`, and never silently fall back to a

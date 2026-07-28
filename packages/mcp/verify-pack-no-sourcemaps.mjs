@@ -1,9 +1,16 @@
 import { execFileSync } from "node:child_process";
 
-const raw = execFileSync("npm", ["pack", "--dry-run", "--json"], {
-  cwd: new URL(".", import.meta.url),
-  encoding: "utf8",
-});
+// This verifier runs from prepublishOnly. Inspect the publishable file set
+// without recursively invoking prepack (whose version guard has its own
+// lifecycle run and writes a human-readable status line before npm's JSON).
+const raw = execFileSync(
+  "npm",
+  ["pack", "--dry-run", "--json", "--ignore-scripts"],
+  {
+    cwd: new URL(".", import.meta.url),
+    encoding: "utf8",
+  },
+);
 
 const [packInfo] = JSON.parse(raw);
 const files = Array.isArray(packInfo?.files) ? packInfo.files : [];

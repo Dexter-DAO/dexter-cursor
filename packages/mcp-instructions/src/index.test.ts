@@ -89,6 +89,10 @@ describe('local rendering (LOCAL_CAPS)', () => {
   it('keeps the env-var wallet recipe', () => {
     expect(local).toContain('DEXTER_PRIVATE_KEY');
   });
+  it('uses the runtime exact-version wallet tip instead of a floating package command', () => {
+    expect(local).toContain('relay its exact-version wallet setup tip');
+    expect(local).not.toMatch(/npx(?:\s+-y)?\s+@dexterai\/opendexter(?:\s|@latest|@next)/);
+  });
   it('describes the actual local wallet instead of a hosted-style session', () => {
     expect(local).toContain('local file-backed or environment-configured Solana/EVM wallet');
     expect(local).not.toContain('Creates or resumes a multi-chain session');

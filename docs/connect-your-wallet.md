@@ -21,11 +21,12 @@ You need two things:
 ### 1. Install OpenDexter
 
 ```
-npm install -g @dexterai/opendexter
+npm install -g @dexterai/opendexter@1.23.0-rc.1
 ```
 
 That's a one-time thing. If you do not want a global install, run each command
-with `npx @dexterai/opendexter@latest …` instead. Both paths require Node.js.
+with `npx @dexterai/opendexter@1.23.0-rc.1 …` instead. Both paths require
+Node.js.
 
 ### 2. Run connect
 

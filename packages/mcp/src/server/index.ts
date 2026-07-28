@@ -102,7 +102,7 @@ export async function startServer(opts: ServerOptions): Promise<void> {
     walletlessHint:
       "Configure DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (Base/Polygon/etc) for automatic settlement.",
     noWalletTip:
-      "Set DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (EVM) env var, or run `npx @dexterai/opendexter wallet` to create one.",
+      `Set DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (EVM) env var, or run \`npx @dexterai/opendexter@${VERSION} wallet\` to create one.`,
   });
 
   // Dextercard TOOLS: REMOVED (owner ruling Jul 23; docs/CARD-REMOVAL-
