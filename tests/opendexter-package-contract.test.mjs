@@ -396,9 +396,11 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   assert.equal(workspace.engines.node, ">=20");
   assert.equal(pkg.version, "1.23.0-rc.2");
   assert.equal(pkg.engines.node, ">=20");
-  assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "^1.24.0");
-  assert.equal(pkg.dependencies.zod, "^3.25.76");
-  assert.equal(pkg.dependencies["@dexterai/x402-core"], "^1.5.0");
+  assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "1.30.0");
+  assert.equal(pkg.dependencies["@modelcontextprotocol/ext-apps"], "1.7.5");
+  assert.equal(pkg.dependencies.zod, "3.25.76");
+  assert.equal(pkg.dependencies["@dexterai/x402-core"], "1.5.0");
+  assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.0");
   assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.0");
   assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.8.0");
   assert.deepEqual(mcp, {
