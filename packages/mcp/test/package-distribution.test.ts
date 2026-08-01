@@ -63,9 +63,10 @@ describe("local package distribution", () => {
     expect(existsSync(join(packageRoot, manifest.logo))).toBe(true);
     expect(pkg.dependencies["@dexterai/mcp-instructions"]).toBe("2.4.0");
     expect(pkg.dependencies["@dexterai/x402-mcp-tools"]).toBe("0.8.0");
-    expect(pkg.dependencies["@dexterai/x402-core"]).toBe("^1.5.0");
-    expect(pkg.dependencies["@modelcontextprotocol/sdk"]).toBe("^1.24.0");
-    expect(pkg.dependencies.zod).toBe("^3.25.76");
+    expect(pkg.dependencies["@dexterai/vault"]).toBe("0.43.0");
+    expect(pkg.dependencies["@dexterai/x402-core"]).toBe("1.5.0");
+    expect(pkg.dependencies["@modelcontextprotocol/sdk"]).toBe("1.30.0");
+    expect(pkg.dependencies.zod).toBe("3.25.76");
     expect(pkg.engines.node).toBe(">=20");
     expect(pkg.scripts.version).toBe("npm run version:sync");
     expect(pkg.scripts.prepack).toBe("npm run version:check");
@@ -107,20 +108,29 @@ describe("local package distribution", () => {
     expect(resources).not.toContain("Dextercard widgets");
   });
 
-  it("uses a no-network candidate fixture instead of registry latest", () => {
-    const script = read("scripts/test-fresh-install.sh");
-    expect(script).toContain("CANDIDATE_TARBALL");
-    expect(script).toContain("SOURCE_PACKAGE_JSON");
-    expect(script).toContain("tar -xzf");
-    expect(script).toContain("pkg.version === expected.version");
-    expect(script).toContain('"@dexterai/mcp-instructions"] === "2.4.0"');
-    expect(script).toContain('"@dexterai/x402-mcp-tools"] === "0.8.0"');
-    expect(script).toContain('"@dexterai/x402-core"] === "^1.5.0"');
-    expect(script).toContain('"@modelcontextprotocol/sdk"] === "^1.24.0"');
-    expect(script).toContain('pkg.dependencies?.zod === "^3.25.76"');
-    expect(script).toContain('pkg.engines?.node === ">=20"');
-    expect(script).not.toContain("npx @dexterai/opendexter@latest");
-    expect(script).not.toContain("HOME=$TEST_HOME");
+  it("keeps tarball inspection distinct from registry-only install proof", () => {
+    const inspectScript = read("scripts/inspect-package-tarball.sh");
+    expect(inspectScript).toContain("CANDIDATE_TARBALL");
+    expect(inspectScript).toContain("SOURCE_PACKAGE_JSON");
+    expect(inspectScript).toContain("tar -xzf");
+    expect(inspectScript).toContain("pkg.version === expected.version");
+    expect(inspectScript).toContain(
+      "JSON.stringify(pkg.dependencies) === JSON.stringify(expected.dependencies)",
+    );
+    expect(inspectScript).toContain("exactVersion.test(version)");
+    expect(inspectScript).toContain('pkg.engines?.node === ">=20"');
+    expect(inspectScript).not.toContain("npm install");
+
+    const installScript = read("scripts/test-registry-install.sh");
+    expect(installScript).toContain("--registry=https://registry.npmjs.org");
+    expect(installScript).toContain("--save-exact");
+    expect(installScript).toContain('"$PACKAGE_SPEC"');
+    expect(installScript).toContain("--require-pure-js");
+    expect(installScript).toContain("npm ls --all");
+    expect(installScript).not.toContain("CANDIDATE_TARBALL");
+
+    const compatibilityScript = read("scripts/test-fresh-install.sh");
+    expect(compatibilityScript).toContain("inspect-package-tarball.sh");
   });
 
   it("inspects pack contents without recursively running package lifecycles", () => {

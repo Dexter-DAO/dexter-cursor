@@ -231,7 +231,7 @@ describe("opendexter.purchase.v1", () => {
     expect(result).not.toHaveProperty("purchaseReceipt.sellerSettlement");
   });
 
-  it("keeps Codex and Claude hosted routing references on the explicit contract", () => {
+  it("keeps Codex and Claude hosted routing references on the opaque-intent contract", () => {
     const files = [
       "../../../plugins/opendexter/skills/opendexter/SKILL.md",
       "../../../plugins/opendexter/skills/opendexter/references/routing-and-safety.md",
@@ -242,13 +242,17 @@ describe("opendexter.purchase.v1", () => {
     ];
     for (const file of files) {
       const source = readFileSync(new URL(file, import.meta.url), "utf8");
-      expect(source, file).toContain("purchaseOptions");
-      expect(source, file).toContain("preparedPurchase");
-      expect(source, file).toContain("direct_exact");
-      expect(source, file).toContain("native_tab");
-      expect(source, file).toContain("gateway_cash");
-      expect(source, file).toContain("gateway_credit");
-      expect(source, file).toContain("integration_required");
+      expect(source, file).toContain("x402_check");
+      expect(source, file).toContain("intentId");
+      expect(source, file).toContain("x402_fetch");
+      expect(source, file).toContain("x402_status");
+      expect(source, file).not.toContain("purchaseOptions");
+      expect(source, file).not.toContain("preparedPurchase");
+      expect(source, file).not.toContain("direct_exact");
+      expect(source, file).not.toContain("native_tab");
+      expect(source, file).not.toContain("gateway_cash");
+      expect(source, file).not.toContain("gateway_credit");
+      expect(source, file).not.toContain("integration_required");
     }
   });
 });

@@ -377,11 +377,24 @@ npm pack --dry-run --json
 `pack:verify` requires exactly the four registered x402 widget resources and
 rejects source maps, retired card widgets, and card-tool registrar
 declarations. To inspect a locally produced candidate tarball as a clean
-package fixture, without running it or contacting a service:
+package fixture, without installing it or contacting the npm registry:
 
 ```bash
-bash scripts/test-fresh-install.sh /absolute/path/to/dexterai-opendexter-VERSION.tgz
+npm run inspect:tarball -- /absolute/path/to/dexterai-opendexter-VERSION.tgz
 ```
+
+That is package-content evidence only. After an exact version has been
+published through the coordinated release train, prove what a new user really
+receives from the public registry:
+
+```bash
+npm run test:fresh-install -- VERSION
+```
+
+The registry proof accepts only an exact version, installs with lifecycle
+scripts disabled, checks the pure-JavaScript fixed-width bigint path, runs the
+installed CLI, and prints the complete installed dependency graph. The legacy
+direct `npm version && npm publish` shortcut is intentionally disabled.
 
 ## License
 

@@ -20,6 +20,8 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { Keypair, PublicKey, type Connection } from "@solana/web3.js";
 import { tabMiddleware } from "@dexterai/x402/tab/seller";
+import { DEXTER_VAULT_PROGRAM_ID } from "@dexterai/x402/tab";
+import { VAULT_ACCOUNT_DISCRIMINATOR } from "@dexterai/vault/constants";
 import type {
   Request as ExpressRequest,
   Response as ExpressResponse,
@@ -141,6 +143,7 @@ function sessionAccountData(g: GrantFixture, over: {
 /** Vault account (readVaultFull contract): version@8, swig_address@43..75. */
 function vaultAccountData(swigAddress: string): Buffer {
   const buf = Buffer.alloc(150);
+  Buffer.from(VAULT_ACCOUNT_DISCRIMINATOR).copy(buf, 0);
   buf.writeUInt8(6, 8);
   new PublicKey(swigAddress).toBuffer().copy(buf, 43);
   return buf;
@@ -157,7 +160,7 @@ function fakeConnection(
     gpaCalls,
     getAccountInfo: async (pda: PublicKey) => {
       const data = accounts.get(pda.toBase58());
-      return data ? { data } : null;
+      return data ? { data, owner: DEXTER_VAULT_PROGRAM_ID } : null;
     },
     getProgramAccounts: async (_program: PublicKey, cfg: unknown) => {
       gpaCalls.push(cfg);
