@@ -145,6 +145,9 @@ export function validateHostedDescriptor(descriptor) {
     requireNonemptyString(tool?.title, `${tool?.name ?? "unknown"} title`);
     requireNonemptyString(tool?.description, `${tool?.name ?? "unknown"} description`);
     validateJsonSchema(tool?.inputSchema, `${tool.name} inputSchema`);
+    if (tool.inputSchema.type !== "object") {
+      fail(`${tool.name} inputSchema must have top-level type object`);
+    }
     validateJsonSchema(tool?.outputSchema, `${tool.name} outputSchema`);
     if (!Array.isArray(tool.securitySchemes) || tool.securitySchemes.length === 0) {
       fail(`${tool.name} securitySchemes are required`);

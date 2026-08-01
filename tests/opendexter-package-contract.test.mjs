@@ -281,6 +281,16 @@ test("hosted descriptor binds exact schemas and optional OAuth to finalized sour
     /differs from the final hosted source descriptor/,
   );
 
+  const nonObjectInput = structuredClone(committed);
+  delete nonObjectInput.tools[0].inputSchema.type;
+  nonObjectInput.tools[0].inputSchema.anyOf = [
+    { type: "object", properties: {}, additionalProperties: false },
+  ];
+  assert.throws(
+    () => validateHostedDescriptor(nonObjectInput),
+    /inputSchema must have top-level type object/,
+  );
+
   const staleOutput = structuredClone(committed);
   staleOutput.tools[1].outputSchema.properties.output.const = "invented-output";
   assert.throws(
