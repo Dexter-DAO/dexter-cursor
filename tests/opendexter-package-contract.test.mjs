@@ -457,6 +457,32 @@ test("both formats expose only the three hosted-contract skills", async () => {
   }
 });
 
+test("one OpenDexter product brain has honest surface-specific skill editions", async () => {
+  const codex = await readFile(
+    resolve(codexRoot, "skills/opendexter/SKILL.md"),
+    "utf8",
+  );
+  const claude = await readFile(
+    resolve(claudeRoot, "skills/opendexter/SKILL.md"),
+    "utf8",
+  );
+  const local = await readFile(
+    resolve(repoRoot, "packages/mcp/skills/opendexter/SKILL.md"),
+    "utf8",
+  );
+  for (const text of [codex, claude, local]) {
+    assert.match(text, /share one product truth, safety model, and\s+user-outcome vocabulary/i);
+    assert.match(text, /surface-specific/i);
+    assert.match(text, /byte-for-byte/i);
+  }
+  assert.match(codex, /Codex's own Connect\/MCP login/);
+  assert.match(claude, /Claude Code's own MCP login/);
+  assert.match(local, /local CLI\/MCP edition/);
+  assert.notEqual(codex, claude);
+  assert.notEqual(codex, local);
+  assert.notEqual(claude, local);
+});
+
 test("both formats route anonymous five and connected twelve without retired tools", async () => {
   for (const root of [codexRoot, claudeRoot]) {
     const umbrella = await readFile(

@@ -9,10 +9,17 @@ OpenDexter is Dexter's hosted financial-action layer at
 `https://open.dexter.cash/mcp`. Native MCP OAuth binds this Codex session to
 the user's Dexter Wallet. The model receives no private key or passkey.
 
-This is the single master OpenDexter skill for the whole product. Keep every
-live OpenDexter capability and complete user journey in this guide as the
+This is the single master OpenDexter skill for the Codex surface. Keep every
+live capability and complete user journey available here in this guide as the
 product grows. Feature sections below are parts of that one guide, not separate
 Buy, Sell, Send, credit, wallet, or recovery micro-skills.
+
+All maintained OpenDexter surfaces share one product truth, safety model, and
+user-outcome vocabulary, but their skill editions are intentionally
+surface-specific. This edition must use Codex's own Connect/MCP login,
+namespacing, installation, and interaction conventions. Do not copy the Claude
+Code, local CLI, or app edition byte-for-byte or advertise a capability that
+this Codex package does not actually ship.
 
 ## Public product tools
 

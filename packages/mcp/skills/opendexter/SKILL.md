@@ -17,6 +17,13 @@ Every live capability and complete user journey available here belongs in this
 guide. Feature sections are not separately shipped Buy, Sell, Send, credit,
 wallet, or recovery micro-skills.
 
+All maintained OpenDexter surfaces share one product truth, safety model, and
+user-outcome vocabulary, but their skill editions are intentionally
+surface-specific. This local CLI/MCP edition must describe its local signer,
+commands, installation, and exact smaller tool roster. Do not copy the hosted,
+Codex, Claude Code, or app edition byte-for-byte, and never imply that a hosted
+capability exists locally when this package does not ship it.
+
 ## The rule that prevents stale or duplicate payments
 
 Treat discovery, inspection, and execution as separate decisions:
