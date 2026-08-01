@@ -158,7 +158,10 @@ describe("local package distribution", () => {
     const verifier = read("scripts/verify-hosted-source.mjs");
     expect(verifier).toContain('release/open-tool-descriptors.json');
     expect(verifier).toContain('scripts/materialize-open-tool-descriptors.mjs');
-    expect(verifier).toContain('materializeOpenToolDescriptors');
+    expect(verifier).toContain('"--emit-json"');
+    expect(verifier).toContain('"build:runtime-workspaces"');
+    expect(verifier).toContain('"ci"');
+    expect(verifier).toContain('"--ignore-scripts"');
     expect(verifier).toContain('EXPECTED_HOSTED_SOURCE_REPOSITORY');
     expect(verifier).toContain('verifyMaterializedHostedDescriptor');
     expect(verifier).toContain('optional-OAuth roster');
@@ -174,7 +177,11 @@ describe("local package distribution", () => {
     ]) {
       expect(verifier).toContain(field);
     }
+    expect(verifier).toContain('--show-toplevel');
     expect(verifier).toContain('ls-files');
+    expect(verifier).toContain('refs/replace');
+    expect(verifier).toContain('ls-remote');
+    expect(verifier).toContain('archive');
     expect(verifier).toContain('status');
   });
 

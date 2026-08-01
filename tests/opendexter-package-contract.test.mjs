@@ -5,20 +5,24 @@ import {
   access,
   cp,
   lstat,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
   rm,
+  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
+  buildHostedContract,
   validateHostedDescriptor,
   verifyHostedRepositoryIdentity,
   verifyMaterializedHostedDescriptor,
+  verifyHostedSource,
 } from "../packages/mcp/scripts/verify-hosted-source.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -128,8 +132,51 @@ function hostedDescriptorFixture() {
     widgetAccessible: false,
   });
   return {
-    schemaVersion: 1,
-    kind: "opendexter-hosted-tool-descriptors/v1",
+    schemaVersion: 2,
+    kind: "opendexter-hosted-tool-descriptors/v2",
+    sourceContracts: {
+      schemaVersion: 1,
+      kind: "opendexter-source-contracts/v1",
+      api: {
+        repository: "https://github.com/Dexter-DAO/dexter-api",
+        commit: "a".repeat(40),
+        tree: "b".repeat(40),
+        consumerFixture: {
+          path:
+            "tests/fixtures/governed-agent-reconcile-advanced-final-c3e32885.json",
+          sha256: "c".repeat(64),
+          canonicalBodyDigest: "d".repeat(64),
+        },
+      },
+      mcp: {
+        repository: "https://github.com/Dexter-DAO/dexter-mcp",
+        commit: "e".repeat(40),
+        tree: "f".repeat(40),
+        toolContractPath: "lib/open-tool-contracts.mjs",
+        authContractPath: "lib/open-tool-auth.mjs",
+      },
+    },
+    oauth: {
+      mode: "mixed",
+      resource: "https://open.dexter.cash/mcp",
+      protectedResourceMetadata:
+        "https://open.dexter.cash/.well-known/oauth-protected-resource/mcp",
+      protectedResourcePaths: [
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/mcp",
+      ],
+      authorizationServer: "https://mcp.dexter.cash/mcp",
+      authorizationServerMetadata:
+        "https://mcp.dexter.cash/.well-known/oauth-authorization-server/mcp",
+      tokenIssuer: "https://dexter.cash",
+      scopesSupported: ["vault"],
+      challengeRequiredParameters: [
+        "resource_metadata",
+        "scope",
+        "error",
+        "error_description",
+      ],
+    },
     anonymousToolNames: ["x402_check"],
     oauthPromotedToolNames: ["x402_fetch"],
     connectedToolNames: ["x402_check", "x402_fetch"],
@@ -266,6 +313,49 @@ test("hosted source identity is fixed to the Dexter MCP repository", () => {
   );
 });
 
+test("hosted source verifier refuses a nested path before source contact", async (t) => {
+  const root = await mkdtemp(resolve(tmpdir(), "opendexter-nested-source-"));
+  const nested = resolve(root, "nested");
+  t.after(async () => await rm(root, { recursive: true, force: true }));
+  await mkdir(nested);
+  await execFileAsync("git", ["init", "-q", root]);
+  await assert.rejects(
+    verifyHostedSource({ sourceRoot: nested }),
+    /hosted source root is not the Git toplevel/,
+  );
+});
+
+test("hosted source verifier refuses hidden index state before origin contact", async (t) => {
+  for (const flag of ["--assume-unchanged", "--skip-worktree"]) {
+    const root = await mkdtemp(resolve(tmpdir(), "opendexter-hidden-source-"));
+    t.after(async () => await rm(root, { recursive: true, force: true }));
+    await writeFile(resolve(root, "tracked.txt"), "tracked\n");
+    for (const args of [
+      ["init", "-q", root],
+      ["-C", root, "config", "user.name", "OpenDexter Test"],
+      ["-C", root, "config", "user.email", "test@invalid.example"],
+      ["-C", root, "add", "tracked.txt"],
+      ["-C", root, "commit", "-qm", "fixture"],
+      [
+        "-C",
+        root,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/Dexter-DAO/dexter-mcp.git",
+      ],
+      ["-C", root, "update-index", flag, "tracked.txt"],
+    ]) {
+      await execFileAsync("git", args);
+    }
+    await assert.rejects(
+      verifyHostedSource({ sourceRoot: root }),
+      /assume-unchanged or skip-worktree/,
+      flag,
+    );
+  }
+});
+
 test("hosted descriptor binds exact schemas and optional OAuth to finalized source", () => {
   const committed = hostedDescriptorFixture();
   assert.deepEqual(validateHostedDescriptor(committed), committed);
@@ -311,6 +401,60 @@ test("hosted descriptor binds exact schemas and optional OAuth to finalized sour
     () => validateHostedDescriptor(duplicateOptionalOAuth),
     /contains duplicates/,
   );
+
+  const inventedSource = structuredClone(committed);
+  inventedSource.sourceContracts.mcp.repository =
+    "https://github.com/example/dexter-mcp";
+  assert.throws(
+    () => validateHostedDescriptor(inventedSource),
+    /MCP source repository is unexpected/,
+  );
+
+  const staleOAuth = structuredClone(committed);
+  staleOAuth.oauth.scopesSupported = ["vault", "invented"];
+  assert.throws(
+    () => validateHostedDescriptor(staleOAuth),
+    /OAuth contract differs/,
+  );
+
+  const inventedDescriptorField = structuredClone(committed);
+  inventedDescriptorField.guessedRouting = true;
+  assert.throws(
+    () => validateHostedDescriptor(inventedDescriptorField),
+    /hosted descriptor fields differs/,
+  );
+});
+
+test("hosted contract writer preserves the full descriptor and deny lists", () => {
+  const descriptor = hostedDescriptorFixture();
+  const materialization = {
+    recipe:
+      "git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v1",
+    node: "v22.19.0",
+    npm: "10.9.3",
+    packageLockSha256: "1".repeat(64),
+    sourceArchiveSha256: "2".repeat(64),
+    descriptorSha256: "3".repeat(64),
+  };
+  const contract = buildHostedContract({
+    descriptor,
+    commit: "4".repeat(40),
+    tree: "5".repeat(40),
+    materialization,
+  });
+  assert.equal(contract.schemaVersion, 2);
+  assert.equal(contract.contractId, "opendexter-hosted-full-descriptor-v2");
+  assert.deepEqual(contract.sourceContracts, descriptor.sourceContracts);
+  assert.deepEqual(contract.oauth, descriptor.oauth);
+  assert.deepEqual(contract.materialization, materialization);
+  assert.deepEqual(contract.tools, descriptor.tools);
+  assert.deepEqual(contract.forbiddenHostedToolNames, RETIRED_HOSTED_TOOLS);
+  assert.deepEqual(contract.forbiddenHostedToolPatterns, ["^card_"]);
+  assert.deepEqual(contract.forbiddenGuidancePatterns, [
+    "pairing_url",
+    "/mcp/dlt_",
+    "personalized MCP URL",
+  ]);
 });
 
 test("release fixture is source-pinned to the exact hosted twelve", async () => {
@@ -432,41 +576,10 @@ test(
   async () => {
     const sourceRoot = resolve(process.env.OPENDXTER_HOSTED_SOURCE_ROOT);
     const contract = await readJson(contractPath);
-    const sourcePaths = [
-      contract.source.toolContractPath,
-      contract.source.authContractPath,
-    ];
-    const { stdout: tree } = await execFileAsync("git", [
-      "-C",
-      sourceRoot,
-      "rev-parse",
-      `${contract.source.commit}^{tree}`,
-    ]);
-    assert.equal(tree.trim(), contract.source.tree);
-    await execFileAsync("git", [
-      "-C",
-      sourceRoot,
-      "diff",
-      "--quiet",
-      contract.source.commit,
-      "--",
-      ...sourcePaths,
-    ]);
-
-    const sourceModule = await import(
-      `${pathToFileURL(resolve(sourceRoot, contract.source.toolContractPath)).href}?source=${contract.source.commit}`
-    );
-    assert.deepEqual(sourceModule.OPEN_ANONYMOUS_TOOL_NAMES, ANONYMOUS_TOOLS);
-    assert.deepEqual(sourceModule.OPEN_OAUTH_PROMOTED_TOOL_NAMES, OAUTH_PROMOTED_TOOLS);
-    assert.deepEqual(sourceModule.OPEN_TOOL_NAMES, HOSTED_TOOLS);
-    for (const expected of contract.tools) {
-      const actual = sourceModule.OPEN_TOOL_CONTRACTS[expected.name];
-      assert.ok(actual, expected.name);
-      assert.deepEqual(actual.securitySchemes, expected.securitySchemes, expected.name);
-      assert.deepEqual(actual.annotations, expected.annotations, expected.name);
-      assert.deepEqual(actual.visibility, expected.visibility, expected.name);
-      assert.equal(actual.widgetAccessible, expected.widgetAccessible, expected.name);
-    }
+    const verified = await verifyHostedSource({ sourceRoot, mode: "check" });
+    assert.equal(verified.commit, contract.source.commit);
+    assert.equal(verified.tree, contract.source.tree);
+    assert.deepEqual(verified.contract, contract);
   },
 );
 
@@ -563,6 +676,21 @@ test("release train requires full hosted descriptors and ordinary-language routi
   ]) {
     assert.match(hostedVerifier, new RegExp(field));
   }
+  for (const invariant of [
+    "--show-toplevel",
+    "ls-files",
+    "refs/replace",
+    "ls-remote",
+    "archive",
+    "package-lock.json",
+    "npm@",
+    "--ignore-scripts",
+    "build:runtime-workspaces",
+    "--emit-json",
+  ]) {
+    assert.match(hostedVerifier, new RegExp(invariant));
+  }
+  assert.doesNotMatch(hostedVerifier, /pathToFileURL|await import\(/);
 
   const casesPath = resolve(repoRoot, "tests/opendexter-novice-routing-cases.json");
   const suite = await readJson(casesPath);

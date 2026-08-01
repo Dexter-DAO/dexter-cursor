@@ -1,9 +1,19 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, dirname, isAbsolute, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptRoot, "../../..");
@@ -13,8 +23,29 @@ const contractPath = resolve(
 );
 const DESCRIPTOR_PATH = "release/open-tool-descriptors.json";
 const DESCRIPTOR_MATERIALIZER_PATH = "scripts/materialize-open-tool-descriptors.mjs";
+const REVIEWED_NPM_VERSION = "10.9.3";
+const DESCRIPTOR_KIND = "opendexter-hosted-tool-descriptors/v2";
+const SOURCE_CONTRACTS_KIND = "opendexter-source-contracts/v1";
+const MATERIALIZATION_RECIPE =
+  "git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v1";
+const HOSTED_MANIFEST_VERSION = "0.5.0";
+const FORBIDDEN_HOSTED_TOOL_NAMES = Object.freeze([
+  "x402_pay",
+  "x402_compose_skill",
+  "promote_skill",
+  "dexter_passkey_probe",
+  "dexter_passkey",
+  "dexter_authorize_asset_action",
+]);
+const FORBIDDEN_HOSTED_TOOL_PATTERNS = Object.freeze(["^card_"]);
+const FORBIDDEN_GUIDANCE_PATTERNS = Object.freeze([
+  "pairing_url",
+  "/mcp/dlt_",
+  "personalized MCP URL",
+]);
 export const EXPECTED_HOSTED_SOURCE_REPOSITORY =
   "https://github.com/Dexter-DAO/dexter-mcp";
+const EXPECTED_HOSTED_SOURCE_ORIGIN = `${EXPECTED_HOSTED_SOURCE_REPOSITORY}.git`;
 
 function fail(message) {
   throw new Error(message);
@@ -28,8 +59,8 @@ function run(command, args, options = {}) {
   }).trim();
 }
 
-function git(root, args) {
-  return run("git", ["-C", root, ...args]);
+function git(root, args, options = {}) {
+  return run("git", ["--no-replace-objects", "-C", root, ...args], options);
 }
 
 function readJson(path) {
@@ -52,6 +83,17 @@ function same(actual, expected, label) {
   }
 }
 
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function exactKeys(value, expected, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    fail(`${label} must be an object`);
+  }
+  same(Object.keys(value).sort(), [...expected].sort(), `${label} fields`);
+}
+
 function requireNonemptyString(value, label) {
   if (typeof value !== "string" || value.trim() === "") fail(`${label} is required`);
 }
@@ -70,6 +112,100 @@ function requireUniqueStringArray(value, label) {
   for (const item of value) requireNonemptyString(item, `${label} entry`);
   if (new Set(value).size !== value.length) fail(`${label} contains duplicates`);
   return value;
+}
+
+function requireHex(value, length, label) {
+  if (typeof value !== "string" || !new RegExp(`^[0-9a-f]{${length}}$`).test(value)) {
+    fail(`${label} is invalid`);
+  }
+}
+
+function validateSourceContracts(sourceContracts) {
+  exactKeys(sourceContracts, ["schemaVersion", "kind", "api", "mcp"], "sourceContracts");
+  if (
+    sourceContracts.schemaVersion !== 1
+    || sourceContracts.kind !== SOURCE_CONTRACTS_KIND
+  ) {
+    fail("hosted descriptor sourceContracts is unsupported");
+  }
+  exactKeys(
+    sourceContracts.api,
+    ["repository", "commit", "tree", "consumerFixture"],
+    "sourceContracts api",
+  );
+  exactKeys(
+    sourceContracts.api.consumerFixture,
+    ["path", "sha256", "canonicalBodyDigest"],
+    "sourceContracts api fixture",
+  );
+  exactKeys(
+    sourceContracts.mcp,
+    ["repository", "commit", "tree", "toolContractPath", "authContractPath"],
+    "sourceContracts mcp",
+  );
+  if (sourceContracts.api.repository !== "https://github.com/Dexter-DAO/dexter-api") {
+    fail("hosted descriptor API source repository is unexpected");
+  }
+  if (sourceContracts.mcp.repository !== EXPECTED_HOSTED_SOURCE_REPOSITORY) {
+    fail("hosted descriptor MCP source repository is unexpected");
+  }
+  if (
+    sourceContracts.api.consumerFixture.path
+      !== "tests/fixtures/governed-agent-reconcile-advanced-final-c3e32885.json"
+    || sourceContracts.mcp.toolContractPath !== "lib/open-tool-contracts.mjs"
+    || sourceContracts.mcp.authContractPath !== "lib/open-tool-auth.mjs"
+  ) {
+    fail("hosted descriptor source contract paths are unexpected");
+  }
+  requireHex(sourceContracts.api.commit, 40, "sourceContracts API commit");
+  requireHex(sourceContracts.api.tree, 40, "sourceContracts API tree");
+  requireHex(sourceContracts.mcp.commit, 40, "sourceContracts MCP commit");
+  requireHex(sourceContracts.mcp.tree, 40, "sourceContracts MCP tree");
+  requireHex(
+    sourceContracts.api.consumerFixture.sha256,
+    64,
+    "sourceContracts API fixture digest",
+  );
+  requireHex(
+    sourceContracts.api.consumerFixture.canonicalBodyDigest,
+    64,
+    "sourceContracts API body digest",
+  );
+}
+
+function validateOAuth(oauth) {
+  exactKeys(oauth, [
+    "mode",
+    "resource",
+    "protectedResourceMetadata",
+    "protectedResourcePaths",
+    "authorizationServer",
+    "authorizationServerMetadata",
+    "tokenIssuer",
+    "scopesSupported",
+    "challengeRequiredParameters",
+  ], "hosted descriptor oauth");
+  same(oauth, {
+    mode: "mixed",
+    resource: "https://open.dexter.cash/mcp",
+    protectedResourceMetadata:
+      "https://open.dexter.cash/.well-known/oauth-protected-resource/mcp",
+    protectedResourcePaths: [
+      "/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/mcp",
+    ],
+    authorizationServer: "https://mcp.dexter.cash/mcp",
+    authorizationServerMetadata:
+      "https://mcp.dexter.cash/.well-known/oauth-authorization-server/mcp",
+    tokenIssuer: "https://dexter.cash",
+    scopesSupported: ["vault"],
+    challengeRequiredParameters: [
+      "resource_metadata",
+      "scope",
+      "error",
+      "error_description",
+    ],
+  }, "hosted descriptor OAuth contract");
 }
 
 function schemeTypes(tool) {
@@ -102,10 +238,23 @@ export function verifyHostedRepositoryIdentity(origin) {
 }
 
 export function validateHostedDescriptor(descriptor) {
-  if (descriptor?.schemaVersion !== 1) fail("unsupported hosted descriptor schema");
-  if (descriptor?.kind !== "opendexter-hosted-tool-descriptors/v1") {
+  exactKeys(descriptor, [
+    "schemaVersion",
+    "kind",
+    "sourceContracts",
+    "oauth",
+    "anonymousToolNames",
+    "oauthPromotedToolNames",
+    "connectedToolNames",
+    "optionalOAuthToolNames",
+    "tools",
+  ], "hosted descriptor");
+  if (descriptor?.schemaVersion !== 2) fail("unsupported hosted descriptor schema");
+  if (descriptor?.kind !== DESCRIPTOR_KIND) {
     fail("unexpected hosted descriptor kind");
   }
+  validateSourceContracts(descriptor.sourceContracts);
+  validateOAuth(descriptor.oauth);
   for (const field of [
     "anonymousToolNames",
     "oauthPromotedToolNames",
@@ -195,10 +344,155 @@ export function verifyMaterializedHostedDescriptor(descriptor, materialized) {
   return committed;
 }
 
-function buildContract({ descriptor, sourceRoot, commit, tree }) {
-  const previous = readJson(contractPath);
+function reviewedEnvironment({ npmCache, production = false } = {}) {
+  const forbidden = [
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "TAR_OPTIONS",
+    ...Object.keys(process.env).filter((key) => key.startsWith("LD_")),
+  ];
+  for (const key of new Set(forbidden)) {
+    if (typeof process.env[key] === "string" && process.env[key].length > 0) {
+      fail(`hosted source release environment contains ${key}`);
+    }
+  }
+  const nodeBin = dirname(realpathSync(process.execPath));
+  return Object.fromEntries(Object.entries({
+    PATH: [
+      nodeBin,
+      "/usr/local/sbin",
+      "/usr/local/bin",
+      "/usr/sbin",
+      "/usr/bin",
+      "/sbin",
+      "/bin",
+    ].filter((entry, index, entries) => entries.indexOf(entry) === index)
+      .join(delimiter),
+    HOME: process.env.HOME,
+    LANG: "C",
+    LC_ALL: "C",
+    NODE_ENV: production ? "production" : undefined,
+    GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    npm_config_audit: "false",
+    npm_config_fund: "false",
+    npm_config_ignore_scripts: "true",
+    npm_config_userconfig: "/dev/null",
+    npm_config_globalconfig: "/dev/null.opendexter-release-global-npmrc",
+    npm_config_cache: npmCache,
+  }).filter(([, value]) => value !== undefined));
+}
+
+function reviewedNpm(args = []) {
+  const node = realpathSync(process.execPath);
+  const npmCli = realpathSync(resolve(
+    dirname(node),
+    "../lib/node_modules/npm/bin/npm-cli.js",
+  ));
+  const stat = lstatSync(npmCli);
+  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o022) !== 0) {
+    fail("reviewed npm CLI is not one protected regular file");
+  }
+  return { command: node, args: [npmCli, ...args] };
+}
+
+function materializeArchivedHostedSource({ root, commit, cleanEnvironment }) {
+  const disposableRoot = mkdtempSync(resolve(tmpdir(), "opendexter-hosted-source-"));
+  const sourceArchive = resolve(disposableRoot, "source.tar");
+  const archivedRoot = resolve(disposableRoot, "source");
+  try {
+    mkdirSync(archivedRoot);
+    git(root, [
+      "archive",
+      "--format=tar",
+      `--output=${sourceArchive}`,
+      commit,
+    ], { env: cleanEnvironment });
+    run("tar", ["-xf", sourceArchive, "-C", archivedRoot], {
+      env: cleanEnvironment,
+    });
+    for (const relativePath of [
+      DESCRIPTOR_PATH,
+      DESCRIPTOR_MATERIALIZER_PATH,
+      "package.json",
+      "package-lock.json",
+    ]) {
+      const stat = lstatSync(resolve(archivedRoot, relativePath));
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        fail(`${relativePath} is not one archived regular file`);
+      }
+    }
+    const manifest = readJson(resolve(archivedRoot, "package.json"));
+    if (manifest.packageManager !== `npm@${REVIEWED_NPM_VERSION}`) {
+      fail("hosted source does not pin the reviewed npm version");
+    }
+    const npmCache = resolve(disposableRoot, "npm-cache");
+    const buildEnvironment = reviewedEnvironment({ npmCache });
+    const productionEnvironment = reviewedEnvironment({
+      npmCache,
+      production: true,
+    });
+    productionEnvironment.SENTRY_DSN = "";
+    productionEnvironment.SENTRY_OPEN_MCP_DSN = "";
+    const npmVersion = reviewedNpm(["--version"]);
+    if (
+      run(npmVersion.command, npmVersion.args, { env: buildEnvironment })
+        !== REVIEWED_NPM_VERSION
+    ) {
+      fail("installed npm differs from the reviewed npm version");
+    }
+    const npmCi = reviewedNpm([
+      "ci",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+    ]);
+    run(npmCi.command, npmCi.args, {
+      cwd: archivedRoot,
+      env: buildEnvironment,
+      stdio: "pipe",
+    });
+    const npmBuild = reviewedNpm(["run", "build:runtime-workspaces"]);
+    run(npmBuild.command, npmBuild.args, {
+      cwd: archivedRoot,
+      env: buildEnvironment,
+      stdio: "pipe",
+    });
+    const descriptorOutput = run(
+      realpathSync(process.execPath),
+      [resolve(archivedRoot, DESCRIPTOR_MATERIALIZER_PATH), "--emit-json"],
+      {
+        cwd: archivedRoot,
+        env: productionEnvironment,
+        stdio: "pipe",
+      },
+    );
+    const committedDescriptorBytes = readFileSync(
+      resolve(archivedRoot, DESCRIPTOR_PATH),
+    );
+    return {
+      committedDescriptor: JSON.parse(committedDescriptorBytes.toString("utf8")),
+      materializedDescriptor: JSON.parse(descriptorOutput),
+      materialization: {
+        recipe: MATERIALIZATION_RECIPE,
+        node: process.version,
+        npm: REVIEWED_NPM_VERSION,
+        packageLockSha256: sha256(readFileSync(resolve(archivedRoot, "package-lock.json"))),
+        sourceArchiveSha256: sha256(readFileSync(sourceArchive)),
+        descriptorSha256: sha256(committedDescriptorBytes),
+      },
+    };
+  } finally {
+    rmSync(disposableRoot, { recursive: true, force: true });
+  }
+}
+
+export function buildHostedContract({ descriptor, commit, tree, materialization }) {
   return {
-    ...previous,
     schemaVersion: 2,
     contractId: "opendexter-hosted-full-descriptor-v2",
     source: {
@@ -210,75 +504,103 @@ function buildContract({ descriptor, sourceRoot, commit, tree }) {
       toolContractPath: "lib/open-tool-contracts.mjs",
       authContractPath: "lib/open-tool-auth.mjs",
     },
+    sourceContracts: descriptor.sourceContracts,
+    oauth: descriptor.oauth,
+    materialization,
+    mcp: {
+      url: descriptor.oauth.resource,
+      manifestVersion: HOSTED_MANIFEST_VERSION,
+      resource: descriptor.oauth.resource,
+      protectedResourceMetadata: descriptor.oauth.protectedResourceMetadata,
+      protectedResourcePaths: descriptor.oauth.protectedResourcePaths,
+      authorizationServer: descriptor.oauth.authorizationServer,
+      authorizationServerMetadata:
+        descriptor.oauth.authorizationServerMetadata,
+      tokenIssuer: descriptor.oauth.tokenIssuer,
+      scope: descriptor.oauth.scopesSupported[0],
+      challengeRequiredParameters:
+        descriptor.oauth.challengeRequiredParameters,
+    },
     anonymousToolNames: descriptor.anonymousToolNames,
     oauthPromotedToolNames: descriptor.oauthPromotedToolNames,
     connectedToolNames: descriptor.connectedToolNames,
     optionalOAuthToolNames: descriptor.optionalOAuthToolNames,
     tools: descriptor.tools,
+    forbiddenHostedToolNames: [...FORBIDDEN_HOSTED_TOOL_NAMES],
+    forbiddenHostedToolPatterns: [...FORBIDDEN_HOSTED_TOOL_PATTERNS],
+    forbiddenGuidancePatterns: [...FORBIDDEN_GUIDANCE_PATTERNS],
   };
 }
 
 export async function verifyHostedSource({ sourceRoot, mode = "check" }) {
   const root = realpathSync(sourceRoot);
-  verifyHostedRepositoryIdentity(git(root, ["remote", "get-url", "origin"]));
-  const status = git(root, ["status", "--porcelain=v1", "--untracked-files=all"]);
+  const cleanEnvironment = reviewedEnvironment();
+  const topLevel = realpathSync(git(
+    root,
+    ["rev-parse", "--show-toplevel"],
+    { env: cleanEnvironment },
+  ));
+  if (topLevel !== root) {
+    fail("hosted source root is not the Git toplevel");
+  }
+  verifyHostedRepositoryIdentity(git(
+    root,
+    ["remote", "get-url", "origin"],
+    { env: cleanEnvironment },
+  ));
+  const status = git(
+    root,
+    ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
+    { env: cleanEnvironment },
+  );
   if (status) fail(`hosted source is not clean:\n${status}`);
-  const commit = git(root, ["rev-parse", "HEAD"]);
-  const tree = git(root, ["rev-parse", "HEAD^{tree}"]);
-  try {
-    git(root, ["ls-files", "--error-unmatch", DESCRIPTOR_PATH]);
-  } catch {
-    fail(`${DESCRIPTOR_PATH} is not committed in the final hosted source`);
+  const hidden = git(root, ["ls-files", "-v", "-z"], {
+    env: cleanEnvironment,
+  }).split("\0").filter((entry) => /^[a-zS] /.test(entry));
+  if (hidden.length > 0) {
+    fail("hosted source contains assume-unchanged or skip-worktree state");
   }
-  try {
-    git(root, ["ls-files", "--error-unmatch", DESCRIPTOR_MATERIALIZER_PATH]);
-  } catch {
-    fail(`${DESCRIPTOR_MATERIALIZER_PATH} is not committed in the final hosted source`);
-  }
-  const committedDescriptor = readJson(resolve(root, DESCRIPTOR_PATH));
-  const materializer = await import(
-    `${pathToFileURL(resolve(root, DESCRIPTOR_MATERIALIZER_PATH)).href}?commit=${commit}`
+  const replaceRefs = git(
+    root,
+    ["for-each-ref", "--format=%(refname)", "refs/replace"],
+    { env: cleanEnvironment },
   );
-  if (typeof materializer.materializeOpenToolDescriptors !== "function") {
-    fail(
-      `${DESCRIPTOR_MATERIALIZER_PATH} must export materializeOpenToolDescriptors()`,
-    );
-  }
-  const descriptor = verifyMaterializedHostedDescriptor(
-    committedDescriptor,
-    await materializer.materializeOpenToolDescriptors(),
-  );
-  const contracts = await import(
-    `${pathToFileURL(resolve(root, "lib/open-tool-contracts.mjs")).href}?commit=${commit}`
-  );
-  same(contracts.OPEN_ANONYMOUS_TOOL_NAMES, descriptor.anonymousToolNames, "anonymous roster");
-  same(contracts.OPEN_OAUTH_PROMOTED_TOOL_NAMES, descriptor.oauthPromotedToolNames, "OAuth roster");
-  same(contracts.OPEN_TOOL_NAMES, descriptor.connectedToolNames, "connected roster");
-  const sourceOptionalOAuth = contracts.OPEN_TOOL_NAMES.filter((name) => {
-    const types = schemeTypes(contracts.OPEN_TOOL_CONTRACTS?.[name]);
-    return types.has("noauth") && types.has("oauth2");
+  if (replaceRefs) fail("hosted source contains Git replace refs");
+  const commit = git(root, ["rev-parse", "HEAD^{commit}"], {
+    env: cleanEnvironment,
   });
-  same(
-    sourceOptionalOAuth,
-    descriptor.optionalOAuthToolNames,
-    "source optional-OAuth roster",
+  const tree = git(root, ["rev-parse", "HEAD^{tree}"], {
+    env: cleanEnvironment,
+  });
+  const remoteRefs = run("git", [
+    "--no-replace-objects",
+    "ls-remote",
+    "--refs",
+    EXPECTED_HOSTED_SOURCE_ORIGIN,
+  ], {
+    env: cleanEnvironment,
+    timeout: 30_000,
+  });
+  const advertised = remoteRefs.split(/\r?\n/).some((line) => {
+    const [remoteCommit, refname, extra] = line.trim().split(/\s+/);
+    return remoteCommit === commit && Boolean(refname) && extra === undefined;
+  });
+  if (!advertised) fail("canonical hosted source does not advertise HEAD");
+  const archived = materializeArchivedHostedSource({
+    root,
+    commit,
+    cleanEnvironment,
+  });
+  const descriptor = verifyMaterializedHostedDescriptor(
+    archived.committedDescriptor,
+    archived.materializedDescriptor,
   );
-  for (const expected of descriptor.tools) {
-    const actual = contracts.OPEN_TOOL_CONTRACTS?.[expected.name];
-    if (!actual) fail(`OPEN_TOOL_CONTRACTS omits ${expected.name}`);
-    for (const field of [
-      "title",
-      "description",
-      "securitySchemes",
-      "annotations",
-      "visibility",
-      "widgetAccessible",
-    ]) {
-      same(actual[field], expected[field], `${expected.name} ${field}`);
-    }
-  }
-
-  const nextContract = buildContract({ descriptor, sourceRoot: root, commit, tree });
+  const nextContract = buildHostedContract({
+    descriptor,
+    commit,
+    tree,
+    materialization: archived.materialization,
+  });
   if (mode === "write") {
     writeFileSync(contractPath, `${JSON.stringify(nextContract, null, 2)}\n`);
   } else if (mode === "check") {
