@@ -12,6 +12,11 @@ uses the separate Dexter Wallet session created by `opendexter connect`; it
 does not change the local payment signer. Do not apply hosted passkey-enrollment
 or reusable-skill instructions to this surface.
 
+This is the single master OpenDexter skill for this maintained distribution.
+Every live capability and complete user journey available here belongs in this
+guide. Feature sections are not separately shipped Buy, Sell, Send, credit,
+wallet, or recovery micro-skills.
+
 ## The rule that prevents stale or duplicate payments
 
 Treat discovery, inspection, and execution as separate decisions:
