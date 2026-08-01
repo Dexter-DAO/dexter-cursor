@@ -2,11 +2,12 @@
  * Shared MCP server instructions for OpenDexter (the agent-facing server name;
  * historically "Dexter x402 Gateway" until the 2026-06 brand alignment).
  *
- * Single source of truth consumed by BOTH:
- *   - The hosted remote server at open.dexter.cash/mcp
- *     (source: ~/websites/dexter-mcp/open-mcp-server.mjs)
- *   - The local npm-installable server
- *     (source: ~/websites/opendexter-ide/packages/mcp/src/server/index.ts)
+ * The current local npm-installable server consumes the LOCAL_CAPS rendering.
+ * Hosted OpenDexter now owns a larger five-anonymous/twelve-connected
+ * instruction and descriptor contract in dexter-mcp and imports only the
+ * parity assertion from this package. HOSTED_CAPS remains for compatibility
+ * with consumers pinned to the 2.4.0-era six-tool surface; it is not current
+ * hosted release truth.
  *
  * Previously these two codebases drifted — the hosted server had
  * ~1,800 bytes of workflow guidance (shipped Apr 16), but the npm package
@@ -331,9 +332,9 @@ export function buildServerInstructions(caps: SurfaceCaps): string {
   return sections.join('\n\n');
 }
 
-// Both first-party surfaces ship cards-off (owner ruling Jul 23, card-removal
-// runbook): the card is a wallet-widget concern now. hasCardLoginStart goes
-// false with it — the flag is meaningless without the card tool family.
+// The local rendering ships cards-off. HOSTED_CAPS preserves the last
+// published six-tool compatibility rendering only; current hosted product
+// truth comes from dexter-mcp's complete source-owned descriptor/instructions.
 export const LOCAL_CAPS: SurfaceCaps = { surface: 'local', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: true, hasPortfolioTool: true, hasCardTools: false };
 export const HOSTED_CAPS: SurfaceCaps = { surface: 'hosted', hasSettings: false, hasCardLoginStart: false, hasPasskeyTools: false, hasSkillTools: false, hasDocsResources: true, multichainFunding: false, hasPortfolioTool: true, hasCardTools: false };
 

@@ -1,29 +1,51 @@
 #!/usr/bin/env bash
-#
-# Post-publication registry-only install proof for @dexterai/opendexter.
-#
-# This accepts only an exact semantic version, never a path, tarball, URL, tag,
-# or range. Run it only after that version and its dependency train are
-# published with release approval.
-#
+# Post-publication proof for one exact immutable registry version. Registry
+# metadata `dist.integrity` and `dist.shasum` must match the pre-publication
+# tarball attestation before install.
 set -euo pipefail
 
 SCRIPT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
-if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 VERSION" >&2
+if [[ $# -ne 2 ]]; then
+  echo "Usage: $0 VERSION /absolute/path/to/release-attestation.json" >&2
   exit 2
 fi
 
 VERSION=$1
+ATTESTATION=$2
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
   echo "Expected one exact semantic version, not a tag, path, URL, or range" >&2
+  exit 2
+fi
+if [[ ! "$ATTESTATION" = /* || ! -f "$ATTESTATION" ]]; then
+  echo "Expected an absolute path to the reviewed release attestation" >&2
   exit 2
 fi
 
 PACKAGE_SPEC="@dexterai/opendexter@$VERSION"
 INSTALL_ROOT=$(mktemp -d)
 trap 'rm -rf "$INSTALL_ROOT"' EXIT
+METADATA="$INSTALL_ROOT/registry-metadata.json"
+
+# Tests may inject a captured metadata file. The real post-publication gate
+# fetches the exact immutable version, never a tag or range.
+if [[ -n "${OPENDXTER_REGISTRY_METADATA_FILE:-}" ]]; then
+  if [[ ! "$OPENDXTER_REGISTRY_METADATA_FILE" = /* || ! -f "$OPENDXTER_REGISTRY_METADATA_FILE" ]]; then
+    echo "OPENDXTER_REGISTRY_METADATA_FILE must be an absolute existing file" >&2
+    exit 2
+  fi
+  cp "$OPENDXTER_REGISTRY_METADATA_FILE" "$METADATA"
+else
+  npm view \
+    --registry=https://registry.npmjs.org \
+    --json \
+    "$PACKAGE_SPEC" \
+    name version dist > "$METADATA"
+fi
+
+node "$SCRIPT_ROOT/package-provenance.mjs" verify-registry \
+  --attestation "$ATTESTATION" \
+  --metadata "$METADATA"
 
 cd "$INSTALL_ROOT"
 npm init --yes >/dev/null
@@ -63,4 +85,4 @@ execFileSync(
 NODE
 
 npm ls --all
-echo "Registry-only install proof passed: $PACKAGE_SPEC"
+echo "Registry integrity and install proof passed: $PACKAGE_SPEC"

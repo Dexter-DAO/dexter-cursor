@@ -1,6 +1,6 @@
 {
   "name": "@dexterai/opendexter",
-  "version": "1.23.0-rc.2",
+  "version": "1.23.0-rc.3",
   "description": "Local OpenDexter MCP for x402 discovery, current terms, explicitly prepared purchase modes, local wallet reads, and linked governed portfolio reads.",
   "type": "module",
   "main": "dist/index.js",
@@ -29,8 +29,12 @@
     "version": "npm run version:sync",
     "version:check": "node scripts/sync-version-references.mjs --check",
     "version:sync": "node scripts/sync-version-references.mjs",
-    "prepublishOnly": "npm run build && npm run pack:verify",
+    "prepublishOnly": "node scripts/verify-coordinated-release.mjs && npm run pack:verify",
     "release": "node scripts/refuse-direct-release.mjs",
+    "release:candidate": "node scripts/build-release-candidate.mjs",
+    "release:verify": "node scripts/package-provenance.mjs verify",
+    "release:hosted-source": "node scripts/verify-hosted-source.mjs",
+    "release:publish": "node scripts/publish-release-candidate.mjs",
     "inspect:tarball": "bash scripts/inspect-package-tarball.sh",
     "test:fresh-install": "bash scripts/test-registry-install.sh"
   },
@@ -68,6 +72,11 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next",
+    "provenance": true
   },
   "keywords": [
     "opendexter",

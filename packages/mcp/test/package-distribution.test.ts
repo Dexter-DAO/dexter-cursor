@@ -111,20 +111,17 @@ describe("local package distribution", () => {
   it("keeps tarball inspection distinct from registry-only install proof", () => {
     const inspectScript = read("scripts/inspect-package-tarball.sh");
     expect(inspectScript).toContain("CANDIDATE_TARBALL");
-    expect(inspectScript).toContain("SOURCE_PACKAGE_JSON");
-    expect(inspectScript).toContain("tar -xzf");
-    expect(inspectScript).toContain("pkg.version === expected.version");
-    expect(inspectScript).toContain(
-      "JSON.stringify(pkg.dependencies) === JSON.stringify(expected.dependencies)",
-    );
-    expect(inspectScript).toContain("exactVersion.test(version)");
-    expect(inspectScript).toContain('pkg.engines?.node === ">=20"');
+    expect(inspectScript).toContain("package-provenance.mjs");
+    expect(inspectScript).toContain("--package-root");
     expect(inspectScript).not.toContain("npm install");
 
     const installScript = read("scripts/test-registry-install.sh");
     expect(installScript).toContain("--registry=https://registry.npmjs.org");
     expect(installScript).toContain("--save-exact");
     expect(installScript).toContain('"$PACKAGE_SPEC"');
+    expect(installScript).toContain("verify-registry");
+    expect(installScript).toContain("dist.integrity");
+    expect(installScript).toContain("OPENDXTER_REGISTRY_METADATA_FILE");
     expect(installScript).toContain("--require-pure-js");
     expect(installScript).toContain("npm ls --all");
     expect(installScript).not.toContain("CANDIDATE_TARBALL");
@@ -138,6 +135,42 @@ describe("local package distribution", () => {
     expect(verifier).toContain('"--ignore-scripts"');
     expect(verifier).toContain('"--dry-run"');
     expect(verifier).toContain('"--json"');
+  });
+
+  it("builds once from the locked archive and publishes only that reviewed tarball", () => {
+    const candidate = read("scripts/build-release-candidate.mjs");
+    expect(candidate).toContain('"archive"');
+    expect(candidate).toContain('["ci", "--ignore-scripts"]');
+    expect(candidate.match(/"pack"/g)).toHaveLength(1);
+    expect(candidate).toContain("installExactArtifact({ tarball, ignoreScripts: false })");
+    expect(candidate).toContain("installExactArtifact({ tarball, ignoreScripts: true })");
+    expect(candidate).toContain("verifyHostedSource");
+
+    const publish = read("scripts/publish-release-candidate.mjs");
+    expect(publish).toContain("PUBLISH_EXACT_REVIEWED_TARBALL");
+    expect(publish).toContain('"publish"');
+    expect(publish).toContain('"--ignore-scripts"');
+    expect(publish).toContain("tarball");
+    expect(publish).toContain("verify-coordinated-release.mjs");
+  });
+
+  it("requires a final source-owned complete hosted descriptor", () => {
+    const verifier = read("scripts/verify-hosted-source.mjs");
+    expect(verifier).toContain('release/open-tool-descriptors.json');
+    for (const field of [
+      "title",
+      "description",
+      "inputSchema",
+      "outputSchema",
+      "securitySchemes",
+      "annotations",
+      "visibility",
+      "widgetAccessible",
+    ]) {
+      expect(verifier).toContain(field);
+    }
+    expect(verifier).toContain('ls-files');
+    expect(verifier).toContain('status');
   });
 
   it("pins every executable RC guidance reference to the package version", () => {

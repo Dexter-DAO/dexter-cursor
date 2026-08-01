@@ -1,7 +1,7 @@
 # OpenDexter local architecture
 
-`@dexterai/opendexter` is the local CLI and stdio MCP distribution. It shares
-the same six model-facing operation names as hosted OpenDexter:
+`@dexterai/opendexter` is the local CLI and stdio MCP distribution. Its local
+model-facing roster is exactly six tools:
 
 ```text
 x402_search  x402_fetch  x402_check
@@ -40,9 +40,12 @@ The Codex and Claude plugins connect directly to
 are bound to the authenticated Dexter Wallet session. They do not read the
 local package's key file.
 
-The hosted release contract and local npm package each expose exactly the
-canonical six MCP tools. Neither contract has a hidden paid-call alias,
-compose/promote route, passkey probe/status tool, or settings tool.
+The hosted product is larger: five anonymous entry tools become twelve after
+OAuth, adding purchase status and governed Send/Buy/Sell prepare, execute,
+status, reconciliation, and history. The local package remains six and does
+not silently inherit hosted wallet authority. Neither contract has a hidden
+paid-call alias, compose/promote route, passkey probe/status tool, or settings
+tool.
 
 ## Paid-call state
 

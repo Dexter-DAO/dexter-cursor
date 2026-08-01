@@ -60,6 +60,12 @@ describe("published OpenDexter dependency graph", () => {
       "utf8",
     );
     expect(refusal).toContain("coordinated OpenDexter release");
+    expect(pkg.scripts.prepublishOnly).toContain("verify-coordinated-release.mjs");
+    expect(pkg.publishConfig).toEqual({
+      access: "public",
+      tag: "next",
+      provenance: true,
+    });
   });
 
   it("keeps the unpatched bigint-buffer dependency behind fixed-width layouts", async () => {

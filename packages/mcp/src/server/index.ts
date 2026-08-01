@@ -114,7 +114,8 @@ export async function startServer(opts: ServerOptions): Promise<void> {
 
   // Local spending policy remains available through the explicit
   // `opendexter settings` CLI command. It is deliberately not an MCP tool:
-  // the model-facing local and hosted surfaces share one six-tool vocabulary.
+  // the local model-facing surface remains exactly six tools. Hosted
+  // OpenDexter has a separate five-anonymous/twelve-connected descriptor.
   registerPortfolioTool(server);
 
   registerWidgetResources(server);

@@ -7,59 +7,59 @@ import {
 import pkg from '../package.json';
 
 const local = buildServerInstructions(LOCAL_CAPS);
-const hosted = buildServerInstructions(HOSTED_CAPS);
+const legacyHosted = buildServerInstructions(HOSTED_CAPS);
 // Pre-ruling caps: what a consumer still pinned to card-era behavior renders.
 const cardsOnLocal = buildServerInstructions({ ...LOCAL_CAPS, hasCardTools: true, hasCardLoginStart: true });
 
-describe('hosted rendering (HOSTED_CAPS)', () => {
-  it('never mentions tools the hosted roster lacks', () => {
-    expect(hosted).not.toContain('x402_settings');
-    expect(hosted).not.toContain('card_login_start');
-    expect(hosted).not.toContain('maxAmountUsdc');
+describe('legacy six-tool HOSTED_CAPS compatibility rendering', () => {
+  it('never mentions tools the legacy compatibility roster lacks', () => {
+    expect(legacyHosted).not.toContain('x402_settings');
+    expect(legacyHosted).not.toContain('card_login_start');
+    expect(legacyHosted).not.toContain('maxAmountUsdc');
   });
   it('is Solana-only on funding and forbids EVM deposit advice', () => {
-    expect(hosted).toContain('USDC on Solana only');
-    expect(hosted).not.toContain('Funding chains: Solana, Base');
+    expect(legacyHosted).toContain('USDC on Solana only');
+    expect(legacyHosted).not.toContain('Funding chains: Solana, Base');
   });
   it('keeps compatibility-only passkey and skill tools out of product guidance', () => {
-    expect(hosted).not.toContain('dexter_passkey');
-    expect(hosted).not.toContain('dexter_passkey_probe');
-    expect(hosted).not.toContain('x402_compose_skill');
-    expect(hosted).not.toContain('promote_skill');
+    expect(legacyHosted).not.toContain('dexter_passkey');
+    expect(legacyHosted).not.toContain('dexter_passkey_probe');
+    expect(legacyHosted).not.toContain('x402_compose_skill');
+    expect(legacyHosted).not.toContain('promote_skill');
   });
   it('documents the session-bound portfolio tool without caller authority', () => {
-    expect(hosted).toContain('dexter_portfolio');
-    expect(hosted).toContain('accepts no caller-supplied handle');
-    expect(hosted).toContain('portfolio value separate from spendable cash');
+    expect(legacyHosted).toContain('dexter_portfolio');
+    expect(legacyHosted).toContain('accepts no caller-supplied handle');
+    expect(legacyHosted).toContain('portfolio value separate from spendable cash');
   });
   it('routes walletless users to dexter_passkey, not env vars', () => {
-    expect(hosted).not.toContain('DEXTER_PRIVATE_KEY');
+    expect(legacyHosted).not.toContain('DEXTER_PRIVATE_KEY');
   });
   it('uses native OAuth wording and separates account authorization from wallet readiness', () => {
-    expect(hosted).toContain("native OpenDexter Connect action");
-    expect(hosted).toContain("does not by itself prove that a ready passkey wallet is bound");
-    expect(hosted).not.toMatch(/\b(?:setup|enroll) link\b|\brelay(?:ing|ed|s)?\b/i);
+    expect(legacyHosted).toContain("native OpenDexter Connect action");
+    expect(legacyHosted).toContain("does not by itself prove that a ready passkey wallet is bound");
+    expect(legacyHosted).not.toMatch(/\b(?:setup|enroll) link\b|\brelay(?:ing|ed|s)?\b/i);
   });
   it('contains no hardcoded cap dollar amounts', () => {
-    expect(hosted).not.toMatch(/\$\s?(10|50|100) (USDC|per)/);
+    expect(legacyHosted).not.toMatch(/\$\s?(10|50|100) (USDC|per)/);
   });
 });
 
-describe('cards-off (owner ruling Jul 23 — both first-party surfaces)', () => {
+describe('cards-off local and legacy compatibility renderings', () => {
   it('names zero card tools on either surface', () => {
-    for (const rendering of [hosted, local]) {
+    for (const rendering of [legacyHosted, local]) {
       expect(rendering).not.toMatch(/card_(status|issue|link_wallet|freeze|login_request_otp|login_complete|login_start)/);
     }
   });
   it('drops the Dextercard preamble claim and the provisioning section', () => {
-    for (const rendering of [hosted, local]) {
+    for (const rendering of [legacyHosted, local]) {
       expect(rendering).not.toContain('for provisioning a Dextercard');
       expect(rendering).not.toContain('Provisioning a new Dextercard');
       expect(rendering).not.toContain('Do not guess personal data');
     }
   });
   it('routes card intent to the wallet + web page instead', () => {
-    for (const rendering of [hosted, local]) {
+    for (const rendering of [legacyHosted, local]) {
       expect(rendering).toContain('the card lives in the wallet');
       expect(rendering).toContain('https://dexter.cash/dextercard');
     }
@@ -106,7 +106,7 @@ describe('local rendering (LOCAL_CAPS)', () => {
     expect(local).not.toContain('bound to the authenticated MCP session');
   });
   it('uses only the canonical six public tool names', () => {
-    for (const rendering of [local, hosted]) {
+    for (const rendering of [local, legacyHosted]) {
       expect(rendering).not.toContain('x402_pay');
       expect(rendering).not.toContain('x402_settings');
       expect(rendering).not.toContain('dexter_passkey');
@@ -121,7 +121,7 @@ describe('local rendering (LOCAL_CAPS)', () => {
 
 describe('prepared purchase guidance', () => {
   it.each([
-    ['hosted', hosted],
+    ['legacy hosted compatibility', legacyHosted],
     ['local', local],
   ])('%s preserves one selected mode and forbids post-dispatch retry', (_name, rendering) => {
     for (const mode of [
@@ -158,10 +158,10 @@ describe('assertInstructionRosterParity', () => {
       'call x402_settings or card_login_start', ['x402_search'],
     )).toThrow(/x402_settings.*card_login_start|card_login_start.*x402_settings/);
   });
-  it('both shipped renderings are self-consistent with their card-free rosters', () => {
+  it('local and legacy compatibility renderings are internally roster-safe', () => {
     const hostedRoster = ['x402_search','x402_fetch','x402_check','x402_access','x402_wallet','dexter_portfolio'];
     const localRoster  = ['x402_search','x402_fetch','x402_check','x402_access','x402_wallet','dexter_portfolio'];
-    expect(() => assertInstructionRosterParity(hosted, hostedRoster)).not.toThrow();
+    expect(() => assertInstructionRosterParity(legacyHosted, hostedRoster)).not.toThrow();
     expect(() => assertInstructionRosterParity(local, localRoster)).not.toThrow();
   });
 });

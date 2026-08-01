@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-01 — immutable RC.3 release-control successor
+
+- Advanced the local candidate to `@dexterai/opendexter@1.23.0-rc.3` because
+  RC.2 is already immutable registry content with different bytes.
+- Added one committed root lock and prohibited conflicting nested workspace
+  locks.
+- Made plain publication fail closed unless an exact clean-source tarball,
+  complete file/hash inventory, accepted review, ordinary-language routing
+  evidence, hosted-source descriptor, and explicit prerelease tag agree.
+- Added exact-artifact normal and scripts-disabled install gates plus a
+  post-publication `dist.integrity`/`dist.shasum` verification seam.
+- Corrected surface language: local remains six tools; hosted has five
+  anonymous entry tools and twelve after OAuth. A hosted authenticated
+  `x402_check` makes no payment but persists one exact quote/request intent.
+
 ## 2026-08-01 — hosted twelve-tool plugin candidate
 
 - Prepared Codex `0.5.0` and Claude Code `2.1.0` guidance for the source-pinned

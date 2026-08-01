@@ -3,21 +3,22 @@
 Capability-aware operating instructions for OpenDexter's hosted connector and
 local npm/stdio server.
 
-This package exists to eliminate drift between the two MCP server
-implementations in the Dexter stack:
+This package originally rendered both MCP server instruction sets. The hosted
+product has since grown to a five-anonymous/twelve-connected roster and now
+owns its complete instructions and descriptors in `dexter-mcp`; it imports
+this package only for the roster-parity assertion. The local package still
+uses the local rendering here.
 
 1. **Hosted remote server** at `open.dexter.cash/mcp`
    (source: `~/websites/dexter-mcp/open-mcp-server.mjs`)
 2. **Local npm-installable server** `@dexterai/opendexter`
    (source: `~/websites/opendexter-ide/packages/mcp/src/server/index.ts`)
 
-Both servers build their `initialize` response from this package. Their
-model-facing vocabulary is the same six tools, while the wallet authority is
-deliberately different: hosted operations use the authenticated Dexter Wallet
-session; local wallet-proof and payment operations use the file or environment
-signer, and only the local portfolio read uses the separately linked hosted
-account. A parity guard refuses to serve instructions that name an
-unregistered tool.
+The local stdio server exposes six tools and uses the file or environment
+signer; only its portfolio read uses the separately linked hosted account. The
+hosted server exposes five anonymous entry tools and twelve after OAuth, bound
+to the authenticated Dexter Wallet. A parity guard refuses to serve
+instructions that name an unregistered tool.
 
 The instructions string is written as a **prescriptive operating
 procedure**: explicit intent-to-tool routing, native hosted OAuth and
@@ -40,17 +41,18 @@ const server = new McpServer(
 );
 ```
 
-Hosted OpenDexter uses `HOSTED_CAPS`. Both shipped renderings name exactly:
+The current shipped local rendering names exactly:
 
 ```text
 x402_search  x402_fetch  x402_check
 x402_access  x402_wallet  dexter_portfolio
 ```
 
-The hosted runtime may retain additional raw app-only compatibility endpoints
-during a dated migration, but this package never routes a model to them. Local
-spending policy remains an explicit `opendexter settings` CLI action rather
-than an MCP tool.
+`HOSTED_CAPS` remains a compatibility export for consumers of version 2.4.0;
+it is not the current hosted release contract. The hosted source-owned full
+descriptor is the authority for its five anonymous and twelve connected tools.
+Local spending policy remains an explicit `opendexter settings` CLI action
+rather than an MCP tool.
 
 ## Updating the instructions
 

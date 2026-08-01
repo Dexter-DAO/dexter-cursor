@@ -4,4 +4,6 @@ dist/
 *.log
 .env
 .env.local
-package-lock.json
+# The root workspace lock is release-controlled. Per-workspace locks are
+# forbidden because they can silently disagree with the graph npm ci uses.
+/packages/*/package-lock.json

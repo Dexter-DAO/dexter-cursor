@@ -394,7 +394,7 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   const mcp = await readJson(resolve(repoRoot, "mcp.json"));
   assert.equal(workspace.packageManager, "npm@10.9.3");
   assert.equal(workspace.engines.node, ">=20");
-  assert.equal(pkg.version, "1.23.0-rc.2");
+  assert.equal(pkg.version, "1.23.0-rc.3");
   assert.equal(pkg.engines.node, ">=20");
   assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "1.30.0");
   assert.equal(pkg.dependencies["@modelcontextprotocol/ext-apps"], "1.7.5");
@@ -407,7 +407,7 @@ test("local package candidate pins its runtime and stdio discovery identity", as
     mcpServers: {
       opendexter: {
         command: "npx",
-        args: ["-y", "@dexterai/opendexter@1.23.0-rc.2"],
+        args: ["-y", "@dexterai/opendexter@1.23.0-rc.3"],
       },
     },
   });
@@ -417,9 +417,50 @@ test("release changelog carries stable hosted and candidate local identities", a
   const changelog = await readFile(resolve(repoRoot, "CHANGELOG.md"), "utf8");
   assert.match(changelog, /Codex `0\.5\.0`/);
   assert.match(changelog, /Claude Code `2\.1\.0`/);
-  assert.match(changelog, /`@dexterai\/opendexter@1\.23\.0-rc\.2`/);
+  assert.match(changelog, /`@dexterai\/opendexter@1\.23\.0-rc\.3`/);
   assert.match(changelog, /`@dexterai\/mcp-instructions@2\.4\.0`/);
   assert.match(changelog, /`@dexterai\/x402-mcp-tools@0\.8\.0`/);
+});
+
+test("release train requires full hosted descriptors and ordinary-language routing evidence", async () => {
+  const hostedVerifier = await readFile(
+    resolve(repoRoot, "packages/mcp/scripts/verify-hosted-source.mjs"),
+    "utf8",
+  );
+  assert.match(hostedVerifier, /release\/open-tool-descriptors\.json/);
+  for (const field of [
+    "title",
+    "description",
+    "inputSchema",
+    "outputSchema",
+    "securitySchemes",
+    "annotations",
+    "visibility",
+    "widgetAccessible",
+  ]) {
+    assert.match(hostedVerifier, new RegExp(field));
+  }
+
+  const casesPath = resolve(repoRoot, "tests/opendexter-novice-routing-cases.json");
+  const suite = await readJson(casesPath);
+  assert.equal(suite.kind, "opendexter-novice-routing-cases/v1");
+  assert.equal(suite.cases.length >= 10, true);
+  for (const entry of suite.cases) {
+    assert.doesNotMatch(entry.prompt, TOOL_NAME);
+    assert.doesNotMatch(
+      entry.prompt,
+      /\b(?:intentId|operationId|maxAmountAtomic|amountAtomic|tool name|call the tool)\b/i,
+    );
+  }
+  const check = suite.cases.find(({ id }) => id === "hosted-check-known-endpoint");
+  assert.equal(check.expectedConsequence, "durable-quote-intent");
+  assert.deepEqual(check.forbiddenTools, ["x402_fetch"]);
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [resolve(repoRoot, "tests/opendexter-novice-routing-evaluation.mjs")],
+  );
+  assert.match(stdout, /no execution evidence was claimed/);
 });
 
 test("both formats expose only the three hosted-contract skills", async () => {

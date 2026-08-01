@@ -2,7 +2,7 @@
   "mcpServers": {
     "opendexter": {
       "command": "npx",
-      "args": ["-y", "@dexterai/opendexter@1.23.0-rc.2"]
+      "args": ["-y", "@dexterai/opendexter@1.23.0-rc.3"]
     }
   }
 }

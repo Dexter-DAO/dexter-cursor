@@ -28,14 +28,14 @@ start at the [repository guide](../../README.md).
 
 ## Start
 
-This guide belongs to `@dexterai/opendexter@1.23.0-rc.2`. Its commands are
+This guide belongs to `@dexterai/opendexter@1.23.0-rc.3`. Its commands are
 pinned to that immutable release so evaluating the RC cannot silently launch
 an older `@latest` package.
 
 Run the guided setup:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 setup
+npx @dexterai/opendexter@1.23.0-rc.3 setup
 ```
 
 Setup creates or loads a local Solana and EVM wallet, detects supported AI
@@ -46,13 +46,15 @@ editing that file automatically.
 Then try a search that describes the result you need:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 search "extract tables from a PDF"
+npx @dexterai/opendexter@1.23.0-rc.3 search "extract tables from a PDF"
 ```
 
-Search does not spend money. Neither does checking the selected endpoint:
+Search does not spend money. Checking the selected endpoint also makes no
+payment, although the local check durably records the exact prepared purchase
+identity that a later approved call must reuse:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 check "https://service.example/x402/route"
+npx @dexterai/opendexter@1.23.0-rc.3 check "https://service.example/x402/route"
 ```
 
 `check` returns explicit `purchaseOptions`. A mode is ready only when its local
@@ -61,7 +63,7 @@ Select one ready option, approve its atomic ceiling, and pass that exact object
 back unchanged:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 check \
+npx @dexterai/opendexter@1.23.0-rc.3 check \
   "https://service.example/x402/route" \
   --method POST \
   --body '{"document_url":"https://example.com/report.pdf"}' \
@@ -73,7 +75,7 @@ selected_purchase="$(jq -c \
 
 approved_ceiling="$(printf '%s\n' "$selected_purchase" | jq -r '.route.sellerOffer.amountAtomic')"
 
-npx @dexterai/opendexter@1.23.0-rc.2 fetch \
+npx @dexterai/opendexter@1.23.0-rc.3 fetch \
   "https://service.example/x402/route" \
   --method POST \
   --body '{"document_url":"https://example.com/report.pdf"}' \
@@ -90,7 +92,7 @@ option is not permission to choose a different mode automatically.
 Target one supported client:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 install --client cursor
+npx @dexterai/opendexter@1.23.0-rc.3 install --client cursor
 ```
 
 Valid client names are `cursor`, `claude-code`, `codex`, `vscode`, `windsurf`,
@@ -101,7 +103,7 @@ For Claude Code, `setup` and `install --client claude-code` add this local stdio
 MCP through Claude's supported CLI. To add the same connection directly, use:
 
 ```bash
-claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.0-rc.2
+claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.0-rc.3
 ```
 
 The stable repository plugin is hosted-only. These local-package commands never
@@ -117,7 +119,7 @@ JSON-based clients can use:
   "mcpServers": {
     "opendexter": {
       "command": "npx",
-      "args": ["-y", "@dexterai/opendexter@1.23.0-rc.2"]
+      "args": ["-y", "@dexterai/opendexter@1.23.0-rc.3"]
     }
   }
 }
@@ -128,7 +130,7 @@ Codex uses TOML:
 ```toml
 [mcp_servers.opendexter]
 command = "npx"
-args = ["-y", "@dexterai/opendexter@1.23.0-rc.2"]
+args = ["-y", "@dexterai/opendexter@1.23.0-rc.3"]
 ```
 
 Restart the client after adding or changing its MCP configuration.
@@ -151,7 +153,7 @@ first and related matches second. Results can include:
 Do not treat a search result's cached or advertised price as approval to pay.
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 search "current ETH price"
+npx @dexterai/opendexter@1.23.0-rc.3 search "current ETH price"
 ```
 
 ### 2. Check the exact route
@@ -244,7 +246,7 @@ one to a repository.
 Inspect verified balances and deposit addresses with:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 wallet
+npx @dexterai/opendexter@1.23.0-rc.3 wallet
 ```
 
 A failed RPC read is reported as unavailable, not as a zero balance. A displayed
@@ -281,9 +283,9 @@ It supports:
 - `dailyBudgetUsdc` — an optional rolling 24-hour ceiling; `0` disables it.
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 settings
-npx @dexterai/opendexter@1.23.0-rc.2 settings --max-amount 2.50
-npx @dexterai/opendexter@1.23.0-rc.2 settings --daily-budget 20
+npx @dexterai/opendexter@1.23.0-rc.3 settings
+npx @dexterai/opendexter@1.23.0-rc.3 settings --max-amount 2.50
+npx @dexterai/opendexter@1.23.0-rc.3 settings --daily-budget 20
 ```
 
 A caller can provide a different maximum for one call, so the stored
@@ -295,13 +297,13 @@ application.
 ## What `connect` does
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 connect
+npx @dexterai/opendexter@1.23.0-rc.3 connect
 ```
 
 This optional device flow creates a connector session. The local package uses
 it for two view-only reads of the hosted Dexter Wallet:
 
-- `npx @dexterai/opendexter@1.23.0-rc.2 wallet` shows its Solana deposit address and
+- `npx @dexterai/opendexter@1.23.0-rc.3 wallet` shows its Solana deposit address and
   balance;
 - the local MCP's `dexter_portfolio` tool returns its governed asset inventory.
 
@@ -311,8 +313,8 @@ paid calls still use the local wallet in `wallet.json` or the configured
 environment keys.
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 connect status
-npx @dexterai/opendexter@1.23.0-rc.2 connect disconnect
+npx @dexterai/opendexter@1.23.0-rc.3 connect status
+npx @dexterai/opendexter@1.23.0-rc.3 connect disconnect
 ```
 
 Read the [connection walkthrough](../../docs/connect-your-wallet.md) for the
@@ -344,7 +346,7 @@ dextercard              Manage a local Dextercard account session
 
 `dextercard` is a CLI-only account-session command. It does not add card tools
 to the MCP server. `audition` makes real paid calls. Run
-`npx @dexterai/opendexter@1.23.0-rc.2 --help` for current flags and subcommands.
+`npx @dexterai/opendexter@1.23.0-rc.3 --help` for current flags and subcommands.
 
 ## For API sellers
 
@@ -352,7 +354,7 @@ to the MCP server. `audition` makes real paid calls. Run
 quality, and produces agent-call guidance:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.2 audition \
+npx @dexterai/opendexter@1.23.0-rc.3 audition \
   "https://your-service.example" \
   --json
 ```
@@ -365,36 +367,46 @@ To build an x402 client or server, use
 
 ## Candidate verification
 
-The source checkout includes release checks that do not install a user plugin
-or contact the npm registry:
+The source checkout includes a coordinated release-candidate builder. It
+requires a clean reviewed commit, the committed root lock, a final
+source-pinned hosted descriptor, an accepted review receipt, and passed
+ordinary-language routing evidence. It builds and packs once from a clean Git
+archive, records every packed file and digest, and installs that exact tarball
+both normally and with lifecycle scripts disabled:
 
 ```bash
-DEXTER_WIDGET_SOURCE=/absolute/path/to/pinned-vite-output npm run build
-npm run pack:verify
-npm pack --dry-run --json
+npm run release:candidate -- \
+  --output-dir /absolute/existing/candidate-directory \
+  --hosted-source /absolute/path/to/final/dexter-mcp \
+  --review /absolute/path/to/accepted-review.json \
+  --novice-evidence /absolute/path/to/novice-routing-results.json \
+  --dist-tag next
 ```
 
-`pack:verify` requires exactly the four registered x402 widget resources and
-rejects source maps, retired card widgets, and card-tool registrar
-declarations. To inspect a locally produced candidate tarball as a clean
-package fixture, without installing it or contacting the npm registry:
+The tarball gate rejects source maps, environment or credential files,
+symlinks, hardlinks, special files, undeclared files, and undeclared
+executables. To inspect one already-produced candidate without installing it
+or contacting the npm registry:
 
 ```bash
 npm run inspect:tarball -- /absolute/path/to/dexterai-opendexter-VERSION.tgz
 ```
 
-That is package-content evidence only. After an exact version has been
-published through the coordinated release train, prove what a new user really
-receives from the public registry:
+That is package-content evidence only. A plain `npm publish` fails closed. The
+coordinated publish must supply the exact attestation, its SHA-256, its exact
+tarball and evidence paths, and an explicit prerelease tag. After an exact
+version has been published through that separately authorized train, prove
+that the registry bytes and a new-user install match the attestation:
 
 ```bash
-npm run test:fresh-install -- VERSION
+npm run test:fresh-install -- VERSION /absolute/path/to/release-attestation.json
 ```
 
-The registry proof accepts only an exact version, installs with lifecycle
-scripts disabled, checks the pure-JavaScript fixed-width bigint path, runs the
-installed CLI, and prints the complete installed dependency graph. The legacy
-direct `npm version && npm publish` shortcut is intentionally disabled.
+The registry proof accepts only an exact version, verifies `dist.integrity`
+and `dist.shasum` before installation, installs with lifecycle scripts
+disabled, checks the pure-JavaScript fixed-width bigint path, runs the installed
+CLI, and prints the complete installed dependency graph. The legacy direct
+`npm version && npm publish` shortcut is intentionally disabled.
 
 ## License
 
