@@ -181,6 +181,10 @@ describe("local package distribution", () => {
     expect(verifier).toContain('ls-files');
     expect(verifier).toContain('refs/replace');
     expect(verifier).toContain('ls-remote');
+    expect(verifier).toContain('--git-dir=/dev/null');
+    expect(verifier).toContain('GIT_ATTR_NOSYSTEM');
+    expect(verifier).toContain('core.attributesFile=/dev/null');
+    expect(verifier).toContain('"--bare"');
     expect(verifier).toContain('archive');
     expect(verifier).toContain('status');
   });

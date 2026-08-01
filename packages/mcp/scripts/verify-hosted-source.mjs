@@ -27,7 +27,7 @@ const REVIEWED_NPM_VERSION = "10.9.3";
 const DESCRIPTOR_KIND = "opendexter-hosted-tool-descriptors/v2";
 const SOURCE_CONTRACTS_KIND = "opendexter-source-contracts/v1";
 const MATERIALIZATION_RECIPE =
-  "git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v1";
+  "sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v2";
 const HOSTED_MANIFEST_VERSION = "0.5.0";
 const FORBIDDEN_HOSTED_TOOL_NAMES = Object.freeze([
   "x402_pay",
@@ -376,6 +376,7 @@ function reviewedEnvironment({ npmCache, production = false } = {}) {
     LC_ALL: "C",
     NODE_ENV: production ? "production" : undefined,
     GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_ATTR_NOSYSTEM: "1",
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: "/dev/null",
     npm_config_audit: "false",
@@ -385,6 +386,106 @@ function reviewedEnvironment({ npmCache, production = false } = {}) {
     npm_config_globalconfig: "/dev/null.opendexter-release-global-npmrc",
     npm_config_cache: npmCache,
   }).filter(([, value]) => value !== undefined));
+}
+
+export function listCanonicalRemoteRefs(
+  remote,
+  {
+    cwd = tmpdir(),
+    environment = reviewedEnvironment(),
+  } = {},
+) {
+  requireNonemptyString(remote, "canonical source remote");
+  return run("git", [
+    "--no-replace-objects",
+    "--git-dir=/dev/null",
+    "ls-remote",
+    "--refs",
+    remote,
+  ], {
+    cwd,
+    env: environment,
+    timeout: 30_000,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+function sterileGitEnvironment(cleanEnvironment, disposableRoot) {
+  const home = resolve(disposableRoot, "git-home");
+  const xdg = resolve(disposableRoot, "git-xdg");
+  mkdirSync(home, { recursive: true });
+  mkdirSync(xdg, { recursive: true });
+  return {
+    ...cleanEnvironment,
+    HOME: home,
+    XDG_CONFIG_HOME: xdg,
+    GIT_ATTR_NOSYSTEM: "1",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_NO_REPLACE_OBJECTS: "1",
+  };
+}
+
+export function createTreePureArchive({
+  root,
+  commit,
+  tree,
+  output,
+  disposableRoot,
+  cleanEnvironment = reviewedEnvironment(),
+}) {
+  const objectRepository = resolve(disposableRoot, "objects.git");
+  const environment = sterileGitEnvironment(cleanEnvironment, disposableRoot);
+  run("git", ["init", "--bare", "--quiet", objectRepository], {
+    cwd: disposableRoot,
+    env: environment,
+  });
+  run("git", [
+    "--no-replace-objects",
+    `--git-dir=${objectRepository}`,
+    "fetch",
+    "--no-tags",
+    "--quiet",
+    root,
+    `${commit}:refs/opendexter/source`,
+  ], {
+    cwd: disposableRoot,
+    env: environment,
+  });
+  const copiedCommit = run("git", [
+    "--no-replace-objects",
+    `--git-dir=${objectRepository}`,
+    "rev-parse",
+    "refs/opendexter/source^{commit}",
+  ], {
+    cwd: disposableRoot,
+    env: environment,
+  });
+  const copiedTree = run("git", [
+    "--no-replace-objects",
+    `--git-dir=${objectRepository}`,
+    "rev-parse",
+    "refs/opendexter/source^{tree}",
+  ], {
+    cwd: disposableRoot,
+    env: environment,
+  });
+  if (copiedCommit !== commit || copiedTree !== tree) {
+    fail("sterile object copy differs from the reviewed source identity");
+  }
+  run("git", [
+    "--no-replace-objects",
+    `--git-dir=${objectRepository}`,
+    "-c",
+    "core.attributesFile=/dev/null",
+    "archive",
+    "--format=tar",
+    `--output=${output}`,
+    "refs/opendexter/source",
+  ], {
+    cwd: disposableRoot,
+    env: environment,
+  });
 }
 
 function reviewedNpm(args = []) {
@@ -400,18 +501,25 @@ function reviewedNpm(args = []) {
   return { command: node, args: [npmCli, ...args] };
 }
 
-function materializeArchivedHostedSource({ root, commit, cleanEnvironment }) {
+function materializeArchivedHostedSource({
+  root,
+  commit,
+  tree,
+  cleanEnvironment,
+}) {
   const disposableRoot = mkdtempSync(resolve(tmpdir(), "opendexter-hosted-source-"));
   const sourceArchive = resolve(disposableRoot, "source.tar");
   const archivedRoot = resolve(disposableRoot, "source");
   try {
     mkdirSync(archivedRoot);
-    git(root, [
-      "archive",
-      "--format=tar",
-      `--output=${sourceArchive}`,
+    createTreePureArchive({
+      root,
       commit,
-    ], { env: cleanEnvironment });
+      tree,
+      output: sourceArchive,
+      disposableRoot,
+      cleanEnvironment,
+    });
     run("tar", ["-xf", sourceArchive, "-C", archivedRoot], {
       env: cleanEnvironment,
     });
@@ -572,14 +680,8 @@ export async function verifyHostedSource({ sourceRoot, mode = "check" }) {
   const tree = git(root, ["rev-parse", "HEAD^{tree}"], {
     env: cleanEnvironment,
   });
-  const remoteRefs = run("git", [
-    "--no-replace-objects",
-    "ls-remote",
-    "--refs",
-    EXPECTED_HOSTED_SOURCE_ORIGIN,
-  ], {
-    env: cleanEnvironment,
-    timeout: 30_000,
+  const remoteRefs = listCanonicalRemoteRefs(EXPECTED_HOSTED_SOURCE_ORIGIN, {
+    environment: cleanEnvironment,
   });
   const advertised = remoteRefs.split(/\r?\n/).some((line) => {
     const [remoteCommit, refname, extra] = line.trim().split(/\s+/);
@@ -589,6 +691,7 @@ export async function verifyHostedSource({ sourceRoot, mode = "check" }) {
   const archived = materializeArchivedHostedSource({
     root,
     commit,
+    tree,
     cleanEnvironment,
   });
   const descriptor = verifyMaterializedHostedDescriptor(

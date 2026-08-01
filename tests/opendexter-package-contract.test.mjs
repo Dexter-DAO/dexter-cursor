@@ -19,6 +19,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   buildHostedContract,
+  createTreePureArchive,
+  listCanonicalRemoteRefs,
   validateHostedDescriptor,
   verifyHostedRepositoryIdentity,
   verifyMaterializedHostedDescriptor,
@@ -356,6 +358,118 @@ test("hosted source verifier refuses hidden index state before origin contact", 
   }
 });
 
+test("canonical source lookup ignores caller repository URL rewrites", async (t) => {
+  const root = await mkdtemp(resolve(tmpdir(), "opendexter-remote-rewrite-"));
+  const attacker = resolve(root, "attacker.git");
+  const runner = resolve(root, "runner");
+  t.after(async () => await rm(root, { recursive: true, force: true }));
+  await mkdir(runner);
+  await execFileAsync("git", ["init", "--bare", "-q", attacker]);
+  await execFileAsync("git", ["init", "-q", runner]);
+  await writeFile(resolve(runner, "attacker.txt"), "attacker\n");
+  for (const args of [
+    ["-C", runner, "config", "user.name", "OpenDexter Test"],
+    ["-C", runner, "config", "user.email", "test@invalid.example"],
+    ["-C", runner, "add", "attacker.txt"],
+    ["-C", runner, "commit", "-qm", "attacker"],
+    ["-C", runner, "push", `file://${attacker}`, "HEAD:refs/heads/attacker"],
+  ]) {
+    await execFileAsync("git", args);
+  }
+  await execFileAsync("git", [
+    "-C",
+    runner,
+    "config",
+    `url.file://${attacker}.insteadOf`,
+    "test://canonical-source/repository.git",
+  ]);
+  const redirected = await execFileAsync(
+    "git",
+    ["-C", runner, "ls-remote", "test://canonical-source/repository.git"],
+  );
+  assert.equal(redirected.stderr, "");
+  assert.match(redirected.stdout, /^[0-9a-f]{40}\s+refs\/heads\/attacker\s*$/);
+  assert.throws(
+    () => listCanonicalRemoteRefs("test://canonical-source/repository.git", {
+      cwd: runner,
+    }),
+    /remote-test|not a git command|unable to find remote helper/i,
+  );
+});
+
+test("tree-pure archive ignores hidden and local attribute injection", async (t) => {
+  const root = await mkdtemp(resolve(tmpdir(), "opendexter-archive-attrs-"));
+  const repository = resolve(root, "repository");
+  const disposable = resolve(root, "disposable");
+  const extracted = resolve(root, "extracted");
+  const archive = resolve(root, "source.tar");
+  const localAttributes = resolve(root, "local-attributes");
+  const attackerHome = resolve(root, "attacker-home");
+  const attackerXdg = resolve(root, "attacker-xdg");
+  t.after(async () => await rm(root, { recursive: true, force: true }));
+  await mkdir(repository);
+  await mkdir(disposable);
+  await mkdir(extracted);
+  await mkdir(resolve(attackerXdg, "git"), { recursive: true });
+  await writeFile(resolve(repository, "kept.txt"), "$Format:%H$\n");
+  await writeFile(resolve(repository, "hidden.txt"), "must remain\n");
+  await writeFile(localAttributes, "hidden.txt export-ignore\nkept.txt export-subst\n");
+  await writeFile(
+    resolve(attackerXdg, "git/attributes"),
+    "hidden.txt export-ignore\nkept.txt export-subst\n",
+  );
+  for (const args of [
+    ["init", "-q", repository],
+    ["-C", repository, "config", "user.name", "OpenDexter Test"],
+    ["-C", repository, "config", "user.email", "test@invalid.example"],
+    ["-C", repository, "add", "kept.txt", "hidden.txt"],
+    ["-C", repository, "commit", "-qm", "fixture"],
+    ["-C", repository, "config", "core.attributesFile", localAttributes],
+  ]) {
+    await execFileAsync("git", args);
+  }
+  const gitDir = (await execFileAsync(
+    "git",
+    ["-C", repository, "rev-parse", "--git-dir"],
+  )).stdout.trim();
+  await writeFile(
+    resolve(repository, gitDir, "info/attributes"),
+    "hidden.txt export-ignore\nkept.txt export-subst\n",
+  );
+  const commit = (await execFileAsync(
+    "git",
+    ["-C", repository, "rev-parse", "HEAD^{commit}"],
+  )).stdout.trim();
+  const tree = (await execFileAsync(
+    "git",
+    ["-C", repository, "rev-parse", "HEAD^{tree}"],
+  )).stdout.trim();
+  const status = (await execFileAsync(
+    "git",
+    ["-C", repository, "status", "--porcelain=v2"],
+  )).stdout;
+  assert.equal(status, "");
+  createTreePureArchive({
+    root: repository,
+    commit,
+    tree,
+    output: archive,
+    disposableRoot: disposable,
+    cleanEnvironment: {
+      PATH: process.env.PATH,
+      HOME: attackerHome,
+      XDG_CONFIG_HOME: attackerXdg,
+      GIT_ATTR_NOSYSTEM: "1",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_NO_REPLACE_OBJECTS: "1",
+    },
+  });
+  await execFileAsync("tar", ["-xf", archive, "-C", extracted]);
+  assert.equal(await readFile(resolve(extracted, "hidden.txt"), "utf8"), "must remain\n");
+  assert.equal(await readFile(resolve(extracted, "kept.txt"), "utf8"), "$Format:%H$\n");
+});
+
 test("hosted descriptor binds exact schemas and optional OAuth to finalized source", () => {
   const committed = hostedDescriptorFixture();
   assert.deepEqual(validateHostedDescriptor(committed), committed);
@@ -429,7 +543,7 @@ test("hosted contract writer preserves the full descriptor and deny lists", () =
   const descriptor = hostedDescriptorFixture();
   const materialization = {
     recipe:
-      "git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v1",
+      "sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v2",
     node: "v22.19.0",
     npm: "10.9.3",
     packageLockSha256: "1".repeat(64),
@@ -681,6 +795,11 @@ test("release train requires full hosted descriptors and ordinary-language routi
     "ls-files",
     "refs/replace",
     "ls-remote",
+    "--git-dir=/dev/null",
+    "GIT_ATTR_NOSYSTEM",
+    "core.attributesFile=/dev/null",
+    "init",
+    "--bare",
     "archive",
     "package-lock.json",
     "npm@",
