@@ -15,6 +15,11 @@ import { dirname, relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import {
+  validateHostedDescriptor,
+  verifyHostedRepositoryIdentity,
+  verifyMaterializedHostedDescriptor,
+} from "../packages/mcp/scripts/verify-hosted-source.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
@@ -96,6 +101,56 @@ const LEGACY_ACTIVE_PATTERN =
   /\b(?:card_status|card_issue|card_link_wallet|card_freeze|card_login_request_otp|card_login_complete|x402_settings)\b|@dexterai\/opendexter|wallet\.json|PRIVATE_KEY|\/mcp\/dlt_/i;
 const TOOL_NAME =
   /\b(?:x402_[a-z_]+|dexter_[a-z_]+|promote_skill|card_[a-z_]+)\b/g;
+
+function hostedDescriptorFixture() {
+  const tool = ({ name, securitySchemes, marker }) => ({
+    name,
+    title: `${name} title`,
+    description: `${name} description`,
+    inputSchema: {
+      type: "object",
+      properties: { input: { type: "string", const: marker } },
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: "object",
+      properties: { output: { type: "string", const: marker } },
+      additionalProperties: false,
+    },
+    securitySchemes,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    visibility: ["model"],
+    widgetAccessible: false,
+  });
+  return {
+    schemaVersion: 1,
+    kind: "opendexter-hosted-tool-descriptors/v1",
+    anonymousToolNames: ["x402_check"],
+    oauthPromotedToolNames: ["x402_fetch"],
+    connectedToolNames: ["x402_check", "x402_fetch"],
+    optionalOAuthToolNames: ["x402_check"],
+    tools: [
+      tool({
+        name: "x402_check",
+        marker: "check",
+        securitySchemes: [
+          { type: "noauth" },
+          { type: "oauth2", scopes: ["vault"] },
+        ],
+      }),
+      tool({
+        name: "x402_fetch",
+        marker: "fetch",
+        securitySchemes: [{ type: "oauth2", scopes: ["vault"] }],
+      }),
+    ],
+  };
+}
 
 async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
@@ -189,6 +244,64 @@ async function inspectTree(root) {
   await visit(root);
   return entries;
 }
+
+test("hosted source identity is fixed to the Dexter MCP repository", () => {
+  for (const origin of [
+    "https://github.com/Dexter-DAO/dexter-mcp.git",
+    "git@github.com:Dexter-DAO/dexter-mcp.git",
+    "ssh://git@github.com/Dexter-DAO/dexter-mcp.git",
+  ]) {
+    assert.equal(
+      verifyHostedRepositoryIdentity(origin),
+      "https://github.com/Dexter-DAO/dexter-mcp",
+    );
+  }
+  assert.throws(
+    () => verifyHostedRepositoryIdentity("https://github.com/example/dexter-mcp.git"),
+    /expected https:\/\/github\.com\/Dexter-DAO\/dexter-mcp/,
+  );
+  assert.throws(
+    () => verifyHostedRepositoryIdentity("/tmp/clean-lookalike"),
+    /not a canonical GitHub repository/,
+  );
+});
+
+test("hosted descriptor binds exact schemas and optional OAuth to finalized source", () => {
+  const committed = hostedDescriptorFixture();
+  assert.deepEqual(validateHostedDescriptor(committed), committed);
+  assert.deepEqual(
+    verifyMaterializedHostedDescriptor(committed, structuredClone(committed)),
+    committed,
+  );
+
+  const staleInput = structuredClone(committed);
+  staleInput.tools[0].inputSchema.properties.input.const = "invented-input";
+  assert.throws(
+    () => verifyMaterializedHostedDescriptor(committed, staleInput),
+    /differs from the final hosted source descriptor/,
+  );
+
+  const staleOutput = structuredClone(committed);
+  staleOutput.tools[1].outputSchema.properties.output.const = "invented-output";
+  assert.throws(
+    () => verifyMaterializedHostedDescriptor(committed, staleOutput),
+    /differs from the final hosted source descriptor/,
+  );
+
+  const inventedOptionalOAuth = structuredClone(committed);
+  inventedOptionalOAuth.optionalOAuthToolNames = ["x402_fetch"];
+  assert.throws(
+    () => validateHostedDescriptor(inventedOptionalOAuth),
+    /optional-OAuth roster differs/,
+  );
+
+  const duplicateOptionalOAuth = structuredClone(committed);
+  duplicateOptionalOAuth.optionalOAuthToolNames = ["x402_check", "x402_check"];
+  assert.throws(
+    () => validateHostedDescriptor(duplicateOptionalOAuth),
+    /contains duplicates/,
+  );
+});
 
 test("release fixture is source-pinned to the exact hosted twelve", async () => {
   const contract = await readJson(contractPath);

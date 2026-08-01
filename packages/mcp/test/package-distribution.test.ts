@@ -157,6 +157,11 @@ describe("local package distribution", () => {
   it("requires a final source-owned complete hosted descriptor", () => {
     const verifier = read("scripts/verify-hosted-source.mjs");
     expect(verifier).toContain('release/open-tool-descriptors.json');
+    expect(verifier).toContain('scripts/materialize-open-tool-descriptors.mjs');
+    expect(verifier).toContain('materializeOpenToolDescriptors');
+    expect(verifier).toContain('EXPECTED_HOSTED_SOURCE_REPOSITORY');
+    expect(verifier).toContain('verifyMaterializedHostedDescriptor');
+    expect(verifier).toContain('optional-OAuth roster');
     for (const field of [
       "title",
       "description",
