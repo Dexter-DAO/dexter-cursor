@@ -1,8 +1,8 @@
 interface:
   display_name: "OpenDexter"
-  short_description: "Route hosted x402 and passkey-wallet tasks safely"
+  short_description: "Route hosted x402 and governed wallet actions safely"
   brand_color: "#E67C3E"
-  default_prompt: "Use $opendexter to find and freshly check an x402 API before any payment decision."
+  default_prompt: "Use $opendexter to inspect my wallet, x402 purchase, or governed asset action safely."
 
 policy:
   allow_implicit_invocation: true

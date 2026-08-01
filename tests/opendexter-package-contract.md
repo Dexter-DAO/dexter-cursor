@@ -8,11 +8,16 @@ The current validation is deliberately local and non-mutating:
 
 ```bash
 node --test tests/opendexter-package-contract.test.mjs
+
+# Release checkout: also prove the fixture against the pinned hosted source.
+OPENDXTER_HOSTED_SOURCE_ROOT=../dexter-mcp \
+  node --test tests/opendexter-package-contract.test.mjs
 ```
 
 It checks:
 
-- the release-pinned exact six-tool and OAuth contract;
+- the source-pinned exact twelve-tool contract, including the anonymous five
+  and seven OAuth-promoted tools;
 - Codex and Claude manifest/MCP/marketplace shapes;
 - the three hosted-contract skills in both packages;
 - absence of old card, local-wallet, pairing, and npm-latest routes from active
@@ -23,6 +28,5 @@ It checks:
   symlinks or special files.
 
 The automated test does not change a client configuration, connect to the
-hosted MCP, complete OAuth, or make a payment. A separate disposable Claude
-profile can prove supported-client installation without touching the user's
-active profile.
+hosted MCP, complete OAuth, or make a payment. Publication, installation, and
+fresh anonymous/connected live discovery remain separate release gates.

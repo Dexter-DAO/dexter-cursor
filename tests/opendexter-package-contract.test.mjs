@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   access,
@@ -12,7 +13,8 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
@@ -25,14 +27,39 @@ const contractPath = resolve(
   codexRoot,
   "skills/opendexter/references/hosted-contract.json",
 );
+const execFileAsync = promisify(execFile);
 
 const HOSTED_TOOLS = Object.freeze([
   "x402_search",
   "x402_check",
   "x402_fetch",
+  "x402_status",
   "x402_access",
   "x402_wallet",
   "dexter_portfolio",
+  "dexter_prepare_asset_action",
+  "dexter_execute_asset_action",
+  "dexter_asset_action_status",
+  "dexter_reconcile_asset_action",
+  "dexter_wallet_history",
+]);
+
+const ANONYMOUS_TOOLS = Object.freeze([
+  "x402_search",
+  "x402_check",
+  "x402_access",
+  "x402_wallet",
+  "dexter_portfolio",
+]);
+
+const OAUTH_PROMOTED_TOOLS = Object.freeze([
+  "x402_fetch",
+  "x402_status",
+  "dexter_prepare_asset_action",
+  "dexter_execute_asset_action",
+  "dexter_asset_action_status",
+  "dexter_reconcile_asset_action",
+  "dexter_wallet_history",
 ]);
 
 const RETIRED_HOSTED_TOOLS = Object.freeze([
@@ -41,15 +68,22 @@ const RETIRED_HOSTED_TOOLS = Object.freeze([
   "promote_skill",
   "dexter_passkey_probe",
   "dexter_passkey",
+  "dexter_authorize_asset_action",
 ]);
 
 const EXPECTED_SCHEMES = Object.freeze({
   x402_search: ["noauth"],
-  x402_check: ["noauth"],
+  x402_check: ["noauth", "oauth2:vault"],
   x402_fetch: ["oauth2:vault"],
+  x402_status: ["oauth2:vault"],
   x402_access: ["noauth"],
   x402_wallet: ["oauth2:vault"],
   dexter_portfolio: ["oauth2:vault"],
+  dexter_prepare_asset_action: ["oauth2:vault"],
+  dexter_execute_asset_action: ["oauth2:vault"],
+  dexter_asset_action_status: ["oauth2:vault"],
+  dexter_reconcile_asset_action: ["oauth2:vault"],
+  dexter_wallet_history: ["oauth2:vault"],
 });
 
 const EXPECTED_SKILLS = Object.freeze([
@@ -156,11 +190,18 @@ async function inspectTree(root) {
   return entries;
 }
 
-test("release fixture is the exact hosted six-tool contract", async () => {
+test("release fixture is source-pinned to the exact hosted twelve", async () => {
   const contract = await readJson(contractPath);
-  assert.equal(contract.contractId, "opendexter-hosted-six-tool-v1");
+  assert.equal(contract.contractId, "opendexter-hosted-twelve-tool-v1");
+  assert.deepEqual(contract.source, {
+    repository: "https://github.com/Dexter-DAO/dexter-mcp",
+    commit: "e59f417ffa76f776a6e92165bf48d8cf908cc08d",
+    tree: "1656a9ee2ca7282f04932ffe228a909b49c83670",
+    toolContractPath: "lib/open-tool-contracts.mjs",
+    authContractPath: "lib/open-tool-auth.mjs",
+  });
   assert.equal(contract.mcp.url, "https://open.dexter.cash/mcp");
-  assert.equal(contract.mcp.manifestVersion, "0.3.0");
+  assert.equal(contract.mcp.manifestVersion, "0.5.0");
   assert.equal(contract.mcp.resource, "https://open.dexter.cash/mcp");
   assert.equal(
     contract.mcp.protectedResourceMetadata,
@@ -191,6 +232,14 @@ test("release fixture is the exact hosted six-tool contract", async () => {
     contract.tools.map(({ name }) => name),
     HOSTED_TOOLS,
   );
+  assert.deepEqual(contract.anonymousToolNames, ANONYMOUS_TOOLS);
+  assert.deepEqual(contract.oauthPromotedToolNames, OAUTH_PROMOTED_TOOLS);
+  assert.deepEqual(contract.connectedToolNames, HOSTED_TOOLS);
+  assert.deepEqual(contract.optionalOAuthToolNames, ["x402_check"]);
+  assert.deepEqual(
+    [...new Set([...ANONYMOUS_TOOLS, ...OAUTH_PROMOTED_TOOLS])].sort(),
+    [...HOSTED_TOOLS].sort(),
+  );
   for (const tool of contract.tools) {
     assert.deepEqual(normalizedSchemes(tool), EXPECTED_SCHEMES[tool.name]);
     assert.equal(typeof tool.annotations.readOnlyHint, "boolean");
@@ -208,6 +257,16 @@ test("release fixture is the exact hosted six-tool contract", async () => {
     false,
   );
   assert.deepEqual(
+    contract.tools.find(({ name }) => name === "dexter_reconcile_asset_action")
+      .annotations,
+    {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  );
+  assert.deepEqual(
     contract.tools.find(({ name }) => name === "dexter_portfolio"),
     {
       name: "dexter_portfolio",
@@ -222,7 +281,12 @@ test("release fixture is the exact hosted six-tool contract", async () => {
       widgetAccessible: false,
     },
   );
-  assert.deepEqual(contract.conditionalAuth, []);
+  for (const name of OAUTH_PROMOTED_TOOLS) {
+    assert.deepEqual(EXPECTED_SCHEMES[name], ["oauth2:vault"], name);
+  }
+  assert.deepEqual(EXPECTED_SCHEMES.x402_check, ["noauth", "oauth2:vault"]);
+  assert.deepEqual(EXPECTED_SCHEMES.x402_wallet, ["oauth2:vault"]);
+  assert.deepEqual(EXPECTED_SCHEMES.dexter_portfolio, ["oauth2:vault"]);
   assert.deepEqual(
     contract.tools
       .filter(({ visibility }) => visibility.includes("model"))
@@ -236,13 +300,58 @@ test("release fixture is the exact hosted six-tool contract", async () => {
       retired,
     );
   }
+  assert.deepEqual(contract.forbiddenHostedToolNames, RETIRED_HOSTED_TOOLS);
 });
+
+test(
+  "release fixture matches the pinned hosted source checkout",
+  { skip: !process.env.OPENDXTER_HOSTED_SOURCE_ROOT },
+  async () => {
+    const sourceRoot = resolve(process.env.OPENDXTER_HOSTED_SOURCE_ROOT);
+    const contract = await readJson(contractPath);
+    const sourcePaths = [
+      contract.source.toolContractPath,
+      contract.source.authContractPath,
+    ];
+    const { stdout: tree } = await execFileAsync("git", [
+      "-C",
+      sourceRoot,
+      "rev-parse",
+      `${contract.source.commit}^{tree}`,
+    ]);
+    assert.equal(tree.trim(), contract.source.tree);
+    await execFileAsync("git", [
+      "-C",
+      sourceRoot,
+      "diff",
+      "--quiet",
+      contract.source.commit,
+      "--",
+      ...sourcePaths,
+    ]);
+
+    const sourceModule = await import(
+      `${pathToFileURL(resolve(sourceRoot, contract.source.toolContractPath)).href}?source=${contract.source.commit}`
+    );
+    assert.deepEqual(sourceModule.OPEN_ANONYMOUS_TOOL_NAMES, ANONYMOUS_TOOLS);
+    assert.deepEqual(sourceModule.OPEN_OAUTH_PROMOTED_TOOL_NAMES, OAUTH_PROMOTED_TOOLS);
+    assert.deepEqual(sourceModule.OPEN_TOOL_NAMES, HOSTED_TOOLS);
+    for (const expected of contract.tools) {
+      const actual = sourceModule.OPEN_TOOL_CONTRACTS[expected.name];
+      assert.ok(actual, expected.name);
+      assert.deepEqual(actual.securitySchemes, expected.securitySchemes, expected.name);
+      assert.deepEqual(actual.annotations, expected.annotations, expected.name);
+      assert.deepEqual(actual.visibility, expected.visibility, expected.name);
+      assert.equal(actual.widgetAccessible, expected.widgetAccessible, expected.name);
+    }
+  },
+);
 
 test("Codex package uses one portable remote MCP and mixed-auth marketplace policy", async () => {
   const manifest = await readJson(resolve(codexRoot, ".codex-plugin/plugin.json"));
   const marketplace = await readJson(codexMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "0.4.0");
+  assert.equal(manifest.version, "0.5.0");
   assert.equal(Object.hasOwn(manifest, "apps"), false);
   assert.deepEqual(manifest.mcpServers, {
     opendexter: {
@@ -264,7 +373,7 @@ test("Claude package is self-contained and uses the hosted remote MCP", async ()
   const mcp = await readJson(resolve(claudeRoot, ".mcp.json"));
   const marketplace = await readJson(claudeMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "2.0.0");
+  assert.equal(manifest.version, "2.1.0");
   assert.deepEqual(mcp, {
     mcpServers: {
       opendexter: {
@@ -304,8 +413,8 @@ test("local package candidate pins its runtime and stdio discovery identity", as
 
 test("release changelog carries stable hosted and candidate local identities", async () => {
   const changelog = await readFile(resolve(repoRoot, "CHANGELOG.md"), "utf8");
-  assert.match(changelog, /Codex `0\.4\.0`/);
-  assert.match(changelog, /Claude Code `2\.0\.0`/);
+  assert.match(changelog, /Codex `0\.5\.0`/);
+  assert.match(changelog, /Claude Code `2\.1\.0`/);
   assert.match(changelog, /`@dexterai\/opendexter@1\.23\.0-rc\.2`/);
   assert.match(changelog, /`@dexterai\/mcp-instructions@2\.4\.0`/);
   assert.match(changelog, /`@dexterai\/x402-mcp-tools@0\.8\.0`/);
@@ -335,9 +444,41 @@ test("both formats expose only the three hosted-contract skills", async () => {
       umbrella,
       /\b(?:x402_pay|x402_compose_skill|promote_skill|dexter_passkey(?:_probe)?)\b/,
     );
-    assert.match(umbrella, /fresh `x402_check`/i);
+    assert.match(umbrella, /call `x402_check`/i);
     assert.match(umbrella, /maxAmountAtomic/);
     assert.match(umbrella, /Never automatically retry/i);
+    assert.match(umbrella, /canonical `assetId`/);
+    assert.match(umbrella, /reusable[\s\S]{0,40}bounded mandate/i);
+    assert.match(umbrella, /There is no public authorize tool/i);
+    assert.match(
+      umbrella,
+      /`dexter_execute_asset_action` only with a new stable `operationId` and[\s\S]{0,80}`intentId`/,
+    );
+  }
+});
+
+test("both formats route anonymous five and connected twelve without retired tools", async () => {
+  for (const root of [codexRoot, claudeRoot]) {
+    const umbrella = await readFile(
+      resolve(root, "skills/opendexter/SKILL.md"),
+      "utf8",
+    );
+    const routing = await readFile(
+      resolve(root, "skills/opendexter/references/routing-and-safety.md"),
+      "utf8",
+    );
+    assert.deepEqual(namedTools(umbrella), [...HOSTED_TOOLS].sort());
+    assert.deepEqual(namedTools(routing), [...HOSTED_TOOLS].sort());
+    assert.match(umbrella, /anonymous roster is exactly[\s\S]*connected roster exactly twelve/i);
+    assert.match(routing, /Before OAuth[\s\S]*exactly five entry tools/i);
+    assert.match(routing, /OAuth adds exactly seven tools[\s\S]*connected roster twelve/i);
+    assert.match(routing, /Buy[\s\S]*USDC input budget[\s\S]*6-decimal atomic units/i);
+    assert.match(routing, /Sell and Send[\s\S]*selected-asset input/i);
+    assert.match(routing, /Execute receives only[\s\S]*`operationId`[\s\S]*`intentId`/i);
+    for (const retired of RETIRED_HOSTED_TOOLS) {
+      assert.doesNotMatch(umbrella, new RegExp(`\\b${retired}\\b`), retired);
+      assert.doesNotMatch(routing, new RegExp(`\\b${retired}\\b`), retired);
+    }
   }
 });
 
@@ -359,9 +500,14 @@ test("active package guidance contains no old local/card tool routes", async () 
     const text = await activeText(root);
     assert.doesNotMatch(text, LEGACY_ACTIVE_PATTERN);
     assert.doesNotMatch(text, /\b(?:all )?16 tools\b|\bsixteen[- ]tool\b/i);
+    assert.doesNotMatch(
+      text,
+      /\bpurchaseOptions?\b|\bpreparedPurchase\b|\bdirect_exact\b|\bnative_tab\b|\bgateway_(?:cash|credit)\b/,
+    );
+    assert.match(text, /`x402_status`/);
     assert.match(
       text,
-      /Card tools?[\s\S]{0,80}not available|No hosted card tool|No card tool/i,
+      /Card controls[\s\S]{0,120}secure wallet\s+surface|No hosted card tool|No card tool/i,
     );
   }
 });
@@ -380,9 +526,10 @@ test("publisher-side app binding stays separate from portable packages", async (
     resolve(repoRoot, "chatgpt-app-binding/README.md"),
     "utf8",
   );
-  assert.match(bindingReadme, /exactly six raw tools/i);
+  assert.match(bindingReadme, /five anonymous entry tools/i);
+  assert.match(bindingReadme, /seven OAuth-promoted tools/i);
+  assert.match(bindingReadme, /exactly twelve after connection/i);
   assert.doesNotMatch(bindingReadme, /compatibility (?:tool|endpoint|alias)/i);
-  assert.match(bindingReadme, /`dexter_portfolio`/);
   assert.doesNotMatch(bindingReadme, /\bten tools\b|\b10 tools\b/i);
 });
 

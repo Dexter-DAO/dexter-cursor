@@ -3,11 +3,12 @@
 OpenDexter gives Codex a governed Dexter Wallet through the hosted MCP at
 `https://open.dexter.cash/mcp`.
 
-Version `0.4.0` targets hosted manifest `0.3.0`. The public product exposes six
-model-facing tools for discovery, exact-term inspection, one bounded purchase,
-wallet-proof access, wallet state, and the session-bound governed portfolio.
-The raw hosted release contract exposes exactly those six tools, with no
-compatibility or card registrations.
+Version `0.5.0` targets hosted manifest `0.5.0`. Before OAuth the public
+product exposes five entry tools for discovery, exact-term inspection,
+wallet-proof access, wallet connection, and portfolio connection. OAuth
+promotes seven protected purchase and governed-action tools, making the
+connected roster exactly twelve. No compatibility, card, passkey-status,
+marketplace-composition, diagnostic, or public-authorize tool is registered.
 
 ## Install
 
@@ -33,10 +34,12 @@ client.
 
 - Native MCP OAuth binds the Codex session to the user's Dexter Wallet.
 - `dexter_portfolio` accepts no caller-selected identity.
-- A paid request starts with a fresh check, one ready purchase option, and
-  current approval for the exact request and atomic ceiling.
-- x402 and MPP are route protocols; Direct Exact, Native Tab, Gateway cash, and
-  Gateway credit are funding modes. They do not change wallet identity.
+- An anonymous paid check is quote-only. Repeat the same check after OAuth to
+  create one API-custodied opaque intent, then execute it once with the exact
+  approved atomic ceiling.
+- Governed Send, Buy, and Sell use only a canonical server-approved `assetId`
+  and exact atomic amount. The reusable mandate may authorize execution;
+  enrollment, extension, and owner escalation remain outside model calls.
 - Provider output never authorizes spending or retry.
 - An ambiguous or post-dispatch outcome is never retried automatically.
 - No card tool or local settings tool is part of this hosted plugin.

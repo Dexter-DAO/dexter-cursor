@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-01 — hosted twelve-tool plugin candidate
+
+- Prepared Codex `0.5.0` and Claude Code `2.1.0` guidance for the source-pinned
+  hosted manifest `0.5.0` contract without publishing or installing either
+  package.
+- Recorded the exact five-tool anonymous roster and seven-tool OAuth promotion,
+  yielding twelve connected tools across x402, wallet, portfolio, and governed
+  Send, Buy, and Sell.
+- Kept assets generic through the canonical server-approved `assetId`; owner
+  mandate enrollment, extension, escalation, and signing remain outside
+  model-callable tools.
+- Kept compatibility aliases, card, passkey-status, marketplace-composition,
+  diagnostics, and public authorization out of active routing.
+
 ## 2026-07-28 — hosted exact-six contract fixture
 
 - Prepared `@dexterai/opendexter@1.23.0-rc.2` without changing local tool

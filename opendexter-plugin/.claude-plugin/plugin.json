@@ -1,8 +1,8 @@
 {
   "name": "opendexter",
   "displayName": "OpenDexter",
-  "version": "2.0.0",
-  "description": "Give Claude Code a governed Dexter Wallet for service discovery, bounded purchases, wallet reads, and portfolio visibility.",
+  "version": "2.1.0",
+  "description": "Give Claude Code a governed Dexter Wallet for x402 purchases and bounded Send, Buy, and Sell.",
   "author": {
     "name": "Dexter",
     "email": "dev@dexter.cash"

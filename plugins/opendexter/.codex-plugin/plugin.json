@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
-  "version": "0.4.0",
-  "description": "Give Codex a governed Dexter Wallet for service discovery, bounded purchases, wallet reads, and portfolio visibility.",
+  "version": "0.5.0",
+  "description": "Give Codex a governed Dexter Wallet for x402 purchases and bounded Send, Buy, and Sell.",
   "author": {
     "name": "Dexter Labs Corporation",
     "email": "dev@dexter.cash",
@@ -36,12 +36,12 @@
       "Read",
       "Write"
     ],
-    "shortDescription": "Your governed Dexter Wallet inside Codex.",
-    "longDescription": "OpenDexter connects Codex to the user's passkey-controlled Dexter Wallet. It discovers services, inspects exact current terms, reads the wallet and governed portfolio bound to the authenticated session, and makes only a specifically prepared purchase under the user's limits.\n\nThe raw hosted release contract exposes exactly six tools. Route protocols such as x402 or MPP and funding modes such as Direct Exact, Native Tab, Gateway cash, or Gateway credit are transaction metadata, not separate wallet identities. There are no hidden compatibility or card tools.\n\nProtected tools use native MCP OAuth. Wallet keys, passkey material, bearer tokens, and one-time codes never belong in the conversation. Ambiguous or post-dispatch purchase results are never retried automatically.",
+    "shortDescription": "Governed payments and asset actions inside Codex.",
+    "longDescription": "OpenDexter connects Codex to the user's passkey-controlled Dexter Wallet. It discovers services, creates API-custodied purchase intents, reads the wallet and approved portfolio bound to the authenticated session, and executes only exact purchases or governed Send, Buy, and Sell requests covered by the user's reusable bounded authority.\n\nThe hosted 0.5.0 contract exposes five anonymous entry tools and promotes seven more after native OAuth, for exactly twelve connected tools. Assets are selected only by a canonical assetId from the server-approved portfolio. Owner enrollment, mandate extension, and escalation remain outside model-callable tools. There are no hidden compatibility, card, passkey-status, marketplace-composition, or authorize tools.\n\nWallet keys, passkey material, bearer tokens, signing material, and one-time codes never belong in the conversation. Ambiguous or post-dispatch results are inspected on the same intent and never retried automatically.",
     "defaultPrompt": [
       "Find an x402 API for this job and show me its current terms.",
-      "Show my OpenDexter wallet.",
-      "Show the assets in my Dexter portfolio."
+      "Show my OpenDexter wallet and governed portfolio.",
+      "Prepare a governed asset action covered by my current mandate."
     ],
     "websiteURL": "https://dexter.cash/opendexter",
     "privacyPolicyURL": "https://dexter.cash/privacy",

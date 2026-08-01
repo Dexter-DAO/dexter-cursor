@@ -158,9 +158,9 @@ again before spending. If a dispatched payment has an uncertain outcome, do
 not blindly retry it; reconcile the first attempt before another payment can be
 safe.
 
-## What the local package exposes
+## Product tool surfaces
 
-The local and hosted products use the same six model-facing tool names:
+The local package keeps these six model-facing tools:
 
 | Tool | What it does | Moves money? |
 |---|---|---|
@@ -171,13 +171,18 @@ The local and hosted products use the same six model-facing tool names:
 | `x402_wallet` | Shows local addresses and verified balance reads | No |
 | `dexter_portfolio` | Reads the governed portfolio from an explicitly linked Dexter account | No |
 
-The names match; the authority does not. Hosted wallet, payment, and portfolio
-reads use the authenticated Dexter Wallet session. The local package uses its
-file or environment signer for wallet-proof and paid calls, while
-`dexter_portfolio` is a separate read-only link to the user's hosted Dexter
-Wallet. The hosted release contract and local MCP discovery each expose only
-the six product operations above; there is no hidden paid-call alias,
-compose/promote route, or passkey probe/status tool in either contract.
+The hosted contract uses those six names plus `x402_status` and five governed
+asset tools for prepare, execute, status, reconciliation, and wallet history.
+Its anonymous roster has five entry tools; native OAuth promotes seven more,
+making the connected hosted roster exactly twelve.
+
+The authority also differs. Hosted wallet, payment, portfolio, and governed
+action calls use the authenticated Dexter Wallet session and its reusable
+bounded mandate. The local package uses its file or environment signer for
+wallet-proof and paid calls, while `dexter_portfolio` is a separate read-only
+link to the user's hosted Dexter Wallet. Neither surface exposes compatibility,
+card, passkey-status, marketplace-composition, diagnostic, or public-authorize
+tools.
 
 ## Wallets and authority
 
