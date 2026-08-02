@@ -863,7 +863,7 @@ test("release changelog carries stable hosted and candidate local identities", a
   assert.match(changelog, /`@dexterai\/x402-mcp-tools@0\.8\.0`/);
 });
 
-test("release train requires full hosted descriptors and ordinary-language routing evidence", async () => {
+test("release train freezes full descriptors and a post-deploy novice suite", async () => {
   const hostedVerifier = await readFile(
     resolve(repoRoot, "packages/mcp/scripts/verify-hosted-source.mjs"),
     "utf8",
@@ -906,6 +906,16 @@ test("release train requires full hosted descriptors and ordinary-language routi
   }
   assert.match(hostedVerifier, /pathToFileURL/);
   assert.match(hostedVerifier, /await import\(/);
+  const candidateBuilder = await readFile(
+    resolve(repoRoot, "packages/mcp/scripts/build-release-candidate.mjs"),
+    "utf8",
+  );
+  assert.match(candidateBuilder, /status: "pending-post-deploy"/);
+  assert.match(
+    candidateBuilder,
+    /requiredAfter: "package-install-and-hosted-activation"/,
+  );
+  assert.doesNotMatch(candidateBuilder, /--novice-evidence/);
 
   const casesPath = resolve(repoRoot, "tests/opendexter-novice-routing-cases.json");
   const suite = await readJson(casesPath);

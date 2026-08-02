@@ -234,12 +234,12 @@ function assertToolDescriptors(tools, expectedRoster, label) {
     assert.deepEqual(actual.annotations, expected.annotations, `${name} annotations drifted`);
     assert.deepEqual(
       actual._meta?.ui?.visibility,
-      expected.visibility,
+      expected._meta?.ui?.visibility,
       `${name} visibility drifted`,
     );
     assert.equal(
       actual._meta?.["openai/widgetAccessible"],
-      expected.widgetAccessible,
+      expected._meta?.["openai/widgetAccessible"],
       `${name} widget accessibility drifted`,
     );
     assert.ok(actual.inputSchema, `${name} omitted inputSchema`);

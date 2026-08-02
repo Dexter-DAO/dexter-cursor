@@ -39,7 +39,6 @@ import {
   stageReviewedToolchain,
 } from "../scripts/reviewed-toolchain.mjs";
 import { stageTreePureSource } from "../scripts/build-release-candidate.mjs";
-import { publishExactReviewedTarball } from "../scripts/publish-release-candidate.mjs";
 import { dryRunExactTarball } from "../scripts/verify-coordinated-release.mjs";
 import { listCanonicalRemoteRefs } from "../scripts/verify-hosted-source.mjs";
 import { verifyPublishPolicy } from "../scripts/release-policy.mjs";
@@ -121,8 +120,8 @@ function attestation() {
     sha256: ["7", "8", "9", "a"][index].repeat(64),
   }));
   return {
-    schemaVersion: 3,
-    kind: "opendexter-coordinated-release/v3",
+    schemaVersion: 4,
+    kind: "opendexter-coordinated-release/v4",
     package: {
       name: "@dexterai/opendexter",
       version: "1.23.0-rc.3",
@@ -157,7 +156,11 @@ function attestation() {
       executable: false,
     }],
     review: { decision: "accepted", receiptSha256: "1".repeat(64) },
-    noviceRoutingEvaluation: { status: "passed", evidenceSha256: "2".repeat(64) },
+    noviceRoutingEvaluation: {
+      status: "pending-post-deploy",
+      suiteSha256: "2".repeat(64),
+      requiredAfter: "package-install-and-hosted-activation",
+    },
     hostedContract: {
       sourceRepository: "https://github.com/Dexter-DAO/dexter-mcp",
       sourceCommit: "4".repeat(40),
@@ -251,7 +254,7 @@ describe("coordinated publish policy", () => {
     );
     expect(result.status).not.toBe(0);
     expect(`${result.stdout}\n${result.stderr}`).toMatch(
-      /OPENDXTER_RELEASE_ATTESTATION is required/,
+      /Local OpenDexter publishing is disabled/,
     );
     expect(`${result.stdout}\n${result.stderr}`).not.toContain("Widget source:");
   });
@@ -265,6 +268,21 @@ describe("exact package provenance", () => {
       kind: "opendexter-coordinated-release/v1",
     };
     expect(() => validateAttestationShape(legacy)).toThrow(/unsupported release attestation schema/);
+  });
+
+  it("cannot misstate prepublication novice proof as completed", () => {
+    for (const mutate of [
+      (value: any) => { value.noviceRoutingEvaluation.status = "passed"; },
+      (value: any) => { value.noviceRoutingEvaluation.evidenceSha256 = "9".repeat(64); },
+      (value: any) => { delete value.noviceRoutingEvaluation.suiteSha256; },
+      (value: any) => { value.noviceRoutingEvaluation.requiredAfter = "source-review"; },
+    ]) {
+      const value = attestation();
+      mutate(value);
+      expect(() => validateAttestationShape(value)).toThrow(
+        /novice evaluation|novice evaluation boundary/,
+      );
+    }
   });
 
   it("rejects a self-consistent rehashed npm library inventory that differs from the source pin", () => {
@@ -499,36 +517,22 @@ describe("exact package provenance", () => {
       })).toThrow(/snapshot file is writable|snapshot differs from the reviewed source pin/);
       expect(dryRunContact).toBe(false);
 
-      let registryContact = false;
-      expect(() => publishExactReviewedTarball({
-        tarball,
-        tag: "next",
-        toolchain,
-        environment: reviewedReleaseEnvironment({
-          nodeBin: dirname(toolchain.command),
-        }),
-        execute() {
-          registryContact = true;
-          return Buffer.alloc(0);
-        },
-      })).toThrow(/snapshot file is writable|snapshot differs from the reviewed source pin/);
-      expect(registryContact).toBe(false);
     } finally {
       disposeReviewedToolchain(toolchain);
     }
   });
 
-  it("revalidates novice evidence with the archived release script", () => {
+  it("keeps novice proof pending until the exact package is installed and hosted", () => {
     const candidate = readFileSync(
       resolve(packageRoot, "scripts/build-release-candidate.mjs"),
       "utf8",
     );
+    expect(candidate).toContain('status: "pending-post-deploy"');
     expect(candidate).toContain(
-      'resolve(cleanRoot, "tests/opendexter-novice-routing-evaluation.mjs")',
+      'requiredAfter: "package-install-and-hosted-activation"',
     );
-    expect(candidate).not.toContain(
-      'resolve(repositoryRoot, "tests/opendexter-novice-routing-evaluation.mjs")',
-    );
+    expect(candidate).not.toContain("--novice-evidence");
+    expect(candidate).not.toContain("--results");
   });
 
   it("uses one canonical root lock and rejects a nested package lock", () => {
@@ -609,6 +613,7 @@ describe("exact package provenance", () => {
         ...attestedRuntimeIdentity(release),
       },
       sourceArchiveSha256: release.source.archiveSha256,
+      noviceSuiteSha256: release.noviceRoutingEvaluation.suiteSha256,
       hosted: {
         commit: release.hostedContract.sourceCommit,
         tree: release.hostedContract.sourceTree,
@@ -644,7 +649,7 @@ describe("exact package provenance", () => {
     })).toThrow(/candidate and rebuilt tarball identity|candidate and rebuilt full inventory/);
   });
 
-  it("uses protected npm for exact-tarball dry-run and publish despite ambient PATH", () => {
+  it("uses protected npm for exact-tarball dry-run despite ambient PATH", () => {
     const { root } = fixtureRoot();
     const tarball = pack(root);
     const inspected = inspectTarball(tarball);
@@ -682,34 +687,6 @@ describe("exact package provenance", () => {
       });
       expect(dryRunCalled).toBe(true);
       expect(dryRun.tarball).toBe(realpathSync(tarball));
-
-      let publishCalled = false;
-      const environment = reviewedReleaseEnvironment({
-        nodeBin: dirname(toolchain.command),
-      });
-      const invocation = publishExactReviewedTarball({
-        tarball,
-        tag: "next",
-        environment,
-        toolchain,
-        execute(command: string, args: string[], options: { env: NodeJS.ProcessEnv }) {
-          publishCalled = true;
-          expect(command).toBe(toolchain.command);
-          expect(args[0]).toBe(toolchain.cli);
-          expect(args).not.toContain("--dry-run");
-          expect(args).toEqual(expect.arrayContaining([
-            "--access",
-            "public",
-            "--registry",
-            "https://registry.npmjs.org/",
-          ]));
-          expect(args.at(-1)).toBe(realpathSync(tarball));
-          expect(options.env.PATH?.startsWith(fakeBin)).toBe(false);
-          return Buffer.alloc(0);
-        },
-      });
-      expect(publishCalled).toBe(true);
-      expect(invocation.tarball).toBe(realpathSync(tarball));
     } finally {
       disposeReviewedToolchain(toolchain);
       process.env.PATH = priorPath;

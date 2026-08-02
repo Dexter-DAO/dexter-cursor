@@ -154,7 +154,6 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
   hosted,
   stageRoot,
   outputRoot,
-  noviceEvidence,
 }) {
   let toolchain = null;
   try {
@@ -228,16 +227,6 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
     }
     const widgets = reviewedWidgetInventory(immutableWidgetSource);
 
-    run(
-      toolchain.command,
-      [
-        resolve(cleanRoot, "tests/opendexter-novice-routing-evaluation.mjs"),
-        "--results",
-        noviceEvidence,
-      ],
-      { cwd: cleanRoot, env: environment, stdio: "pipe" },
-    );
-
     const npmCiArgs = ["ci", "--ignore-scripts"];
     npmCiArgs.push("--no-audit", "--no-fund");
     runReviewedNpm(toolchain, npmCiArgs, {
@@ -291,6 +280,9 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
       manifest: cleanManifest,
       runtime,
       toolchain,
+      noviceSuiteSha256: digestFile(
+        resolve(cleanRoot, "tests/opendexter-novice-routing-cases.json"),
+      ),
       sourceArchiveSha256: sourceStage.archiveSha256,
       hosted: {
         commit: hosted.commit,
@@ -314,7 +306,6 @@ export async function verifyRebuiltReleaseCandidate({
   expectedAttestationSha256,
   candidateTarball,
   reviewReceipt,
-  noviceEvidence,
   hostedSource,
   apiSource,
   facilitatorSource,
@@ -342,10 +333,6 @@ export async function verifyRebuiltReleaseCandidate({
       reviewReceipt,
       resolve(evidenceRoot, "review.json"),
     );
-    const stableNovice = snapshotJsonInput(
-      noviceEvidence,
-      resolve(evidenceRoot, "novice.json"),
-    );
     const stableCandidate = snapshotFileInput(
       candidateTarball,
       resolve(evidenceRoot, basename(candidateTarball)),
@@ -363,12 +350,6 @@ export async function verifyRebuiltReleaseCandidate({
       status: "accepted",
       identity,
     });
-    verifyEvidence(stableNovice.path, {
-      kind: "opendexter-novice-routing-evaluation/v1",
-      statusField: "status",
-      status: "passed",
-      identity,
-    });
     const hosted = await verifyHostedSource({
       sourceRoot: hostedSource,
       apiSourceRoot: apiSource,
@@ -383,14 +364,12 @@ export async function verifyRebuiltReleaseCandidate({
       hosted,
       stageRoot: verificationRoot,
       outputRoot,
-      noviceEvidence: stableNovice.path,
     });
     const verified = verifyAttestation({
       attestation: stableAttestation.value,
       tarball: stableCandidate.path,
       rebuilt,
       reviewReceipt: stableReview.path,
-      noviceEvidence: stableNovice.path,
     });
     if (afterRebuild) {
       await afterRebuild({
@@ -408,9 +387,6 @@ export async function verifyRebuiltReleaseCandidate({
     }
     if (digestFile(stableReview.path) !== stableReview.sha256) {
       fail("review receipt changed during final verification");
-    }
-    if (digestFile(stableNovice.path) !== stableNovice.sha256) {
-      fail("novice evidence changed during final verification");
     }
     return {
       ...verified,
@@ -476,7 +452,6 @@ export async function main(argv = process.argv.slice(2)) {
     "--facilitator-source",
   );
   const reviewPath = requiredAbsolute(args.review, "--review");
-  const novicePath = requiredAbsolute(args["novice-evidence"], "--novice-evidence");
   const distTag = args["dist-tag"];
   if (!distTag) fail("--dist-tag is required");
 
@@ -499,20 +474,10 @@ export async function main(argv = process.argv.slice(2)) {
       reviewPath,
       resolve(evidenceRoot, "review.json"),
     );
-    const stableNovice = snapshotJsonInput(
-      novicePath,
-      resolve(evidenceRoot, "novice.json"),
-    );
     const review = verifyEvidence(stableReview.path, {
       kind: "opendexter-release-review/v1",
       statusField: "decision",
       status: "accepted",
-      identity,
-    });
-    const novice = verifyEvidence(stableNovice.path, {
-      kind: "opendexter-novice-routing-evaluation/v1",
-      statusField: "status",
-      status: "passed",
       identity,
     });
     const hosted = await verifyHostedSource({
@@ -535,8 +500,8 @@ export async function main(argv = process.argv.slice(2)) {
     }
 
     // The candidate is built only from canonically advertised committed trees,
-    // the exact root lock, immutable hosted widget bytes, and the archived
-    // novice evaluator. Mutable checkout dist/node_modules never participate.
+    // the exact root lock and immutable hosted widget bytes. Mutable checkout
+    // dist/node_modules never participate.
     rebuilt = buildReviewedReleaseArtifact({
       sourceRoot: repositoryRoot,
       identity,
@@ -545,7 +510,6 @@ export async function main(argv = process.argv.slice(2)) {
       hosted,
       stageRoot: buildStage,
       outputRoot: candidateRoot,
-      noviceEvidence: stableNovice.path,
     });
     if (
       rebuilt.manifest.name !== manifest.name
@@ -573,8 +537,8 @@ export async function main(argv = process.argv.slice(2)) {
     }
 
     const attestation = {
-      schemaVersion: 3,
-      kind: "opendexter-coordinated-release/v3",
+      schemaVersion: 4,
+      kind: "opendexter-coordinated-release/v4",
       package: {
         name: rebuilt.manifest.name,
         version: rebuilt.manifest.version,
@@ -612,8 +576,9 @@ export async function main(argv = process.argv.slice(2)) {
         receiptSha256: stableReview.sha256,
       },
       noviceRoutingEvaluation: {
-        status: novice.status,
-        evidenceSha256: stableNovice.sha256,
+        status: "pending-post-deploy",
+        suiteSha256: rebuilt.noviceSuiteSha256,
+        requiredAfter: "package-install-and-hosted-activation",
       },
     };
     const attestationPath = resolve(candidateRoot, "release-attestation.json");

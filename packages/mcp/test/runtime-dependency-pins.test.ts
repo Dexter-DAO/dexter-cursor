@@ -50,7 +50,7 @@ describe("published OpenDexter dependency graph", () => {
     expect(pkg.devDependencies).toEqual(expectedBuild);
   });
 
-  it("disables the legacy direct release command", async () => {
+  it("disables every local publish entrypoint", async () => {
     const pkg = JSON.parse(
       await readFile(new URL("../package.json", import.meta.url), "utf8"),
     );
@@ -60,7 +60,18 @@ describe("published OpenDexter dependency graph", () => {
       "utf8",
     );
     expect(refusal).toContain("coordinated OpenDexter release");
-    expect(pkg.scripts.prepublishOnly).toContain("verify-coordinated-release.mjs");
+    expect(pkg.scripts.prepublishOnly).toBe(
+      "node scripts/publish-release-candidate.mjs",
+    );
+    expect(pkg.scripts["release:publish"]).toBe(
+      "node scripts/publish-release-candidate.mjs",
+    );
+    const publishRefusal = await readFile(
+      new URL("../scripts/publish-release-candidate.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(publishRefusal).toContain("Local OpenDexter publishing is disabled");
+    expect(publishRefusal).toContain("publish-opendexter.yml");
     expect(pkg.publishConfig).toEqual({
       access: "public",
       tag: "next",

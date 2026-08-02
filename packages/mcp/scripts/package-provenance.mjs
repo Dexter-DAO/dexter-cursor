@@ -590,8 +590,8 @@ function requireSha256(value, label) {
 }
 
 export function validateAttestationShape(attestation) {
-  if (attestation?.schemaVersion !== 3) fail("unsupported release attestation schema");
-  if (attestation?.kind !== "opendexter-coordinated-release/v3") {
+  if (attestation?.schemaVersion !== 4) fail("unsupported release attestation schema");
+  if (attestation?.kind !== "opendexter-coordinated-release/v4") {
     fail("unexpected release attestation kind");
   }
   requireString(attestation.package?.name, "attestation package name");
@@ -646,13 +646,14 @@ export function validateAttestationShape(attestation) {
   }
   if (attestation.review?.decision !== "accepted") fail("release review is not accepted");
   requireString(attestation.review?.receiptSha256, "review receipt digest");
-  if (attestation.noviceRoutingEvaluation?.status !== "passed") {
-    fail("novice-language evaluation is not passed");
-  }
-  requireString(
-    attestation.noviceRoutingEvaluation?.evidenceSha256,
-    "novice evaluation evidence digest",
-  );
+  sameJson(attestation.noviceRoutingEvaluation, {
+    status: "pending-post-deploy",
+    suiteSha256: requireSha256(
+      attestation.noviceRoutingEvaluation?.suiteSha256,
+      "novice evaluation suite digest",
+    ),
+    requiredAfter: "package-install-and-hosted-activation",
+  }, "pending post-deploy novice evaluation boundary");
   requireString(attestation.hostedContract?.contractSha256, "hosted contract digest");
   if (
     attestation.hostedContract?.sourceRepository
@@ -720,7 +721,6 @@ export function verifyAttestation({
   tarball,
   rebuilt,
   reviewReceipt = null,
-  noviceEvidence = null,
 }) {
   validateAttestationShape(attestation);
   if (!rebuilt?.inspected || !rebuilt?.identity || !rebuilt?.hosted) {
@@ -787,8 +787,11 @@ export function verifyAttestation({
   if (reviewReceipt && digestFile(reviewReceipt) !== attestation.review.receiptSha256) {
     fail("review receipt bytes do not match the attestation");
   }
-  if (noviceEvidence && digestFile(noviceEvidence) !== attestation.noviceRoutingEvaluation.evidenceSha256) {
-    fail("novice evaluation bytes do not match the attestation");
+  if (
+    attestation.noviceRoutingEvaluation.suiteSha256
+    !== rebuilt.noviceSuiteSha256
+  ) {
+    fail("post-deploy novice suite differs from the archived release source");
   }
   return { identity: rebuilt.identity, lock: rebuilt.lock, inspected, rebuilt };
 }
@@ -841,9 +844,6 @@ async function commandMain() {
       expectedAttestationSha256: digestFile(attestationPath),
       candidateTarball: resolve(requireString(values.tarball, "--tarball")),
       reviewReceipt: resolve(requireString(values.review, "--review")),
-      noviceEvidence: resolve(
-        requireString(values["novice-evidence"], "--novice-evidence"),
-      ),
       hostedSource: resolve(
         requireString(values["hosted-source"], "--hosted-source"),
       ),

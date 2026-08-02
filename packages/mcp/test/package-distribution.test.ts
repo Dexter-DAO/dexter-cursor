@@ -151,24 +151,28 @@ describe("local package distribution", () => {
     const publish = read("scripts/publish-release-candidate.mjs");
     const provenance = read("scripts/package-provenance.mjs");
     const hosted = read("scripts/verify-hosted-source.mjs");
+    const githubHosted = read("scripts/github-hosted-release.mjs");
     const toolchain = read("scripts/reviewed-toolchain.mjs");
     const toolchainPin = JSON.parse(
       read("release/reviewed-node-npm-toolchain.json"),
     );
-    expect(publish).toContain("PUBLISH_EXACT_REVIEWED_TARBALL");
-    expect(publish).toContain("reviewedNpmPublishInvocation");
+    expect(publish).toContain("Local OpenDexter publishing is disabled");
+    expect(publish).toContain("publish-opendexter.yml");
+    expect(publish).not.toContain("OPENDXTER_RELEASE_NPM_TOKEN");
     expect(provenance).toContain('"publish"');
     expect(provenance).toContain('"--ignore-scripts"');
     expect(provenance).toContain('"--access"');
     expect(provenance).toContain('"public"');
-    expect(publish).toContain("tarball");
-    expect(publish).toContain("verify-coordinated-release.mjs");
-    expect(publish).toContain("OPENDXTER_RELEASE_NPM_TOKEN");
-    expect(publish).toContain("mode: 0o600");
     expect(publish).not.toContain("...process.env");
-    expect(publish).toContain("toolchain.command");
-    expect(hosted).toContain("stageReviewedToolchain");
-    expect(hosted).toContain("toolchain.command");
+    expect(githubHosted).toContain('from "./build-release-candidate.mjs"');
+    expect(githubHosted).toContain("buildReviewedReleaseCandidate([");
+    expect(githubHosted).toContain("verifyCoordinatedRelease({");
+    expect(githubHosted).toContain("publisher-npm");
+    expect(hosted).toContain("materializeOpenToolDescriptorsFromGit");
+    expect(hosted).toContain("verifyCrossRepositorySources: true");
+    expect(hosted).toContain("apiSourceRoot");
+    expect(hosted).toContain("facilitatorSourceRoot");
+    expect(hosted).toContain("GH_TOKEN");
     expect(toolchain).toContain("private reviewed Node/npm toolchain snapshot");
     expect(toolchainPin.kind).toBe("opendexter-reviewed-node-npm-toolchain/v1");
     expect(toolchainPin.runtime.toolchainInventory.length).toBeGreaterThan(2_000);

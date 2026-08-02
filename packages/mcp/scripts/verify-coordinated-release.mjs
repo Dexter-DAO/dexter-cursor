@@ -98,7 +98,6 @@ export async function verifyCoordinatedRelease({
   attestationPath,
   tarball,
   reviewReceipt,
-  noviceEvidence,
   hostedSource,
   apiSource,
   facilitatorSource,
@@ -111,7 +110,6 @@ export async function verifyCoordinatedRelease({
     expectedAttestationSha256: attestationDigest,
     candidateTarball: tarball,
     reviewReceipt,
-    noviceEvidence,
     hostedSource,
     apiSource,
     facilitatorSource,
@@ -147,7 +145,6 @@ export async function main() {
     attestationPath: absoluteExisting("OPENDXTER_RELEASE_ATTESTATION"),
     tarball: absoluteExisting("OPENDXTER_RELEASE_TARBALL"),
     reviewReceipt: absoluteExisting("OPENDXTER_RELEASE_REVIEW_RECEIPT"),
-    noviceEvidence: absoluteExisting("OPENDXTER_RELEASE_NOVICE_EVIDENCE"),
     hostedSource: absoluteExisting("OPENDXTER_RELEASE_HOSTED_SOURCE"),
     apiSource: absoluteExisting("OPENDXTER_RELEASE_API_SOURCE"),
     facilitatorSource: absoluteExisting(

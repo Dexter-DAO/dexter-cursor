@@ -369,17 +369,19 @@ To build an x402 client or server, use
 
 The source checkout includes a coordinated release-candidate builder. It
 requires a clean reviewed commit, the committed root lock, a final
-source-pinned hosted descriptor, an accepted review receipt, and passed
-ordinary-language routing evidence. It builds and packs once from a clean Git
-archive, records every packed file and digest, and installs that exact tarball
-both normally and with lifecycle scripts disabled:
+source-pinned hosted descriptor, and an accepted review receipt. It builds and
+packs once from a clean Git archive, records every packed file and digest, and
+installs that exact tarball both normally and with lifecycle scripts disabled.
+Ordinary-language novice proof is explicitly pending until this exact package
+is installed and the paired hosted service is activated:
 
 ```bash
 npm run release:candidate -- \
   --output-dir /absolute/existing/candidate-directory \
   --hosted-source /absolute/path/to/final/dexter-mcp \
+  --api-source /absolute/path/to/final/dexter-api \
+  --facilitator-source /absolute/path/to/final/dexter-facilitator \
   --review /absolute/path/to/accepted-review.json \
-  --novice-evidence /absolute/path/to/novice-routing-results.json \
   --dist-tag next
 ```
 
