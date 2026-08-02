@@ -847,6 +847,12 @@ async function commandMain() {
       hostedSource: resolve(
         requireString(values["hosted-source"], "--hosted-source"),
       ),
+      apiSource: resolve(
+        requireString(values["api-source"], "--api-source"),
+      ),
+      facilitatorSource: resolve(
+        requireString(values["facilitator-source"], "--facilitator-source"),
+      ),
     });
     process.stdout.write(
       `Verified ${result.attestation.package.name}@${result.attestation.package.version} `

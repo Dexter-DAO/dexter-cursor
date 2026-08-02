@@ -29,6 +29,7 @@ import {
 } from "./package-provenance.mjs";
 import {
   disposeReviewedToolchain,
+  loadReviewedToolchainPin,
   reviewedNpm,
   reviewedRuntimeIdentity,
   stageReviewedToolchain,
@@ -205,6 +206,12 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
       "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
     );
     const cleanManifest = readJson(resolve(cleanPackageRoot, "package.json"));
+    const archivedRuntime = loadReviewedToolchainPin(
+      resolve(cleanPackageRoot, "release/reviewed-node-npm-toolchain.json"),
+    );
+    if (canonicalJsonDigest(archivedRuntime) !== canonicalJsonDigest(runtime)) {
+      fail("reviewed toolchain differs from the exact archived IDE source pin");
+    }
     if (
       canonicalJsonDigest(readJson(hostedContractPath))
       !== canonicalJsonDigest(hosted.contract)
@@ -309,6 +316,8 @@ export async function verifyRebuiltReleaseCandidate({
   reviewReceipt,
   noviceEvidence,
   hostedSource,
+  apiSource,
+  facilitatorSource,
   sourceRoot = repositoryRoot,
   afterRebuild = null,
 }) {
@@ -360,7 +369,12 @@ export async function verifyRebuiltReleaseCandidate({
       status: "passed",
       identity,
     });
-    const hosted = await verifyHostedSource({ sourceRoot: hostedSource, mode: "check" });
+    const hosted = await verifyHostedSource({
+      sourceRoot: hostedSource,
+      apiSourceRoot: apiSource,
+      facilitatorSourceRoot: facilitatorSource,
+      mode: "check",
+    });
     rebuilt = buildReviewedReleaseArtifact({
       sourceRoot,
       identity,
@@ -452,10 +466,15 @@ function joinTmp(prefix) {
   return resolve(tmpdir(), prefix);
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+export async function main(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
   const outputParent = requiredAbsolute(args["output-dir"], "--output-dir");
   const hostedSource = requiredAbsolute(args["hosted-source"], "--hosted-source");
+  const apiSource = requiredAbsolute(args["api-source"], "--api-source");
+  const facilitatorSource = requiredAbsolute(
+    args["facilitator-source"],
+    "--facilitator-source",
+  );
   const reviewPath = requiredAbsolute(args.review, "--review");
   const novicePath = requiredAbsolute(args["novice-evidence"], "--novice-evidence");
   const distTag = args["dist-tag"];
@@ -496,7 +515,12 @@ async function main() {
       status: "passed",
       identity,
     });
-    const hosted = await verifyHostedSource({ sourceRoot: hostedSource, mode: "check" });
+    const hosted = await verifyHostedSource({
+      sourceRoot: hostedSource,
+      apiSourceRoot: apiSource,
+      facilitatorSourceRoot: facilitatorSource,
+      mode: "check",
+    });
     const candidateRoot = resolve(
       outputParent,
       `${manifest.name.replaceAll("/", "-").replace(/^@/, "")}-${manifest.version}-${identity.commit.slice(0, 12)}`,
@@ -599,6 +623,13 @@ async function main() {
         + `Attestation: ${attestationPath}\n`
         + `Attestation SHA-256: ${digestFile(attestationPath)}\n`,
     );
+    return {
+      candidateRoot,
+      tarball,
+      attestation,
+      attestationPath,
+      attestationSha256: digestFile(attestationPath),
+    };
   } catch (error) {
     // Preserve a failed candidate directory for forensic review; never replace
     // it or silently produce different bytes at the same path.

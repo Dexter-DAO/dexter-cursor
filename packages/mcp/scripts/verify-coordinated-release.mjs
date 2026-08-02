@@ -94,17 +94,18 @@ export function dryRunExactTarball({
   }
 }
 
-export async function main() {
-  // Resolve every required input before build, dry-run, or registry contact.
-  const attestationPath = absoluteExisting("OPENDXTER_RELEASE_ATTESTATION");
-  const tarball = absoluteExisting("OPENDXTER_RELEASE_TARBALL");
-  const reviewReceipt = absoluteExisting("OPENDXTER_RELEASE_REVIEW_RECEIPT");
-  const noviceEvidence = absoluteExisting("OPENDXTER_RELEASE_NOVICE_EVIDENCE");
-  const hostedSource = absoluteExisting("OPENDXTER_RELEASE_HOSTED_SOURCE");
-  const attestationDigest = requiredEnv("OPENDXTER_RELEASE_ATTESTATION_SHA256");
-  const explicitTag = requiredEnv("OPENDXTER_RELEASE_DIST_TAG");
-  const npmTag = requiredEnv("npm_config_tag");
-
+export async function verifyCoordinatedRelease({
+  attestationPath,
+  tarball,
+  reviewReceipt,
+  noviceEvidence,
+  hostedSource,
+  apiSource,
+  facilitatorSource,
+  attestationDigest,
+  explicitTag,
+  npmTag,
+}) {
   const result = await verifyRebuiltReleaseCandidate({
     attestationPath,
     expectedAttestationSha256: attestationDigest,
@@ -112,6 +113,8 @@ export async function main() {
     reviewReceipt,
     noviceEvidence,
     hostedSource,
+    apiSource,
+    facilitatorSource,
     afterRebuild({ attestation, candidateTarball, rebuilt }) {
       verifyPublishPolicy({
         manifest: rebuilt.manifest,
@@ -134,6 +137,25 @@ export async function main() {
         .sort((left, right) => left.path.localeCompare(right.path));
       same(dryRun.inventory, rebuiltFiles, "dry-run full file inventory");
     },
+  });
+  return result;
+}
+
+export async function main() {
+  // Resolve every required input before build, dry-run, or registry contact.
+  const result = await verifyCoordinatedRelease({
+    attestationPath: absoluteExisting("OPENDXTER_RELEASE_ATTESTATION"),
+    tarball: absoluteExisting("OPENDXTER_RELEASE_TARBALL"),
+    reviewReceipt: absoluteExisting("OPENDXTER_RELEASE_REVIEW_RECEIPT"),
+    noviceEvidence: absoluteExisting("OPENDXTER_RELEASE_NOVICE_EVIDENCE"),
+    hostedSource: absoluteExisting("OPENDXTER_RELEASE_HOSTED_SOURCE"),
+    apiSource: absoluteExisting("OPENDXTER_RELEASE_API_SOURCE"),
+    facilitatorSource: absoluteExisting(
+      "OPENDXTER_RELEASE_FACILITATOR_SOURCE",
+    ),
+    attestationDigest: requiredEnv("OPENDXTER_RELEASE_ATTESTATION_SHA256"),
+    explicitTag: requiredEnv("OPENDXTER_RELEASE_DIST_TAG"),
+    npmTag: requiredEnv("npm_config_tag"),
   });
   process.stdout.write(
     `Coordinated publish gate passed for ${result.attestation.package.name}`

@@ -13,13 +13,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  disposeReviewedToolchain,
   REVIEWED_RELEASE_NPM_VERSION,
-  reviewedNpm,
-  reviewedRuntimeIdentity,
-  stageReviewedToolchain,
 } from "./reviewed-toolchain.mjs";
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
@@ -32,9 +28,17 @@ const DESCRIPTOR_PATH = "release/open-tool-descriptors.json";
 const DESCRIPTOR_MATERIALIZER_PATH = "scripts/materialize-open-tool-descriptors.mjs";
 const REVIEWED_NPM_VERSION = REVIEWED_RELEASE_NPM_VERSION;
 const DESCRIPTOR_KIND = "opendexter-hosted-tool-descriptors/v2";
-const SOURCE_CONTRACTS_KIND = "opendexter-source-contracts/v1";
+const SOURCE_CONTRACTS_KIND = "opendexter-source-contracts/v3";
+const EXPECTED_API_REPOSITORY = "https://github.com/Dexter-DAO/dexter-api";
+const EXPECTED_FACILITATOR_REPOSITORY =
+  "https://github.com/Dexter-DAO/dexter-facilitator";
+const PORTFOLIO_PROJECTION_SOURCE_PATHS = Object.freeze([
+  "src/portfolio/approvedActionTargets.ts",
+  "src/routes/passkeyMcpBinding.ts",
+  "src/routes/defaultGovernedDelegatedAssetActions.ts",
+]);
 const MATERIALIZATION_RECIPE =
-  "sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v2";
+  "mcp-source-owned-outer-receipt+sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v3";
 const HOSTED_MANIFEST_VERSION = "0.5.0";
 const FORBIDDEN_HOSTED_TOOL_NAMES = Object.freeze([
   "x402_pay",
@@ -128,9 +132,17 @@ function requireHex(value, length, label) {
 }
 
 function validateSourceContracts(sourceContracts) {
-  exactKeys(sourceContracts, ["schemaVersion", "kind", "api", "mcp"], "sourceContracts");
+  exactKeys(sourceContracts, [
+    "schemaVersion",
+    "kind",
+    "api",
+    "integratedApiRelease",
+    "portfolioProjection",
+    "facilitator",
+    "mcp",
+  ], "sourceContracts");
   if (
-    sourceContracts.schemaVersion !== 1
+    sourceContracts.schemaVersion !== 3
     || sourceContracts.kind !== SOURCE_CONTRACTS_KIND
   ) {
     fail("hosted descriptor sourceContracts is unsupported");
@@ -146,12 +158,50 @@ function validateSourceContracts(sourceContracts) {
     "sourceContracts api fixture",
   );
   exactKeys(
+    sourceContracts.integratedApiRelease,
+    [
+      "repository",
+      "commit",
+      "tree",
+      "governedContractCommit",
+      "governedContractTree",
+    ],
+    "sourceContracts integrated API release",
+  );
+  exactKeys(
+    sourceContracts.portfolioProjection,
+    ["repository", "commit", "tree", "sourcePaths", "fixture"],
+    "sourceContracts portfolio projection",
+  );
+  exactKeys(
+    sourceContracts.portfolioProjection.fixture,
+    ["consumerPath", "apiPath", "sha256", "canonicalDigest"],
+    "sourceContracts portfolio projection fixture",
+  );
+  exactKeys(
+    sourceContracts.facilitator,
+    ["repository", "commit", "tree", "bindingFixture"],
+    "sourceContracts facilitator",
+  );
+  exactKeys(
+    sourceContracts.facilitator.bindingFixture,
+    ["consumerPath", "apiPath", "facilitatorPath", "sha256"],
+    "sourceContracts facilitator fixture",
+  );
+  exactKeys(
     sourceContracts.mcp,
     ["repository", "commit", "tree", "toolContractPath", "authContractPath"],
     "sourceContracts mcp",
   );
-  if (sourceContracts.api.repository !== "https://github.com/Dexter-DAO/dexter-api") {
+  if (sourceContracts.api.repository !== EXPECTED_API_REPOSITORY) {
     fail("hosted descriptor API source repository is unexpected");
+  }
+  if (
+    sourceContracts.integratedApiRelease.repository !== EXPECTED_API_REPOSITORY
+    || sourceContracts.portfolioProjection.repository !== EXPECTED_API_REPOSITORY
+    || sourceContracts.facilitator.repository !== EXPECTED_FACILITATOR_REPOSITORY
+  ) {
+    fail("hosted descriptor paired source repository is unexpected");
   }
   if (sourceContracts.mcp.repository !== EXPECTED_HOSTED_SOURCE_REPOSITORY) {
     fail("hosted descriptor MCP source repository is unexpected");
@@ -159,15 +209,41 @@ function validateSourceContracts(sourceContracts) {
   if (
     sourceContracts.api.consumerFixture.path
       !== "tests/fixtures/governed-agent-reconcile-advanced-final-c3e32885.json"
+    || sourceContracts.integratedApiRelease.governedContractCommit
+      !== sourceContracts.api.commit
+    || sourceContracts.integratedApiRelease.governedContractTree
+      !== sourceContracts.api.tree
+    || sourceContracts.portfolioProjection.commit
+      !== sourceContracts.integratedApiRelease.commit
+    || sourceContracts.portfolioProjection.tree
+      !== sourceContracts.integratedApiRelease.tree
+    || JSON.stringify(sourceContracts.portfolioProjection.sourcePaths)
+      !== JSON.stringify(PORTFOLIO_PROJECTION_SOURCE_PATHS)
+    || sourceContracts.portfolioProjection.fixture.consumerPath
+      !== "tests/fixtures/opendexter-portfolio-v1-zero-holding-approved-action-targets.json"
+    || sourceContracts.portfolioProjection.fixture.apiPath
+      !== "tests/fixtures/opendexter-portfolio-v1-zero-holding-approved-action-targets.json"
+    || sourceContracts.facilitator.bindingFixture.consumerPath
+      !== "tests/fixtures/governed-agent-trade-api-facilitator-binding-v1.json"
+    || sourceContracts.facilitator.bindingFixture.apiPath
+      !== "tests/fixtures/governed-agent-trade-api-facilitator-binding-v1.json"
+    || sourceContracts.facilitator.bindingFixture.facilitatorPath
+      !== "test/fixtures/governed-agent-trade-api-facilitator-binding-v1.json"
     || sourceContracts.mcp.toolContractPath !== "lib/open-tool-contracts.mjs"
     || sourceContracts.mcp.authContractPath !== "lib/open-tool-auth.mjs"
   ) {
     fail("hosted descriptor source contract paths are unexpected");
   }
-  requireHex(sourceContracts.api.commit, 40, "sourceContracts API commit");
-  requireHex(sourceContracts.api.tree, 40, "sourceContracts API tree");
-  requireHex(sourceContracts.mcp.commit, 40, "sourceContracts MCP commit");
-  requireHex(sourceContracts.mcp.tree, 40, "sourceContracts MCP tree");
+  for (const [label, source] of [
+    ["API", sourceContracts.api],
+    ["integrated API", sourceContracts.integratedApiRelease],
+    ["portfolio projection", sourceContracts.portfolioProjection],
+    ["facilitator", sourceContracts.facilitator],
+    ["MCP", sourceContracts.mcp],
+  ]) {
+    requireHex(source.commit, 40, `sourceContracts ${label} commit`);
+    requireHex(source.tree, 40, `sourceContracts ${label} tree`);
+  }
   requireHex(
     sourceContracts.api.consumerFixture.sha256,
     64,
@@ -177,6 +253,21 @@ function validateSourceContracts(sourceContracts) {
     sourceContracts.api.consumerFixture.canonicalBodyDigest,
     64,
     "sourceContracts API body digest",
+  );
+  requireHex(
+    sourceContracts.portfolioProjection.fixture.sha256,
+    64,
+    "sourceContracts portfolio fixture digest",
+  );
+  requireHex(
+    sourceContracts.portfolioProjection.fixture.canonicalDigest,
+    64,
+    "sourceContracts portfolio canonical digest",
+  );
+  requireHex(
+    sourceContracts.facilitator.bindingFixture.sha256,
+    64,
+    "sourceContracts facilitator fixture digest",
   );
 }
 
@@ -298,6 +389,16 @@ export function validateHostedDescriptor(descriptor) {
     fail("hosted descriptor anonymous and OAuth-promoted rosters overlap");
   }
   for (const tool of descriptor.tools) {
+    exactKeys(tool, [
+      "name",
+      "title",
+      "description",
+      "inputSchema",
+      "outputSchema",
+      "annotations",
+      "securitySchemes",
+      "_meta",
+    ], `${tool?.name ?? "unknown"} tool`);
     requireNonemptyString(tool?.title, `${tool?.name ?? "unknown"} title`);
     requireNonemptyString(tool?.description, `${tool?.name ?? "unknown"} description`);
     validateJsonSchema(tool?.inputSchema, `${tool.name} inputSchema`);
@@ -319,12 +420,20 @@ export function validateHostedDescriptor(descriptor) {
     for (const hint of ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"]) {
       if (typeof tool.annotations?.[hint] !== "boolean") fail(`${tool.name} ${hint} is required`);
     }
-    if (!Array.isArray(tool.visibility) || tool.visibility.length === 0) {
-      fail(`${tool.name} visibility is required`);
+    if (!tool._meta || typeof tool._meta !== "object" || Array.isArray(tool._meta)) {
+      fail(`${tool.name} _meta is required`);
     }
-    if (typeof tool.widgetAccessible !== "boolean") {
-      fail(`${tool.name} widgetAccessible is required`);
+    if (!Array.isArray(tool._meta.ui?.visibility) || tool._meta.ui.visibility.length === 0) {
+      fail(`${tool.name} _meta.ui.visibility is required`);
     }
+    if (typeof tool._meta["openai/widgetAccessible"] !== "boolean") {
+      fail(`${tool.name} _meta openai/widgetAccessible is required`);
+    }
+    same(
+      tool._meta.securitySchemes,
+      tool.securitySchemes,
+      `${tool.name} _meta securitySchemes`,
+    );
   }
   const actualOptionalOAuth = descriptor.tools
     .filter((tool) => {
@@ -407,15 +516,27 @@ export function listCanonicalRemoteRefs(
   requireNonemptyString(remote, "canonical source remote");
   return run("git", [
     "--no-replace-objects",
-    "--git-dir=/dev/null",
-    "ls-remote",
-    "--refs",
-    remote,
+      "--git-dir=/dev/null",
+      "ls-remote",
+      "--refs",
+      remote,
+      "refs/heads/*",
+      "refs/tags/*",
   ], {
     cwd,
     env: environment,
     timeout: 30_000,
     stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+export function hasCanonicalHostedAdvertisement(remoteRefs, commit) {
+  requireHex(commit, 40, "canonical hosted source commit");
+  return String(remoteRefs).split(/\r?\n/).some((line) => {
+    const [remoteCommit, refname, extra] = line.trim().split(/\s+/);
+    return remoteCommit === commit
+      && /^refs\/(?:heads|tags)\/.+/.test(refname ?? "")
+      && extra === undefined;
   });
 }
 
@@ -497,16 +618,18 @@ export function createTreePureArchive({
   });
 }
 
-function materializeArchivedHostedSource({
+async function materializeArchivedHostedSource({
   root,
   commit,
   tree,
   cleanEnvironment,
+  apiSourceRoot,
+  facilitatorSourceRoot,
+  outerEnvironment,
 }) {
   const disposableRoot = mkdtempSync(resolve(tmpdir(), "opendexter-hosted-source-"));
   const sourceArchive = resolve(disposableRoot, "source.tar");
   const archivedRoot = resolve(disposableRoot, "source");
-  let toolchain = null;
   try {
     mkdirSync(archivedRoot);
     createTreePureArchive({
@@ -535,68 +658,67 @@ function materializeArchivedHostedSource({
     if (manifest.packageManager !== `npm@${REVIEWED_NPM_VERSION}`) {
       fail("hosted source does not pin the reviewed npm version");
     }
-    toolchain = stageReviewedToolchain({
-      stageRoot: resolve(disposableRoot, "reviewed-toolchain"),
+    if (process.version !== "v22.19.0") {
+      fail("hosted source materializer Node version drifted");
+    }
+    const npmCli = realpathSync(resolve(
+      dirname(process.execPath),
+      "../lib/node_modules/npm/bin/npm-cli.js",
+    ));
+    const npmVersion = run(process.execPath, [npmCli, "--version"], {
+      env: cleanEnvironment,
     });
-    const npmCache = resolve(disposableRoot, "npm-cache");
-    const buildEnvironment = reviewedEnvironment({
-      npmCache,
-      nodeBin: dirname(toolchain.command),
-    });
-    const productionEnvironment = reviewedEnvironment({
-      npmCache,
-      production: true,
-      nodeBin: dirname(toolchain.command),
-    });
-    productionEnvironment.SENTRY_DSN = "";
-    productionEnvironment.SENTRY_OPEN_MCP_DSN = "";
-    const runtime = reviewedRuntimeIdentity({ toolchain });
-    const npmCi = reviewedNpm([
-      "ci",
-      "--ignore-scripts",
-      "--no-audit",
-      "--no-fund",
-    ], { toolchain });
-    run(npmCi.command, npmCi.args, {
-      cwd: archivedRoot,
-      env: buildEnvironment,
-      stdio: "pipe",
-    });
-    const npmBuild = reviewedNpm(
-      ["run", "build:runtime-workspaces"],
-      { toolchain },
+    if (npmVersion !== REVIEWED_RELEASE_NPM_VERSION) {
+      fail("hosted source materializer npm version drifted");
+    }
+    const token = outerEnvironment?.GH_TOKEN;
+    if (
+      typeof token !== "string"
+      || token.length === 0
+      || token.length > 4096
+      || /[\0\r\n]/.test(token)
+    ) {
+      fail("hosted private source token is absent or malformed");
+    }
+    if (outerEnvironment?.GITHUB_PERSONAL_ACCESS_TOKEN) {
+      fail("hosted source refuses a reusable personal-access token");
+    }
+    const materializerModule = await import(
+      `${pathToFileURL(resolve(
+        archivedRoot,
+        DESCRIPTOR_MATERIALIZER_PATH,
+      )).href}?source=${commit}`
     );
-    run(npmBuild.command, npmBuild.args, {
-      cwd: archivedRoot,
-      env: buildEnvironment,
-      stdio: "pipe",
-    });
-    const descriptorOutput = run(
-      toolchain.command,
-      [resolve(archivedRoot, DESCRIPTOR_MATERIALIZER_PATH), "--emit-json"],
-      {
-        cwd: archivedRoot,
-        env: productionEnvironment,
-        stdio: "pipe",
-      },
-    );
+    if (typeof materializerModule.materializeOpenToolDescriptorsFromGit !== "function") {
+      fail("hosted source lacks the reviewed outer materializer export");
+    }
+    const materializedDescriptor =
+      await materializerModule.materializeOpenToolDescriptorsFromGit({
+        sourceRoot: root,
+        apiSourceRoot,
+        facilitatorSourceRoot,
+        verifyCrossRepositorySources: true,
+        environment: {
+          ...cleanEnvironment,
+          GH_TOKEN: token,
+        },
+      });
     const committedDescriptorBytes = readFileSync(
       resolve(archivedRoot, DESCRIPTOR_PATH),
     );
     return {
       committedDescriptor: JSON.parse(committedDescriptorBytes.toString("utf8")),
-      materializedDescriptor: JSON.parse(descriptorOutput),
+      materializedDescriptor,
       materialization: {
         recipe: MATERIALIZATION_RECIPE,
-        node: runtime.node,
-        npm: runtime.npm,
+        node: process.version,
+        npm: npmVersion,
         packageLockSha256: sha256(readFileSync(resolve(archivedRoot, "package-lock.json"))),
         sourceArchiveSha256: sha256(readFileSync(sourceArchive)),
         descriptorSha256: sha256(committedDescriptorBytes),
       },
     };
   } finally {
-    disposeReviewedToolchain(toolchain);
     rmSync(disposableRoot, { recursive: true, force: true });
   }
 }
@@ -642,7 +764,13 @@ export function buildHostedContract({ descriptor, commit, tree, materialization 
   };
 }
 
-export async function verifyHostedSource({ sourceRoot, mode = "check" }) {
+export async function verifyHostedSource({
+  sourceRoot,
+  apiSourceRoot,
+  facilitatorSourceRoot,
+  mode = "check",
+  outerEnvironment = process.env,
+}) {
   const root = realpathSync(sourceRoot);
   const cleanEnvironment = reviewedEnvironment();
   const topLevel = realpathSync(git(
@@ -682,19 +810,21 @@ export async function verifyHostedSource({ sourceRoot, mode = "check" }) {
   const tree = git(root, ["rev-parse", "HEAD^{tree}"], {
     env: cleanEnvironment,
   });
+  const exactApiSourceRoot = realpathSync(apiSourceRoot);
+  const exactFacilitatorSourceRoot = realpathSync(facilitatorSourceRoot);
   const remoteRefs = listCanonicalRemoteRefs(EXPECTED_HOSTED_SOURCE_ORIGIN, {
     environment: cleanEnvironment,
   });
-  const advertised = remoteRefs.split(/\r?\n/).some((line) => {
-    const [remoteCommit, refname, extra] = line.trim().split(/\s+/);
-    return remoteCommit === commit && Boolean(refname) && extra === undefined;
-  });
+  const advertised = hasCanonicalHostedAdvertisement(remoteRefs, commit);
   if (!advertised) fail("canonical hosted source does not advertise HEAD");
-  const archived = materializeArchivedHostedSource({
+  const archived = await materializeArchivedHostedSource({
     root,
     commit,
     tree,
     cleanEnvironment,
+    apiSourceRoot: exactApiSourceRoot,
+    facilitatorSourceRoot: exactFacilitatorSourceRoot,
+    outerEnvironment,
   });
   const descriptor = verifyMaterializedHostedDescriptor(
     archived.committedDescriptor,
@@ -719,16 +849,37 @@ export async function verifyHostedSource({ sourceRoot, mode = "check" }) {
 function parseArgs(argv) {
   const mode = argv.includes("--write") ? "write" : "check";
   const sourceIndex = argv.indexOf("--source");
+  const apiSourceIndex = argv.indexOf("--api-source");
+  const facilitatorSourceIndex = argv.indexOf("--facilitator-source");
   const source = sourceIndex >= 0 ? argv[sourceIndex + 1] : process.env.OPENDXTER_HOSTED_SOURCE_ROOT;
+  const apiSource = apiSourceIndex >= 0
+    ? argv[apiSourceIndex + 1]
+    : process.env.OPENDXTER_API_SOURCE_ROOT;
+  const facilitatorSource = facilitatorSourceIndex >= 0
+    ? argv[facilitatorSourceIndex + 1]
+    : process.env.OPENDXTER_FACILITATOR_SOURCE_ROOT;
   if (!source) fail("--source or OPENDXTER_HOSTED_SOURCE_ROOT is required");
-  if (!isAbsolute(source)) fail("hosted source root must be absolute");
-  return { mode, source };
+  if (!apiSource) fail("--api-source or OPENDXTER_API_SOURCE_ROOT is required");
+  if (!facilitatorSource) {
+    fail("--facilitator-source or OPENDXTER_FACILITATOR_SOURCE_ROOT is required");
+  }
+  if (![source, apiSource, facilitatorSource].every(isAbsolute)) {
+    fail("hosted paired source roots must be absolute");
+  }
+  return { mode, source, apiSource, facilitatorSource };
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const { mode, source } = parseArgs(process.argv.slice(2));
-    const result = await verifyHostedSource({ sourceRoot: source, mode });
+    const { mode, source, apiSource, facilitatorSource } = parseArgs(
+      process.argv.slice(2),
+    );
+    const result = await verifyHostedSource({
+      sourceRoot: source,
+      apiSourceRoot: apiSource,
+      facilitatorSourceRoot: facilitatorSource,
+      mode,
+    });
     process.stdout.write(
       `${mode === "write" ? "Pinned" : "Verified"} hosted descriptors at `
         + `${result.commit}/${result.tree}.\n`,

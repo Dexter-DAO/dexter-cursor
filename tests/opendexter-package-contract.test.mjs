@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import {
   buildHostedContract,
   createTreePureArchive,
+  hasCanonicalHostedAdvertisement,
   listCanonicalRemoteRefs,
   validateHostedDescriptor,
   verifyHostedRepositoryIdentity,
@@ -109,36 +110,42 @@ const TOOL_NAME =
   /\b(?:x402_[a-z_]+|dexter_[a-z_]+|promote_skill|card_[a-z_]+)\b/g;
 
 function hostedDescriptorFixture() {
-  const tool = ({ name, securitySchemes, marker }) => ({
-    name,
-    title: `${name} title`,
-    description: `${name} description`,
-    inputSchema: {
-      type: "object",
-      properties: { input: { type: "string", const: marker } },
-      additionalProperties: false,
-    },
-    outputSchema: {
-      type: "object",
-      properties: { output: { type: "string", const: marker } },
-      additionalProperties: false,
-    },
-    securitySchemes,
-    annotations: {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-    },
-    visibility: ["model"],
-    widgetAccessible: false,
-  });
+  const tool = ({ name, securitySchemes, marker }) => {
+    const schemes = structuredClone(securitySchemes);
+    return {
+      name,
+      title: `${name} title`,
+      description: `${name} description`,
+      inputSchema: {
+        type: "object",
+        properties: { input: { type: "string", const: marker } },
+        additionalProperties: false,
+      },
+      outputSchema: {
+        type: "object",
+        properties: { output: { type: "string", const: marker } },
+        additionalProperties: false,
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      securitySchemes: schemes,
+      _meta: {
+        ui: { visibility: ["model"] },
+        "openai/widgetAccessible": false,
+        securitySchemes: structuredClone(schemes),
+      },
+    };
+  };
   return {
     schemaVersion: 2,
     kind: "opendexter-hosted-tool-descriptors/v2",
     sourceContracts: {
-      schemaVersion: 1,
-      kind: "opendexter-source-contracts/v1",
+      schemaVersion: 3,
+      kind: "opendexter-source-contracts/v3",
       api: {
         repository: "https://github.com/Dexter-DAO/dexter-api",
         commit: "a".repeat(40),
@@ -148,6 +155,45 @@ function hostedDescriptorFixture() {
             "tests/fixtures/governed-agent-reconcile-advanced-final-c3e32885.json",
           sha256: "c".repeat(64),
           canonicalBodyDigest: "d".repeat(64),
+        },
+      },
+      integratedApiRelease: {
+        repository: "https://github.com/Dexter-DAO/dexter-api",
+        commit: "1".repeat(40),
+        tree: "2".repeat(40),
+        governedContractCommit: "a".repeat(40),
+        governedContractTree: "b".repeat(40),
+      },
+      portfolioProjection: {
+        repository: "https://github.com/Dexter-DAO/dexter-api",
+        commit: "1".repeat(40),
+        tree: "2".repeat(40),
+        sourcePaths: [
+          "src/portfolio/approvedActionTargets.ts",
+          "src/routes/passkeyMcpBinding.ts",
+          "src/routes/defaultGovernedDelegatedAssetActions.ts",
+        ],
+        fixture: {
+          consumerPath:
+            "tests/fixtures/opendexter-portfolio-v1-zero-holding-approved-action-targets.json",
+          apiPath:
+            "tests/fixtures/opendexter-portfolio-v1-zero-holding-approved-action-targets.json",
+          sha256: "3".repeat(64),
+          canonicalDigest: "4".repeat(64),
+        },
+      },
+      facilitator: {
+        repository: "https://github.com/Dexter-DAO/dexter-facilitator",
+        commit: "5".repeat(40),
+        tree: "6".repeat(40),
+        bindingFixture: {
+          consumerPath:
+            "tests/fixtures/governed-agent-trade-api-facilitator-binding-v1.json",
+          apiPath:
+            "tests/fixtures/governed-agent-trade-api-facilitator-binding-v1.json",
+          facilitatorPath:
+            "test/fixtures/governed-agent-trade-api-facilitator-binding-v1.json",
+          sha256: "7".repeat(64),
         },
       },
       mcp: {
@@ -397,6 +443,25 @@ test("canonical source lookup ignores caller repository URL rewrites", async (t)
   );
 });
 
+test("canonical hosted advertisement accepts only public heads and tags", () => {
+  const commit = "a".repeat(40);
+  assert.equal(
+    hasCanonicalHostedAdvertisement(`${commit}\trefs/heads/main`, commit),
+    true,
+  );
+  assert.equal(
+    hasCanonicalHostedAdvertisement(`${commit}\trefs/tags/opendexter-v1`, commit),
+    true,
+  );
+  for (const hostile of [
+    `${commit}\trefs/pull/123/head`,
+    `${commit}\trefs/changes/1`,
+    `${commit}\trefs/heads/main\textra`,
+  ]) {
+    assert.equal(hasCanonicalHostedAdvertisement(hostile, commit), false);
+  }
+});
+
 test("tree-pure archive ignores hidden and local attribute injection", async (t) => {
   const root = await mkdtemp(resolve(tmpdir(), "opendexter-archive-attrs-"));
   const repository = resolve(root, "repository");
@@ -543,7 +608,7 @@ test("hosted contract writer preserves the full descriptor and deny lists", () =
   const descriptor = hostedDescriptorFixture();
   const materialization = {
     recipe:
-      "sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v2",
+      "mcp-source-owned-outer-receipt+sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v3",
     node: "v22.19.0",
     npm: "10.9.3",
     packageLockSha256: "1".repeat(64),
@@ -573,14 +638,25 @@ test("hosted contract writer preserves the full descriptor and deny lists", () =
 
 test("release fixture is source-pinned to the exact hosted twelve", async () => {
   const contract = await readJson(contractPath);
-  assert.equal(contract.contractId, "opendexter-hosted-twelve-tool-v1");
+  assert.equal(contract.contractId, "opendexter-hosted-full-descriptor-v2");
   assert.deepEqual(contract.source, {
     repository: "https://github.com/Dexter-DAO/dexter-mcp",
-    commit: "e59f417ffa76f776a6e92165bf48d8cf908cc08d",
-    tree: "1656a9ee2ca7282f04932ffe228a909b49c83670",
+    commit: "b36075a9f96be921a58a7e16ccb410adb6b57f83",
+    tree: "511ece446a4329d31a16474f3b749bea19f073df",
+    descriptorPath: "release/open-tool-descriptors.json",
+    descriptorMaterializerPath: "scripts/materialize-open-tool-descriptors.mjs",
     toolContractPath: "lib/open-tool-contracts.mjs",
     authContractPath: "lib/open-tool-auth.mjs",
   });
+  assert.equal(contract.sourceContracts.schemaVersion, 3);
+  assert.equal(
+    contract.sourceContracts.integratedApiRelease.commit,
+    "6d8de2cee71fc217559fa2a2825fa2a25faf9497",
+  );
+  assert.equal(
+    contract.sourceContracts.facilitator.commit,
+    "df370826b7b951dfc825a689c4e6f3b1928ee5e2",
+  );
   assert.equal(contract.mcp.url, "https://open.dexter.cash/mcp");
   assert.equal(contract.mcp.manifestVersion, "0.5.0");
   assert.equal(contract.mcp.resource, "https://open.dexter.cash/mcp");
@@ -634,7 +710,8 @@ test("release fixture is source-pinned to the exact hosted twelve", async () => 
     false,
   );
   assert.equal(
-    contract.tools.find(({ name }) => name === "x402_fetch").widgetAccessible,
+    contract.tools.find(({ name }) => name === "x402_fetch")
+      ._meta["openai/widgetAccessible"],
     false,
   );
   assert.deepEqual(
@@ -647,21 +724,21 @@ test("release fixture is source-pinned to the exact hosted twelve", async () => 
       openWorldHint: false,
     },
   );
-  assert.deepEqual(
-    contract.tools.find(({ name }) => name === "dexter_portfolio"),
-    {
-      name: "dexter_portfolio",
-      securitySchemes: [{ type: "oauth2", scopes: ["vault"] }],
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-      visibility: ["model"],
-      widgetAccessible: false,
-    },
-  );
+  const portfolio = contract.tools.find(({ name }) => name === "dexter_portfolio");
+  assert.deepEqual(portfolio.securitySchemes, [
+    { type: "oauth2", scopes: ["vault"] },
+  ]);
+  assert.deepEqual(portfolio.annotations, {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  assert.deepEqual(portfolio._meta.ui.visibility, ["model"]);
+  assert.equal(portfolio._meta["openai/widgetAccessible"], false);
+  assert.deepEqual(portfolio._meta.securitySchemes, portfolio.securitySchemes);
+  assert.equal(portfolio.inputSchema.type, "object");
+  assert.equal(portfolio.outputSchema.type, "object");
   for (const name of OAUTH_PROMOTED_TOOLS) {
     assert.deepEqual(EXPECTED_SCHEMES[name], ["oauth2:vault"], name);
   }
@@ -670,7 +747,7 @@ test("release fixture is source-pinned to the exact hosted twelve", async () => 
   assert.deepEqual(EXPECTED_SCHEMES.dexter_portfolio, ["oauth2:vault"]);
   assert.deepEqual(
     contract.tools
-      .filter(({ visibility }) => visibility.includes("model"))
+      .filter(({ _meta }) => _meta.ui.visibility.includes("model"))
       .map(({ name }) => name),
     HOSTED_TOOLS,
   );
@@ -686,11 +763,25 @@ test("release fixture is source-pinned to the exact hosted twelve", async () => 
 
 test(
   "release fixture matches the pinned hosted source checkout",
-  { skip: !process.env.OPENDXTER_HOSTED_SOURCE_ROOT },
+  {
+    skip: ![
+      process.env.OPENDXTER_HOSTED_SOURCE_ROOT,
+      process.env.OPENDXTER_API_SOURCE_ROOT,
+      process.env.OPENDXTER_FACILITATOR_SOURCE_ROOT,
+      process.env.GH_TOKEN,
+    ].every(Boolean),
+  },
   async () => {
     const sourceRoot = resolve(process.env.OPENDXTER_HOSTED_SOURCE_ROOT);
     const contract = await readJson(contractPath);
-    const verified = await verifyHostedSource({ sourceRoot, mode: "check" });
+    const verified = await verifyHostedSource({
+      sourceRoot,
+      apiSourceRoot: resolve(process.env.OPENDXTER_API_SOURCE_ROOT),
+      facilitatorSourceRoot: resolve(
+        process.env.OPENDXTER_FACILITATOR_SOURCE_ROOT,
+      ),
+      mode: "check",
+    });
     assert.equal(verified.commit, contract.source.commit);
     assert.equal(verified.tree, contract.source.tree);
     assert.deepEqual(verified.contract, contract);
@@ -785,8 +876,9 @@ test("release train requires full hosted descriptors and ordinary-language routi
     "outputSchema",
     "securitySchemes",
     "annotations",
-    "visibility",
-    "widgetAccessible",
+    "_meta",
+    "ui.visibility",
+    "openai/widgetAccessible",
   ]) {
     assert.match(hostedVerifier, new RegExp(field));
   }
@@ -803,13 +895,17 @@ test("release train requires full hosted descriptors and ordinary-language routi
     "archive",
     "package-lock.json",
     "npm@",
-    "--ignore-scripts",
-    "build:runtime-workspaces",
-    "--emit-json",
+    "materializeOpenToolDescriptorsFromGit",
+    "verifyCrossRepositorySources",
+    "apiSourceRoot",
+    "facilitatorSourceRoot",
+    "GH_TOKEN",
+    "GITHUB_PERSONAL_ACCESS_TOKEN",
   ]) {
     assert.match(hostedVerifier, new RegExp(invariant));
   }
-  assert.doesNotMatch(hostedVerifier, /pathToFileURL|await import\(/);
+  assert.match(hostedVerifier, /pathToFileURL/);
+  assert.match(hostedVerifier, /await import\(/);
 
   const casesPath = resolve(repoRoot, "tests/opendexter-novice-routing-cases.json");
   const suite = await readJson(casesPath);
