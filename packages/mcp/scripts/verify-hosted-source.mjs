@@ -14,6 +14,13 @@ import {
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  disposeReviewedToolchain,
+  REVIEWED_RELEASE_NPM_VERSION,
+  reviewedNpm,
+  reviewedRuntimeIdentity,
+  stageReviewedToolchain,
+} from "./reviewed-toolchain.mjs";
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptRoot, "../../..");
@@ -23,7 +30,7 @@ const contractPath = resolve(
 );
 const DESCRIPTOR_PATH = "release/open-tool-descriptors.json";
 const DESCRIPTOR_MATERIALIZER_PATH = "scripts/materialize-open-tool-descriptors.mjs";
-const REVIEWED_NPM_VERSION = "10.9.3";
+const REVIEWED_NPM_VERSION = REVIEWED_RELEASE_NPM_VERSION;
 const DESCRIPTOR_KIND = "opendexter-hosted-tool-descriptors/v2";
 const SOURCE_CONTRACTS_KIND = "opendexter-source-contracts/v1";
 const MATERIALIZATION_RECIPE =
@@ -344,7 +351,7 @@ export function verifyMaterializedHostedDescriptor(descriptor, materialized) {
   return committed;
 }
 
-function reviewedEnvironment({ npmCache, production = false } = {}) {
+function reviewedEnvironment({ npmCache, production = false, nodeBin } = {}) {
   const forbidden = [
     "NODE_OPTIONS",
     "NODE_PATH",
@@ -359,10 +366,12 @@ function reviewedEnvironment({ npmCache, production = false } = {}) {
       fail(`hosted source release environment contains ${key}`);
     }
   }
-  const nodeBin = dirname(realpathSync(process.execPath));
+  const reviewedNodeBin = nodeBin
+    ? realpathSync(nodeBin)
+    : dirname(realpathSync(process.execPath));
   return Object.fromEntries(Object.entries({
     PATH: [
-      nodeBin,
+      reviewedNodeBin,
       "/usr/local/sbin",
       "/usr/local/bin",
       "/usr/sbin",
@@ -488,19 +497,6 @@ export function createTreePureArchive({
   });
 }
 
-function reviewedNpm(args = []) {
-  const node = realpathSync(process.execPath);
-  const npmCli = realpathSync(resolve(
-    dirname(node),
-    "../lib/node_modules/npm/bin/npm-cli.js",
-  ));
-  const stat = lstatSync(npmCli);
-  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o022) !== 0) {
-    fail("reviewed npm CLI is not one protected regular file");
-  }
-  return { command: node, args: [npmCli, ...args] };
-}
-
 function materializeArchivedHostedSource({
   root,
   commit,
@@ -510,6 +506,7 @@ function materializeArchivedHostedSource({
   const disposableRoot = mkdtempSync(resolve(tmpdir(), "opendexter-hosted-source-"));
   const sourceArchive = resolve(disposableRoot, "source.tar");
   const archivedRoot = resolve(disposableRoot, "source");
+  let toolchain = null;
   try {
     mkdirSync(archivedRoot);
     createTreePureArchive({
@@ -538,40 +535,44 @@ function materializeArchivedHostedSource({
     if (manifest.packageManager !== `npm@${REVIEWED_NPM_VERSION}`) {
       fail("hosted source does not pin the reviewed npm version");
     }
+    toolchain = stageReviewedToolchain({
+      stageRoot: resolve(disposableRoot, "reviewed-toolchain"),
+    });
     const npmCache = resolve(disposableRoot, "npm-cache");
-    const buildEnvironment = reviewedEnvironment({ npmCache });
+    const buildEnvironment = reviewedEnvironment({
+      npmCache,
+      nodeBin: dirname(toolchain.command),
+    });
     const productionEnvironment = reviewedEnvironment({
       npmCache,
       production: true,
+      nodeBin: dirname(toolchain.command),
     });
     productionEnvironment.SENTRY_DSN = "";
     productionEnvironment.SENTRY_OPEN_MCP_DSN = "";
-    const npmVersion = reviewedNpm(["--version"]);
-    if (
-      run(npmVersion.command, npmVersion.args, { env: buildEnvironment })
-        !== REVIEWED_NPM_VERSION
-    ) {
-      fail("installed npm differs from the reviewed npm version");
-    }
+    const runtime = reviewedRuntimeIdentity({ toolchain });
     const npmCi = reviewedNpm([
       "ci",
       "--ignore-scripts",
       "--no-audit",
       "--no-fund",
-    ]);
+    ], { toolchain });
     run(npmCi.command, npmCi.args, {
       cwd: archivedRoot,
       env: buildEnvironment,
       stdio: "pipe",
     });
-    const npmBuild = reviewedNpm(["run", "build:runtime-workspaces"]);
+    const npmBuild = reviewedNpm(
+      ["run", "build:runtime-workspaces"],
+      { toolchain },
+    );
     run(npmBuild.command, npmBuild.args, {
       cwd: archivedRoot,
       env: buildEnvironment,
       stdio: "pipe",
     });
     const descriptorOutput = run(
-      realpathSync(process.execPath),
+      toolchain.command,
       [resolve(archivedRoot, DESCRIPTOR_MATERIALIZER_PATH), "--emit-json"],
       {
         cwd: archivedRoot,
@@ -587,14 +588,15 @@ function materializeArchivedHostedSource({
       materializedDescriptor: JSON.parse(descriptorOutput),
       materialization: {
         recipe: MATERIALIZATION_RECIPE,
-        node: process.version,
-        npm: REVIEWED_NPM_VERSION,
+        node: runtime.node,
+        npm: runtime.npm,
         packageLockSha256: sha256(readFileSync(resolve(archivedRoot, "package-lock.json"))),
         sourceArchiveSha256: sha256(readFileSync(sourceArchive)),
         descriptorSha256: sha256(committedDescriptorBytes),
       },
     };
   } finally {
+    disposeReviewedToolchain(toolchain);
     rmSync(disposableRoot, { recursive: true, force: true });
   }
 }

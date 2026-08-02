@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyRebuiltReleaseCandidate } from "./build-release-candidate.mjs";
 import {
@@ -48,6 +48,7 @@ function same(actual, expected, label) {
 export function dryRunExactTarball({
   tarball,
   tag,
+  toolchain,
   execute = execFileSync,
 }) {
   const dryRunRoot = mkdtempSync(resolve(tmpdir(), "opendexter-publish-dry-run-"));
@@ -57,9 +58,15 @@ export function dryRunExactTarball({
     const environment = reviewedReleaseEnvironment({
       npmCache: resolve(dryRunRoot, "npm-cache"),
       home: releaseHome,
+      nodeBin: dirname(toolchain.command),
     });
-    const runtime = reviewedRuntimeIdentity({ environment });
-    const invocation = reviewedNpmPublishInvocation({ tarball, tag, dryRun: true });
+    const runtime = reviewedRuntimeIdentity({ toolchain });
+    const invocation = reviewedNpmPublishInvocation({
+      tarball,
+      tag,
+      dryRun: true,
+      toolchain,
+    });
     const raw = execute(invocation.command, invocation.args, {
       cwd: dryRunRoot,
       encoding: "utf8",
@@ -115,6 +122,7 @@ export async function main() {
       const dryRun = dryRunExactTarball({
         tarball: candidateTarball,
         tag: explicitTag,
+        toolchain: rebuilt.toolchain,
       });
       same(dryRun.runtime, rebuilt.runtime, "dry-run Node/npm identity");
       same(dryRun.artifact, {

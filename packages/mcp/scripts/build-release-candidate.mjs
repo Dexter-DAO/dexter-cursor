@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, resolve } from "node:path";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   canonicalJsonDigest,
@@ -20,15 +20,19 @@ import {
   inspectTarball,
   packageRoot,
   RELEASE_BUILD_RECIPE,
-  reviewedNpm,
   reviewedReleaseEnvironment,
-  reviewedRuntimeIdentity,
   reviewedWidgetInventory,
   repositoryIdentity,
   repositoryRoot,
   verifyAttestation,
   verifyRootLock,
 } from "./package-provenance.mjs";
+import {
+  disposeReviewedToolchain,
+  reviewedNpm,
+  reviewedRuntimeIdentity,
+  stageReviewedToolchain,
+} from "./reviewed-toolchain.mjs";
 import { releaseChannel } from "./release-policy.mjs";
 import {
   EXPECTED_HOSTED_SOURCE_REPOSITORY,
@@ -98,8 +102,8 @@ export function snapshotJsonInput(source, destination) {
   };
 }
 
-function runReviewedNpm(args, options = {}) {
-  const npm = reviewedNpm(args);
+function runReviewedNpm(toolchain, args, options = {}) {
+  const npm = reviewedNpm(args, { toolchain });
   return run(npm.command, npm.args, options);
 }
 
@@ -151,133 +155,151 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
   outputRoot,
   noviceEvidence,
 }) {
-  const npmCache = resolve(stageRoot, "npm-cache");
-  const releaseHome = resolve(stageRoot, "home");
-  mkdirSync(releaseHome);
-  const environment = reviewedReleaseEnvironment({ npmCache, home: releaseHome });
-  const runtime = reviewedRuntimeIdentity({ environment });
-  const sourceStage = stageTreePureSource({
-    sourceRoot,
-    commit: identity.commit,
-    tree: identity.tree,
-    stageRoot,
-    name: "source",
-    environment,
-  });
-  const hostedStage = stageTreePureSource({
-    sourceRoot: hostedSource,
-    commit: hosted.commit,
-    tree: hosted.tree,
-    stageRoot,
-    name: "hosted-source",
-    environment,
-  });
-  const verifiedHostedArchiveSha256 =
-    hosted.contract?.materialization?.sourceArchiveSha256 ?? null;
-  if (
-    verifiedHostedArchiveSha256
-    && hostedStage.archiveSha256 !== verifiedHostedArchiveSha256
-  ) {
-    fail("recomputed hosted source archive differs from its verified contract");
-  }
-
-  const cleanRoot = sourceStage.extractedRoot;
-  const cleanPackageRoot = resolve(cleanRoot, "packages/mcp");
-  const immutableWidgetSource = resolve(
-    hostedStage.extractedRoot,
-    "public/apps-sdk",
-  );
-  const hostedContractPath = resolve(
-    cleanRoot,
-    "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
-  );
-  const cleanManifest = readJson(resolve(cleanPackageRoot, "package.json"));
-  if (
-    canonicalJsonDigest(readJson(hostedContractPath))
-    !== canonicalJsonDigest(hosted.contract)
-  ) {
-    fail("archived IDE hosted contract differs from verified hosted source");
-  }
-  const archivedLock = verifyRootLock({
-    repoRoot: cleanRoot,
-    pkgRoot: cleanPackageRoot,
-    requireTracked: false,
-  });
-  if (archivedLock.sha256 !== expectedLockSha256) {
-    fail("archived release lock differs from the reviewed source lock");
-  }
-  const widgets = reviewedWidgetInventory(immutableWidgetSource);
-
-  run(
-    process.execPath,
-    [
-      resolve(cleanRoot, "tests/opendexter-novice-routing-evaluation.mjs"),
-      "--results",
-      noviceEvidence,
-    ],
-    { cwd: cleanRoot, env: environment, stdio: "pipe" },
-  );
-
-  const npmCiArgs = ["ci", "--ignore-scripts"];
-  npmCiArgs.push("--no-audit", "--no-fund");
-  runReviewedNpm(npmCiArgs, {
-    cwd: cleanRoot,
-    env: environment,
-    stdio: "pipe",
-  });
-  runReviewedNpm(["run", "version:check", "--workspace=@dexterai/opendexter"], {
-    cwd: cleanRoot,
-    env: environment,
-    stdio: "pipe",
-  });
-  runReviewedNpm(["run", "build", "--workspace=@dexterai/opendexter"], {
-    cwd: cleanRoot,
-    env: {
-      ...environment,
-      DEXTER_WIDGET_SOURCE: immutableWidgetSource,
-    },
-    stdio: "pipe",
-  });
-  for (const widget of widgets.inventory) {
-    const copied = resolve(cleanPackageRoot, "dist/widgets", widget.path);
-    if (digestFile(copied) !== widget.sha256) {
-      fail(`rebuilt package widget differs from immutable hosted source: ${widget.path}`);
-    }
-  }
-
-  const rawPack = runReviewedNpm([
-    "pack",
-    "--json",
-    "--ignore-scripts",
-    `--pack-destination=${outputRoot}`,
-  ], {
-    cwd: cleanPackageRoot,
-    env: environment,
-  });
-  const [pack] = JSON.parse(rawPack);
-  const tarball = resolve(outputRoot, pack.filename);
-  const inspected = inspectTarball(tarball, {
-    sourcePackageRoot: cleanPackageRoot,
-  });
-  return {
-    tarball,
-    inspected,
-    identity,
-    lock: archivedLock,
-    manifest: cleanManifest,
-    runtime,
-    sourceArchiveSha256: sourceStage.archiveSha256,
-    hosted: {
+  let toolchain = null;
+  try {
+    toolchain = stageReviewedToolchain({
+      stageRoot: resolve(stageRoot, "reviewed-toolchain"),
+    });
+    const npmCache = resolve(stageRoot, "npm-cache");
+    const releaseHome = resolve(stageRoot, "home");
+    mkdirSync(releaseHome);
+    const environment = reviewedReleaseEnvironment({
+      npmCache,
+      home: releaseHome,
+      nodeBin: dirname(toolchain.command),
+    });
+    const runtime = reviewedRuntimeIdentity({ toolchain });
+    const sourceStage = stageTreePureSource({
+      sourceRoot,
+      commit: identity.commit,
+      tree: identity.tree,
+      stageRoot,
+      name: "source",
+      environment,
+    });
+    const hostedStage = stageTreePureSource({
+      sourceRoot: hostedSource,
       commit: hosted.commit,
       tree: hosted.tree,
-      descriptorPath: hosted.descriptorPath,
-      sourceArchiveSha256: hostedStage.archiveSha256,
-      contractSha256: digestFile(hostedContractPath),
-      widgetSourcePath: "public/apps-sdk",
-      widgetSourceDigest: widgets.digest,
-      widgetInventory: widgets.inventory,
-    },
-  };
+      stageRoot,
+      name: "hosted-source",
+      environment,
+    });
+    const verifiedHostedArchiveSha256 =
+      hosted.contract?.materialization?.sourceArchiveSha256 ?? null;
+    if (
+      verifiedHostedArchiveSha256
+      && hostedStage.archiveSha256 !== verifiedHostedArchiveSha256
+    ) {
+      fail("recomputed hosted source archive differs from its verified contract");
+    }
+
+    const cleanRoot = sourceStage.extractedRoot;
+    const cleanPackageRoot = resolve(cleanRoot, "packages/mcp");
+    const immutableWidgetSource = resolve(
+      hostedStage.extractedRoot,
+      "public/apps-sdk",
+    );
+    const hostedContractPath = resolve(
+      cleanRoot,
+      "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
+    );
+    const cleanManifest = readJson(resolve(cleanPackageRoot, "package.json"));
+    if (
+      canonicalJsonDigest(readJson(hostedContractPath))
+      !== canonicalJsonDigest(hosted.contract)
+    ) {
+      fail("archived IDE hosted contract differs from verified hosted source");
+    }
+    const archivedLock = verifyRootLock({
+      repoRoot: cleanRoot,
+      pkgRoot: cleanPackageRoot,
+      requireTracked: false,
+    });
+    if (archivedLock.sha256 !== expectedLockSha256) {
+      fail("archived release lock differs from the reviewed source lock");
+    }
+    const widgets = reviewedWidgetInventory(immutableWidgetSource);
+
+    run(
+      toolchain.command,
+      [
+        resolve(cleanRoot, "tests/opendexter-novice-routing-evaluation.mjs"),
+        "--results",
+        noviceEvidence,
+      ],
+      { cwd: cleanRoot, env: environment, stdio: "pipe" },
+    );
+
+    const npmCiArgs = ["ci", "--ignore-scripts"];
+    npmCiArgs.push("--no-audit", "--no-fund");
+    runReviewedNpm(toolchain, npmCiArgs, {
+      cwd: cleanRoot,
+      env: environment,
+      stdio: "pipe",
+    });
+    runReviewedNpm(
+      toolchain,
+      ["run", "version:check", "--workspace=@dexterai/opendexter"],
+      { cwd: cleanRoot, env: environment, stdio: "pipe" },
+    );
+    runReviewedNpm(
+      toolchain,
+      ["run", "build", "--workspace=@dexterai/opendexter"],
+      {
+        cwd: cleanRoot,
+        env: {
+          ...environment,
+          DEXTER_WIDGET_SOURCE: immutableWidgetSource,
+        },
+        stdio: "pipe",
+      },
+    );
+    for (const widget of widgets.inventory) {
+      const copied = resolve(cleanPackageRoot, "dist/widgets", widget.path);
+      if (digestFile(copied) !== widget.sha256) {
+        fail(`rebuilt package widget differs from immutable hosted source: ${widget.path}`);
+      }
+    }
+
+    const rawPack = runReviewedNpm(toolchain, [
+      "pack",
+      "--json",
+      "--ignore-scripts",
+      `--pack-destination=${outputRoot}`,
+    ], {
+      cwd: cleanPackageRoot,
+      env: environment,
+    });
+    const [pack] = JSON.parse(rawPack);
+    const tarball = resolve(outputRoot, pack.filename);
+    const inspected = inspectTarball(tarball, {
+      sourcePackageRoot: cleanPackageRoot,
+    });
+    return {
+      tarball,
+      inspected,
+      identity,
+      lock: archivedLock,
+      manifest: cleanManifest,
+      runtime,
+      toolchain,
+      sourceArchiveSha256: sourceStage.archiveSha256,
+      hosted: {
+        commit: hosted.commit,
+        tree: hosted.tree,
+        descriptorPath: hosted.descriptorPath,
+        sourceArchiveSha256: hostedStage.archiveSha256,
+        contractSha256: digestFile(hostedContractPath),
+        widgetSourcePath: "public/apps-sdk",
+        widgetSourceDigest: widgets.digest,
+        widgetInventory: widgets.inventory,
+      },
+    };
+  } catch (error) {
+    disposeReviewedToolchain(toolchain);
+    throw error;
+  }
 }
 
 export async function verifyRebuiltReleaseCandidate({
@@ -291,6 +313,7 @@ export async function verifyRebuiltReleaseCandidate({
   afterRebuild = null,
 }) {
   const verificationRoot = mkdtempSync(joinTmp("opendexter-release-verify-"));
+  let rebuilt = null;
   try {
     const evidenceRoot = resolve(verificationRoot, "evidence");
     const outputRoot = resolve(verificationRoot, "rebuilt");
@@ -338,7 +361,7 @@ export async function verifyRebuiltReleaseCandidate({
       identity,
     });
     const hosted = await verifyHostedSource({ sourceRoot: hostedSource, mode: "check" });
-    const rebuilt = buildReviewedReleaseArtifact({
+    rebuilt = buildReviewedReleaseArtifact({
       sourceRoot,
       identity,
       expectedLockSha256: lock.sha256,
@@ -381,11 +404,12 @@ export async function verifyRebuiltReleaseCandidate({
       candidateSha256: stableCandidate.sha256,
     };
   } finally {
+    disposeReviewedToolchain(rebuilt?.toolchain);
     rmSync(verificationRoot, { recursive: true, force: true });
   }
 }
 
-function installExactArtifact({ tarball, ignoreScripts }) {
+function installExactArtifact({ tarball, ignoreScripts, toolchain }) {
   const installRoot = mkdtempSync(joinTmp("opendexter-artifact-install-"));
   try {
     const installHome = resolve(installRoot, "home");
@@ -393,6 +417,7 @@ function installExactArtifact({ tarball, ignoreScripts }) {
     const environment = reviewedReleaseEnvironment({
       npmCache: resolve(installRoot, "npm-cache"),
       home: installHome,
+      nodeBin: dirname(toolchain.command),
     });
     const installEnvironment = {
       ...environment,
@@ -405,14 +430,14 @@ function installExactArtifact({ tarball, ignoreScripts }) {
     const args = ["install", "--save-exact", "--no-audit", "--no-fund"];
     if (ignoreScripts) args.push("--ignore-scripts");
     args.push(tarball);
-    runReviewedNpm(args, {
+    runReviewedNpm(toolchain, args, {
       cwd: installRoot,
       env: installEnvironment,
       stdio: "pipe",
     });
     const installedRoot = resolve(installRoot, "node_modules/@dexterai/opendexter");
     const manifest = readJson(resolve(installedRoot, "package.json"));
-    run(process.execPath, [resolve(installedRoot, "dist/index.js"), "--help"], {
+    run(toolchain.command, [resolve(installedRoot, "dist/index.js"), "--help"], {
       cwd: installRoot,
       env: installEnvironment,
       stdio: "pipe",
@@ -447,6 +472,7 @@ async function main() {
     fail("a stable candidate must target latest");
   }
   const buildStage = mkdtempSync(joinTmp("opendexter-clean-build-"));
+  let rebuilt = null;
   try {
     const evidenceRoot = resolve(buildStage, "evidence");
     mkdirSync(evidenceRoot);
@@ -487,7 +513,7 @@ async function main() {
     // The candidate is built only from canonically advertised committed trees,
     // the exact root lock, immutable hosted widget bytes, and the archived
     // novice evaluator. Mutable checkout dist/node_modules never participate.
-    const rebuilt = buildReviewedReleaseArtifact({
+    rebuilt = buildReviewedReleaseArtifact({
       sourceRoot: repositoryRoot,
       identity,
       expectedLockSha256: lock.sha256,
@@ -505,8 +531,16 @@ async function main() {
     }
     const tarball = rebuilt.tarball;
 
-    const normalInstall = installExactArtifact({ tarball, ignoreScripts: false });
-    const inertInstall = installExactArtifact({ tarball, ignoreScripts: true });
+    const normalInstall = installExactArtifact({
+      tarball,
+      ignoreScripts: false,
+      toolchain: rebuilt.toolchain,
+    });
+    const inertInstall = installExactArtifact({
+      tarball,
+      ignoreScripts: true,
+      toolchain: rebuilt.toolchain,
+    });
     if (
       normalInstall.version !== rebuilt.manifest.version
       || inertInstall.version !== rebuilt.manifest.version
@@ -515,8 +549,8 @@ async function main() {
     }
 
     const attestation = {
-      schemaVersion: 2,
-      kind: "opendexter-coordinated-release/v2",
+      schemaVersion: 3,
+      kind: "opendexter-coordinated-release/v3",
       package: {
         name: rebuilt.manifest.name,
         version: rebuilt.manifest.version,
@@ -570,6 +604,7 @@ async function main() {
     // it or silently produce different bytes at the same path.
     throw error;
   } finally {
+    disposeReviewedToolchain(rebuilt?.toolchain);
     rmSync(buildStage, { recursive: true, force: true });
   }
 }

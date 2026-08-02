@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   canonicalJsonDigest,
+  attestedRuntimeIdentity,
   inspectTarball,
   canonicalReleaseRemoteRefs,
   EXPECTED_RELEASE_SOURCE_REPOSITORY,
@@ -31,6 +32,12 @@ import {
   verifyReleaseRepositoryIdentity,
   verifyRootLock,
 } from "../scripts/package-provenance.mjs";
+import {
+  disposeReviewedToolchain,
+  inspectReviewedToolchainSource,
+  loadReviewedToolchainPin,
+  stageReviewedToolchain,
+} from "../scripts/reviewed-toolchain.mjs";
 import { stageTreePureSource } from "../scripts/build-release-candidate.mjs";
 import { publishExactReviewedTarball } from "../scripts/publish-release-candidate.mjs";
 import { dryRunExactTarball } from "../scripts/verify-coordinated-release.mjs";
@@ -107,14 +114,15 @@ function committedRepository(files: Record<string, string>) {
 }
 
 function attestation() {
+  const runtime = loadReviewedToolchainPin();
   const widgetInventory = RELEASE_WIDGET_FILES.map((path, index) => ({
     path,
     size: index + 1,
     sha256: ["7", "8", "9", "a"][index].repeat(64),
   }));
   return {
-    schemaVersion: 2,
-    kind: "opendexter-coordinated-release/v2",
+    schemaVersion: 3,
+    kind: "opendexter-coordinated-release/v3",
     package: {
       name: "@dexterai/opendexter",
       version: "1.23.0-rc.3",
@@ -131,10 +139,7 @@ function attestation() {
     build: {
       sourceMaterial: "archive",
       recipe: RELEASE_BUILD_RECIPE,
-      node: "v22.19.0",
-      nodeExecutableSha256: "8".repeat(64),
-      npm: "10.9.3",
-      npmCliSha256: "9".repeat(64),
+      ...runtime,
       exactArtifactInstalls: [],
     },
     artifact: {
@@ -165,6 +170,39 @@ function attestation() {
       contractSha256: "7".repeat(64),
     },
   };
+}
+
+function stagedReviewedToolchain() {
+  const root = mkdtempSync(resolve(tmpdir(), "opendexter-toolchain-stage-"));
+  temporaryRoots.push(root);
+  return stageReviewedToolchain({ stageRoot: resolve(root, "toolchain") });
+}
+
+function toolchainFixture() {
+  const root = mkdtempSync(resolve(tmpdir(), "opendexter-toolchain-fixture-"));
+  temporaryRoots.push(root);
+  const nodePath = resolve(root, "source/bin/node");
+  const npmRoot = resolve(root, "source/lib/node_modules/npm");
+  mkdirSync(dirname(nodePath), { recursive: true });
+  mkdirSync(resolve(npmRoot, "bin"), { recursive: true });
+  mkdirSync(resolve(npmRoot, "lib"), { recursive: true });
+  writeFileSync(nodePath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  writeFileSync(resolve(npmRoot, "package.json"), `${JSON.stringify({
+    name: "npm",
+    version: "10.9.3",
+  })}\n`);
+  writeFileSync(
+    resolve(npmRoot, "bin/npm-cli.js"),
+    "#!/usr/bin/env node\nrequire('../lib/cli.js')\n",
+    { mode: 0o755 },
+  );
+  writeFileSync(resolve(npmRoot, "lib/cli.js"), "module.exports = {}\n");
+  const runtime = inspectReviewedToolchainSource({
+    nodePath,
+    npmRoot,
+    nodeVersion: "v22.19.0",
+  });
+  return { root, nodePath, npmRoot, runtime };
 }
 
 describe("coordinated publish policy", () => {
@@ -227,6 +265,20 @@ describe("exact package provenance", () => {
       kind: "opendexter-coordinated-release/v1",
     };
     expect(() => validateAttestationShape(legacy)).toThrow(/unsupported release attestation schema/);
+  });
+
+  it("rejects a self-consistent rehashed npm library inventory that differs from the source pin", () => {
+    const forged = attestation();
+    const npmLibrary = forged.build.toolchainInventory.find(
+      ({ path }: { path: string }) => path === "lib/node_modules/npm/lib/cli.js",
+    );
+    npmLibrary.sha256 = "a".repeat(64);
+    forged.build.toolchainInventorySha256 = canonicalJsonDigest(
+      forged.build.toolchainInventory,
+    );
+    expect(() => validateAttestationShape(forged)).toThrow(
+      /attested Node\/npm toolchain source pin does not match/,
+    );
   });
 
   it("accepts only the canonical IDE origin and an advertised exact HEAD", () => {
@@ -375,17 +427,95 @@ describe("exact package provenance", () => {
   });
 
   it("uses the protected exact npm CLI and scrubbed release environment", () => {
-    const environment = reviewedReleaseEnvironment();
-    const npm = reviewedNpm(["--version"]);
-    expect(npm.command).toBe(process.execPath);
-    expect(execFileSync(npm.command, npm.args, {
-      encoding: "utf8",
-      env: environment,
-    }).trim()).toBe("10.9.3");
-    expect(environment.GIT_CONFIG_GLOBAL).toBe("/dev/null");
-    expect(environment.npm_config_userconfig).toBe("/dev/null");
-    expect(environment.npm_config_ignore_scripts).toBe("true");
-    expect(Object.hasOwn(environment, "NODE_OPTIONS")).toBe(false);
+    const toolchain = stagedReviewedToolchain();
+    try {
+      const environment = reviewedReleaseEnvironment({
+        nodeBin: dirname(toolchain.command),
+      });
+      const npm = reviewedNpm(["--version"], { toolchain });
+      expect(npm.command).toBe(toolchain.command);
+      expect(npm.command).not.toBe(process.execPath);
+      expect(execFileSync(npm.command, npm.args, {
+        encoding: "utf8",
+        env: environment,
+      }).trim()).toBe("10.9.3");
+      expect(environment.PATH?.split(":")[0]).toBe(dirname(toolchain.command));
+      expect(environment.GIT_CONFIG_GLOBAL).toBe("/dev/null");
+      expect(environment.npm_config_userconfig).toBe("/dev/null");
+      expect(environment.npm_config_ignore_scripts).toBe("true");
+      expect(Object.hasOwn(environment, "NODE_OPTIONS")).toBe(false);
+    } finally {
+      disposeReviewedToolchain(toolchain);
+    }
+  });
+
+  it("refuses a source npm lib/cli.js mutation before candidate build staging", () => {
+    const fixture = toolchainFixture();
+    writeFileSync(
+      resolve(fixture.npmRoot, "lib/cli.js"),
+      "module.exports = { compromised: true }\n",
+    );
+    expect(() => stageReviewedToolchain({
+      stageRoot: resolve(fixture.root, "staged"),
+      sourceNode: fixture.nodePath,
+      sourceNpmRoot: fixture.npmRoot,
+      sourceNodeVersion: "v22.19.0",
+      expectedRuntime: fixture.runtime,
+    })).toThrow(/toolchain source differs from the reviewed source pin/);
+  });
+
+  it("refuses a staged npm lib/cli.js mutation before build, dry-run, or publish contact", () => {
+    const fixture = toolchainFixture();
+    const toolchain = stageReviewedToolchain({
+      stageRoot: resolve(fixture.root, "staged"),
+      sourceNode: fixture.nodePath,
+      sourceNpmRoot: fixture.npmRoot,
+      sourceNodeVersion: "v22.19.0",
+      expectedRuntime: fixture.runtime,
+    });
+    const tarballFixture = fixtureRoot();
+    const tarball = pack(tarballFixture.root);
+    try {
+      const npmLibrary = resolve(toolchain.root, "lib/node_modules/npm/lib/cli.js");
+      chmodSync(npmLibrary, 0o600);
+      writeFileSync(npmLibrary, "module.exports = { compromised: true }\n");
+
+      let buildContact = false;
+      expect(() => {
+        reviewedNpm(["ci", "--ignore-scripts"], { toolchain });
+        buildContact = true;
+      }).toThrow(/snapshot file is writable|snapshot differs from the reviewed source pin/);
+      expect(buildContact).toBe(false);
+
+      let dryRunContact = false;
+      expect(() => dryRunExactTarball({
+        tarball,
+        tag: "next",
+        toolchain,
+        execute() {
+          dryRunContact = true;
+          return "{}";
+        },
+      })).toThrow(/snapshot file is writable|snapshot differs from the reviewed source pin/);
+      expect(dryRunContact).toBe(false);
+
+      let registryContact = false;
+      expect(() => publishExactReviewedTarball({
+        tarball,
+        tag: "next",
+        toolchain,
+        environment: reviewedReleaseEnvironment({
+          nodeBin: dirname(toolchain.command),
+        }),
+        execute() {
+          registryContact = true;
+          return Buffer.alloc(0);
+        },
+      })).toThrow(/snapshot file is writable|snapshot differs from the reviewed source pin/);
+      expect(registryContact).toBe(false);
+    } finally {
+      disposeReviewedToolchain(toolchain);
+    }
   });
 
   it("revalidates novice evidence with the archived release script", () => {
@@ -476,10 +606,7 @@ describe("exact package provenance", () => {
         version: release.package.version,
       },
       runtime: {
-        node: release.build.node,
-        nodeExecutableSha256: release.build.nodeExecutableSha256,
-        npm: release.build.npm,
-        npmCliSha256: release.build.npmCliSha256,
+        ...attestedRuntimeIdentity(release),
       },
       sourceArchiveSha256: release.source.archiveSha256,
       hosted: {
@@ -526,15 +653,17 @@ describe("exact package provenance", () => {
     writeFileSync(resolve(fakeBin, "npm"), "#!/bin/sh\nexit 91\n", { mode: 0o755 });
     const priorPath = process.env.PATH;
     process.env.PATH = `${fakeBin}:${priorPath ?? ""}`;
+    const toolchain = stagedReviewedToolchain();
     try {
       let dryRunCalled = false;
       const dryRun = dryRunExactTarball({
         tarball,
         tag: "next",
+        toolchain,
         execute(command: string, args: string[], options: { env: NodeJS.ProcessEnv }) {
           dryRunCalled = true;
-          expect(command).toBe(process.execPath);
-          expect(args[0]).toMatch(/\/npm\/bin\/npm-cli\.js$/);
+          expect(command).toBe(toolchain.command);
+          expect(args[0]).toBe(toolchain.cli);
           expect(args).toContain("--dry-run");
           expect(args).toEqual(expect.arrayContaining([
             "--access",
@@ -555,15 +684,18 @@ describe("exact package provenance", () => {
       expect(dryRun.tarball).toBe(realpathSync(tarball));
 
       let publishCalled = false;
-      const environment = reviewedReleaseEnvironment();
+      const environment = reviewedReleaseEnvironment({
+        nodeBin: dirname(toolchain.command),
+      });
       const invocation = publishExactReviewedTarball({
         tarball,
         tag: "next",
         environment,
+        toolchain,
         execute(command: string, args: string[], options: { env: NodeJS.ProcessEnv }) {
           publishCalled = true;
-          expect(command).toBe(process.execPath);
-          expect(args[0]).toMatch(/\/npm\/bin\/npm-cli\.js$/);
+          expect(command).toBe(toolchain.command);
+          expect(args[0]).toBe(toolchain.cli);
           expect(args).not.toContain("--dry-run");
           expect(args).toEqual(expect.arrayContaining([
             "--access",
@@ -579,6 +711,7 @@ describe("exact package provenance", () => {
       expect(publishCalled).toBe(true);
       expect(invocation.tarball).toBe(realpathSync(tarball));
     } finally {
+      disposeReviewedToolchain(toolchain);
       process.env.PATH = priorPath;
     }
   });

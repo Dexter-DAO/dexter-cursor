@@ -14,12 +14,17 @@ import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { snapshotFileInput } from "./build-release-candidate.mjs";
 import {
+  attestedRuntimeIdentity,
   digestFile,
   RELEASE_REGISTRY,
   reviewedNpmPublishInvocation,
   reviewedReleaseEnvironment,
   reviewedRuntimeIdentity,
 } from "./package-provenance.mjs";
+import {
+  disposeReviewedToolchain,
+  stageReviewedToolchain,
+} from "./reviewed-toolchain.mjs";
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptRoot, "..");
@@ -56,9 +61,10 @@ export function publishExactReviewedTarball({
   tarball,
   tag,
   environment,
+  toolchain,
   execute = execFileSync,
 }) {
-  const invocation = reviewedNpmPublishInvocation({ tarball, tag });
+  const invocation = reviewedNpmPublishInvocation({ tarball, tag, toolchain });
   execute(invocation.command, invocation.args, {
     cwd: dirname(invocation.tarball),
     env: environment,
@@ -82,6 +88,7 @@ export async function main() {
   const tag = required("OPENDXTER_RELEASE_DIST_TAG");
   const token = requiredToken();
   const publishRoot = mkdtempSync(resolve(tmpdir(), "opendexter-exact-publish-"));
+  let toolchain = null;
   try {
     const inputsRoot = resolve(publishRoot, "inputs");
     mkdirSync(inputsRoot);
@@ -104,21 +111,19 @@ export async function main() {
     if (attestation.sha256 !== expectedAttestationSha256) {
       fail("release attestation bytes do not match OPENDXTER_RELEASE_ATTESTATION_SHA256");
     }
-    const attestedRuntime = (() => {
-      const parsed = JSON.parse(readFileSync(attestation.path, "utf8"));
-      return {
-        node: parsed?.build?.node,
-        nodeExecutableSha256: parsed?.build?.nodeExecutableSha256,
-        npm: parsed?.build?.npm,
-        npmCliSha256: parsed?.build?.npmCliSha256,
-      };
-    })();
+    const attestedRuntime = attestedRuntimeIdentity(
+      JSON.parse(readFileSync(attestation.path, "utf8")),
+    );
+    toolchain = stageReviewedToolchain({
+      stageRoot: resolve(publishRoot, "reviewed-toolchain"),
+    });
     const verifyHome = resolve(publishRoot, "verify-home");
     mkdirSync(verifyHome);
     const verifyEnvironment = {
       ...reviewedReleaseEnvironment({
         npmCache: resolve(publishRoot, "verify-npm-cache"),
         home: verifyHome,
+        nodeBin: dirname(toolchain.command),
       }),
       OPENDXTER_RELEASE_ATTESTATION: attestation.path,
       OPENDXTER_RELEASE_TARBALL: tarball.path,
@@ -129,9 +134,9 @@ export async function main() {
       OPENDXTER_RELEASE_DIST_TAG: tag,
       npm_config_tag: tag,
     };
-    sameRuntime(reviewedRuntimeIdentity({ environment: verifyEnvironment }), attestedRuntime);
+    sameRuntime(reviewedRuntimeIdentity({ toolchain }), attestedRuntime);
     execFileSync(
-      realpathSync(process.execPath),
+      toolchain.command,
       [resolve(scriptRoot, "verify-coordinated-release.mjs")],
       {
         cwd: packageRoot,
@@ -157,23 +162,26 @@ export async function main() {
       ...reviewedReleaseEnvironment({
         npmCache: resolve(publishRoot, "publish-npm-cache"),
         home: publishHome,
+        nodeBin: dirname(toolchain.command),
       }),
       npm_config_userconfig: npmrc,
       npm_config_registry: RELEASE_REGISTRY,
       npm_config_tag: tag,
       npm_config_provenance: "true",
     };
-    sameRuntime(reviewedRuntimeIdentity({ environment: publishEnvironment }), attestedRuntime);
+    sameRuntime(reviewedRuntimeIdentity({ toolchain }), attestedRuntime);
     const candidateSha256 = digestFile(tarball.path);
     publishExactReviewedTarball({
       tarball: tarball.path,
       tag,
       environment: publishEnvironment,
+      toolchain,
     });
     if (digestFile(tarball.path) !== candidateSha256) {
       fail("exact reviewed tarball changed during npm publish");
     }
   } finally {
+    disposeReviewedToolchain(toolchain);
     rmSync(publishRoot, { recursive: true, force: true });
   }
 }

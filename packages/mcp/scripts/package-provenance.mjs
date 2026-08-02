@@ -27,6 +27,19 @@ import {
   createTreePureArchive,
   listCanonicalRemoteRefs,
 } from "./verify-hosted-source.mjs";
+import {
+  loadReviewedToolchainPin,
+  REVIEWED_RELEASE_NPM_VERSION,
+  reviewedNpm,
+  reviewedRuntimeIdentity,
+  validateReviewedToolchainRuntime,
+} from "./reviewed-toolchain.mjs";
+
+export {
+  REVIEWED_RELEASE_NPM_VERSION,
+  reviewedNpm,
+  reviewedRuntimeIdentity,
+} from "./reviewed-toolchain.mjs";
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 export const packageRoot = resolve(scriptRoot, "..");
@@ -38,9 +51,8 @@ const FORBIDDEN_BASENAME = /^(?:\.npmrc|npmrc|credentials?(?:\..*)?|secrets?(?:\
 export const EXPECTED_RELEASE_SOURCE_REPOSITORY =
   "https://github.com/Dexter-DAO/opendexter-ide";
 const EXPECTED_RELEASE_SOURCE_ORIGIN = `${EXPECTED_RELEASE_SOURCE_REPOSITORY}.git`;
-export const REVIEWED_RELEASE_NPM_VERSION = "10.9.3";
 export const RELEASE_BUILD_RECIPE =
-  "sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+immutable-hosted-widgets+npm-pack-once/v2";
+  "pinned-private-node-npm-toolchain+sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+immutable-hosted-widgets+npm-pack-once/v3";
 export const RELEASE_REGISTRY = "https://registry.npmjs.org/";
 export const RELEASE_WIDGET_FILES = Object.freeze([
   "x402-marketplace-search.html",
@@ -104,7 +116,7 @@ export function verifyReleaseRepositoryIdentity(origin) {
   return EXPECTED_RELEASE_SOURCE_REPOSITORY;
 }
 
-export function reviewedReleaseEnvironment({ npmCache, home } = {}) {
+export function reviewedReleaseEnvironment({ npmCache, home, nodeBin } = {}) {
   const forbidden = [
     "NODE_OPTIONS",
     "NODE_PATH",
@@ -119,10 +131,12 @@ export function reviewedReleaseEnvironment({ npmCache, home } = {}) {
       fail(`release environment contains ${key}`);
     }
   }
-  const nodeBin = dirname(realpathSync(process.execPath));
+  const reviewedNodeBin = nodeBin
+    ? realpathSync(nodeBin)
+    : dirname(realpathSync(process.execPath));
   return Object.fromEntries(Object.entries({
     PATH: [
-      nodeBin,
+      reviewedNodeBin,
       "/usr/local/sbin",
       "/usr/local/bin",
       "/usr/sbin",
@@ -147,40 +161,6 @@ export function reviewedReleaseEnvironment({ npmCache, home } = {}) {
   }).filter(([, value]) => value !== undefined));
 }
 
-export function reviewedNpm(args = []) {
-  const node = realpathSync(process.execPath);
-  const nodeInfo = lstatSync(node);
-  if (!nodeInfo.isFile() || nodeInfo.isSymbolicLink() || (nodeInfo.mode & 0o022) !== 0) {
-    fail("reviewed Node executable is not one protected regular file");
-  }
-  const npmCli = realpathSync(resolve(
-    dirname(node),
-    "../lib/node_modules/npm/bin/npm-cli.js",
-  ));
-  const info = lstatSync(npmCli);
-  if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o022) !== 0) {
-    fail("reviewed npm CLI is not one protected regular file");
-  }
-  return { command: node, cli: npmCli, args: [npmCli, ...args] };
-}
-
-export function reviewedRuntimeIdentity({
-  environment = reviewedReleaseEnvironment(),
-  execute = run,
-} = {}) {
-  const npm = reviewedNpm(["--version"]);
-  const npmVersion = execute(npm.command, npm.args, { env: environment });
-  if (npmVersion !== REVIEWED_RELEASE_NPM_VERSION) {
-    fail("installed npm differs from the reviewed release npm version");
-  }
-  return {
-    node: process.version,
-    nodeExecutableSha256: digestFile(npm.command),
-    npm: npmVersion,
-    npmCliSha256: digestFile(npm.cli),
-  };
-}
-
 function requirePublishTag(tag) {
   if (typeof tag !== "string" || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(tag)) {
     fail("reviewed npm publish tag is invalid");
@@ -188,7 +168,12 @@ function requirePublishTag(tag) {
   return tag;
 }
 
-export function reviewedNpmPublishInvocation({ tarball, tag, dryRun = false }) {
+export function reviewedNpmPublishInvocation({
+  tarball,
+  tag,
+  dryRun = false,
+  toolchain,
+}) {
   const exactTarball = realpathSync(tarball);
   const args = ["publish"];
   if (dryRun) args.push("--dry-run", "--json");
@@ -203,7 +188,7 @@ export function reviewedNpmPublishInvocation({ tarball, tag, dryRun = false }) {
     requirePublishTag(tag),
     exactTarball,
   );
-  return { ...reviewedNpm(args), tarball: exactTarball };
+  return { ...reviewedNpm(args, { toolchain }), tarball: exactTarball };
 }
 
 export function canonicalReleaseRemoteRefs({
@@ -605,8 +590,8 @@ function requireSha256(value, label) {
 }
 
 export function validateAttestationShape(attestation) {
-  if (attestation?.schemaVersion !== 2) fail("unsupported release attestation schema");
-  if (attestation?.kind !== "opendexter-coordinated-release/v2") {
+  if (attestation?.schemaVersion !== 3) fail("unsupported release attestation schema");
+  if (attestation?.kind !== "opendexter-coordinated-release/v3") {
     fail("unexpected release attestation kind");
   }
   requireString(attestation.package?.name, "attestation package name");
@@ -628,15 +613,13 @@ export function validateAttestationShape(attestation) {
   if (attestation.build?.recipe !== RELEASE_BUILD_RECIPE) {
     fail("attestation build recipe is unsupported");
   }
-  requireString(attestation.build?.node, "attestation build Node version");
-  requireSha256(
-    attestation.build?.nodeExecutableSha256,
-    "attestation build Node executable digest",
+  const attestedRuntime = attestedRuntimeIdentity(attestation);
+  validateReviewedToolchainRuntime(attestedRuntime);
+  sameJson(
+    attestedRuntime,
+    loadReviewedToolchainPin(),
+    "attested Node/npm toolchain source pin",
   );
-  if (attestation.build?.npm !== REVIEWED_RELEASE_NPM_VERSION) {
-    fail("attestation build npm version is not reviewed");
-  }
-  requireSha256(attestation.build?.npmCliSha256, "attestation build npm CLI digest");
   requireString(attestation.artifact?.sha256, "attestation tarball digest");
   requireString(attestation.artifact?.shasum, "attestation tarball shasum");
   requireString(attestation.artifact?.integrity, "attestation registry integrity");
@@ -721,6 +704,17 @@ export function validateAttestationShape(attestation) {
   return attestation;
 }
 
+export function attestedRuntimeIdentity(attestation) {
+  return {
+    node: attestation?.build?.node,
+    nodeExecutableSha256: attestation?.build?.nodeExecutableSha256,
+    npm: attestation?.build?.npm,
+    npmCliSha256: attestation?.build?.npmCliSha256,
+    toolchainInventorySha256: attestation?.build?.toolchainInventorySha256,
+    toolchainInventory: attestation?.build?.toolchainInventory,
+  };
+}
+
 export function verifyAttestation({
   attestation,
   tarball,
@@ -753,12 +747,7 @@ export function verifyAttestation({
     fail("attestation root lock drifted");
   }
   sameJson(
-    {
-      node: attestation.build.node,
-      nodeExecutableSha256: attestation.build.nodeExecutableSha256,
-      npm: attestation.build.npm,
-      npmCliSha256: attestation.build.npmCliSha256,
-    },
+    attestedRuntimeIdentity(attestation),
     rebuilt.runtime,
     "attested build runtime identity",
   );

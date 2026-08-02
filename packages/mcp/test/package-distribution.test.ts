@@ -142,13 +142,19 @@ describe("local package distribution", () => {
     expect(candidate).toContain('"archive"');
     expect(candidate).toContain('["ci", "--ignore-scripts"]');
     expect(candidate.match(/"pack"/g)).toHaveLength(1);
-    expect(candidate).toContain("installExactArtifact({ tarball, ignoreScripts: false })");
-    expect(candidate).toContain("installExactArtifact({ tarball, ignoreScripts: true })");
+    expect(candidate.match(/ignoreScripts: (?:false|true)/g)).toHaveLength(2);
+    expect(candidate).toContain("toolchain: rebuilt.toolchain");
+    expect(candidate).toContain("stageReviewedToolchain");
     expect(candidate).toContain("verifyHostedSource");
     expect(candidate).toContain("process.umask(0o022)");
 
     const publish = read("scripts/publish-release-candidate.mjs");
     const provenance = read("scripts/package-provenance.mjs");
+    const hosted = read("scripts/verify-hosted-source.mjs");
+    const toolchain = read("scripts/reviewed-toolchain.mjs");
+    const toolchainPin = JSON.parse(
+      read("release/reviewed-node-npm-toolchain.json"),
+    );
     expect(publish).toContain("PUBLISH_EXACT_REVIEWED_TARBALL");
     expect(publish).toContain("reviewedNpmPublishInvocation");
     expect(provenance).toContain('"publish"');
@@ -160,6 +166,17 @@ describe("local package distribution", () => {
     expect(publish).toContain("OPENDXTER_RELEASE_NPM_TOKEN");
     expect(publish).toContain("mode: 0o600");
     expect(publish).not.toContain("...process.env");
+    expect(publish).toContain("toolchain.command");
+    expect(hosted).toContain("stageReviewedToolchain");
+    expect(hosted).toContain("toolchain.command");
+    expect(toolchain).toContain("private reviewed Node/npm toolchain snapshot");
+    expect(toolchainPin.kind).toBe("opendexter-reviewed-node-npm-toolchain/v1");
+    expect(toolchainPin.runtime.toolchainInventory.length).toBeGreaterThan(2_000);
+    expect(toolchainPin.runtime.toolchainInventory).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "bin/node" }),
+      expect.objectContaining({ path: "lib/node_modules/npm/bin/npm-cli.js" }),
+      expect.objectContaining({ path: "lib/node_modules/npm/lib/cli.js" }),
+    ]));
   });
 
   it("requires a final source-owned complete hosted descriptor", () => {
