@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { verifyRebuiltReleaseCandidate } from "./build-release-candidate.mjs";
 import {
-  digestFile,
-  packageRoot,
-  validateAttestationShape,
-  verifyAttestation,
+  reviewedNpmPublishInvocation,
+  reviewedReleaseEnvironment,
+  reviewedRuntimeIdentity,
 } from "./package-provenance.mjs";
 import { verifyPublishPolicy } from "./release-policy.mjs";
 
@@ -27,10 +29,6 @@ function absoluteExisting(name) {
   return realpathSync(value);
 }
 
-function readJson(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
-}
-
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === "object") {
@@ -43,93 +41,105 @@ function canonical(value) {
 
 function same(actual, expected, label) {
   if (JSON.stringify(canonical(actual)) !== JSON.stringify(canonical(expected))) {
-    fail(`${label} differs from the attested tarball`);
+    fail(`${label} differs from the rebuilt exact tarball`);
   }
 }
 
-function dryRunInventory() {
-  const raw = execFileSync(
-    "npm",
-    ["pack", "--dry-run", "--json", "--ignore-scripts"],
-    { cwd: packageRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
-  const [result] = JSON.parse(raw);
-  if (!Array.isArray(result?.files) || result.files.length === 0) {
-    fail("npm pack dry-run returned no files");
+export function dryRunExactTarball({
+  tarball,
+  tag,
+  execute = execFileSync,
+}) {
+  const dryRunRoot = mkdtempSync(resolve(tmpdir(), "opendexter-publish-dry-run-"));
+  try {
+    const releaseHome = resolve(dryRunRoot, "home");
+    mkdirSync(releaseHome);
+    const environment = reviewedReleaseEnvironment({
+      npmCache: resolve(dryRunRoot, "npm-cache"),
+      home: releaseHome,
+    });
+    const runtime = reviewedRuntimeIdentity({ environment });
+    const invocation = reviewedNpmPublishInvocation({ tarball, tag, dryRun: true });
+    const raw = execute(invocation.command, invocation.args, {
+      cwd: dryRunRoot,
+      encoding: "utf8",
+      env: environment,
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const result = JSON.parse(raw);
+    if (!Array.isArray(result?.files) || result.files.length === 0) {
+      fail("reviewed npm publish dry-run returned no files");
+    }
+    return {
+      runtime,
+      tarball: invocation.tarball,
+      artifact: {
+        shasum: result.shasum,
+        integrity: result.integrity,
+      },
+      inventory: result.files
+        .map((file) => ({ path: file.path, size: file.size }))
+        .sort((left, right) => left.path.localeCompare(right.path)),
+    };
+  } finally {
+    rmSync(dryRunRoot, { recursive: true, force: true });
   }
-  return result.files
-    .map((file) => ({ path: file.path, size: file.size }))
-    .sort((left, right) => left.path.localeCompare(right.path));
 }
 
-function main() {
-  // Read every required release input before invoking build, pack, npm view,
-  // or any other lifecycle. A plain npm publish therefore dies here.
+export async function main() {
+  // Resolve every required input before build, dry-run, or registry contact.
   const attestationPath = absoluteExisting("OPENDXTER_RELEASE_ATTESTATION");
   const tarball = absoluteExisting("OPENDXTER_RELEASE_TARBALL");
   const reviewReceipt = absoluteExisting("OPENDXTER_RELEASE_REVIEW_RECEIPT");
   const noviceEvidence = absoluteExisting("OPENDXTER_RELEASE_NOVICE_EVIDENCE");
+  const hostedSource = absoluteExisting("OPENDXTER_RELEASE_HOSTED_SOURCE");
   const attestationDigest = requiredEnv("OPENDXTER_RELEASE_ATTESTATION_SHA256");
   const explicitTag = requiredEnv("OPENDXTER_RELEASE_DIST_TAG");
+  const npmTag = requiredEnv("npm_config_tag");
 
-  if (digestFile(attestationPath) !== attestationDigest) {
-    fail("release attestation bytes do not match OPENDXTER_RELEASE_ATTESTATION_SHA256");
-  }
-  const attestation = validateAttestationShape(readJson(attestationPath));
-  const review = readJson(reviewReceipt);
-  if (
-    review?.kind !== "opendexter-release-review/v1"
-    || review?.decision !== "accepted"
-    || review?.source?.commit !== attestation.source.commit
-    || review?.source?.tree !== attestation.source.tree
-  ) {
-    fail("review receipt does not accept the attested source commit/tree");
-  }
-  const novice = readJson(noviceEvidence);
-  if (
-    novice?.kind !== "opendexter-novice-routing-evaluation/v1"
-    || novice?.status !== "passed"
-    || novice?.source?.commit !== attestation.source.commit
-    || novice?.source?.tree !== attestation.source.tree
-  ) {
-    fail("novice-language evidence does not pass the attested source commit/tree");
-  }
-  execFileSync(
-    process.execPath,
-    [
-      resolve(packageRoot, "../../tests/opendexter-novice-routing-evaluation.mjs"),
-      "--results",
-      noviceEvidence,
-    ],
-    { cwd: resolve(packageRoot, "../.."), stdio: "pipe" },
-  );
-  const manifest = readJson(resolve(packageRoot, "package.json"));
-  verifyPublishPolicy({
-    manifest,
-    attestation,
-    npmTag: process.env.npm_config_tag,
-    explicitTag,
-  });
-  verifyAttestation({
-    attestation,
-    tarball,
+  const result = await verifyRebuiltReleaseCandidate({
+    attestationPath,
+    expectedAttestationSha256: attestationDigest,
+    candidateTarball: tarball,
     reviewReceipt,
     noviceEvidence,
+    hostedSource,
+    afterRebuild({ attestation, candidateTarball, rebuilt }) {
+      verifyPublishPolicy({
+        manifest: rebuilt.manifest,
+        attestation,
+        npmTag,
+        explicitTag,
+      });
+      const dryRun = dryRunExactTarball({
+        tarball: candidateTarball,
+        tag: explicitTag,
+      });
+      same(dryRun.runtime, rebuilt.runtime, "dry-run Node/npm identity");
+      same(dryRun.artifact, {
+        shasum: rebuilt.inspected.artifact.shasum,
+        integrity: rebuilt.inspected.artifact.integrity,
+      }, "dry-run tarball identity");
+      const rebuiltFiles = rebuilt.inspected.inventory
+        .map(({ path, size }) => ({ path, size }))
+        .sort((left, right) => left.path.localeCompare(right.path));
+      same(dryRun.inventory, rebuiltFiles, "dry-run full file inventory");
+    },
   });
-
-  const attestedFiles = attestation.inventory
-    .map(({ path, size }) => ({ path, size }))
-    .sort((left, right) => left.path.localeCompare(right.path));
-  same(dryRunInventory(), attestedFiles, "current npm publish file inventory");
   process.stdout.write(
-    `Coordinated publish gate passed for ${manifest.name}@${manifest.version} `
-      + `on ${attestation.package.distTag}.\n`,
+    `Coordinated publish gate passed for ${result.attestation.package.name}`
+      + `@${result.attestation.package.version} on `
+      + `${result.attestation.package.distTag}.\n`,
   );
+  return result;
 }
 
-try {
-  main();
-} catch (error) {
-  process.stderr.write(`OpenDexter publish refused: ${error.message}\n`);
-  process.exitCode = 1;
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error) {
+    process.stderr.write(`OpenDexter publish refused: ${error.message}\n`);
+    process.exitCode = 1;
+  }
 }

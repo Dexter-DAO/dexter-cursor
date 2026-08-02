@@ -41,6 +41,13 @@ const EXPECTED_RELEASE_SOURCE_ORIGIN = `${EXPECTED_RELEASE_SOURCE_REPOSITORY}.gi
 export const REVIEWED_RELEASE_NPM_VERSION = "10.9.3";
 export const RELEASE_BUILD_RECIPE =
   "sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+immutable-hosted-widgets+npm-pack-once/v2";
+export const RELEASE_REGISTRY = "https://registry.npmjs.org/";
+export const RELEASE_WIDGET_FILES = Object.freeze([
+  "x402-marketplace-search.html",
+  "x402-fetch-result.html",
+  "x402-pricing.html",
+  "x402-wallet.html",
+]);
 
 function fail(message) {
   throw new Error(message);
@@ -97,7 +104,7 @@ export function verifyReleaseRepositoryIdentity(origin) {
   return EXPECTED_RELEASE_SOURCE_REPOSITORY;
 }
 
-export function reviewedReleaseEnvironment({ npmCache } = {}) {
+export function reviewedReleaseEnvironment({ npmCache, home } = {}) {
   const forbidden = [
     "NODE_OPTIONS",
     "NODE_PATH",
@@ -124,7 +131,7 @@ export function reviewedReleaseEnvironment({ npmCache } = {}) {
       "/bin",
     ].filter((entry, index, entries) => entries.indexOf(entry) === index)
       .join(delimiter),
-    HOME: process.env.HOME,
+    HOME: home ?? process.env.HOME,
     LANG: "C",
     LC_ALL: "C",
     GIT_NO_REPLACE_OBJECTS: "1",
@@ -142,6 +149,10 @@ export function reviewedReleaseEnvironment({ npmCache } = {}) {
 
 export function reviewedNpm(args = []) {
   const node = realpathSync(process.execPath);
+  const nodeInfo = lstatSync(node);
+  if (!nodeInfo.isFile() || nodeInfo.isSymbolicLink() || (nodeInfo.mode & 0o022) !== 0) {
+    fail("reviewed Node executable is not one protected regular file");
+  }
   const npmCli = realpathSync(resolve(
     dirname(node),
     "../lib/node_modules/npm/bin/npm-cli.js",
@@ -150,7 +161,49 @@ export function reviewedNpm(args = []) {
   if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o022) !== 0) {
     fail("reviewed npm CLI is not one protected regular file");
   }
-  return { command: node, args: [npmCli, ...args] };
+  return { command: node, cli: npmCli, args: [npmCli, ...args] };
+}
+
+export function reviewedRuntimeIdentity({
+  environment = reviewedReleaseEnvironment(),
+  execute = run,
+} = {}) {
+  const npm = reviewedNpm(["--version"]);
+  const npmVersion = execute(npm.command, npm.args, { env: environment });
+  if (npmVersion !== REVIEWED_RELEASE_NPM_VERSION) {
+    fail("installed npm differs from the reviewed release npm version");
+  }
+  return {
+    node: process.version,
+    nodeExecutableSha256: digestFile(npm.command),
+    npm: npmVersion,
+    npmCliSha256: digestFile(npm.cli),
+  };
+}
+
+function requirePublishTag(tag) {
+  if (typeof tag !== "string" || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(tag)) {
+    fail("reviewed npm publish tag is invalid");
+  }
+  return tag;
+}
+
+export function reviewedNpmPublishInvocation({ tarball, tag, dryRun = false }) {
+  const exactTarball = realpathSync(tarball);
+  const args = ["publish"];
+  if (dryRun) args.push("--dry-run", "--json");
+  args.push(
+    "--ignore-scripts",
+    "--provenance",
+    "--access",
+    "public",
+    "--registry",
+    RELEASE_REGISTRY,
+    "--tag",
+    requirePublishTag(tag),
+    exactTarball,
+  );
+  return { ...reviewedNpm(args), tarball: exactTarball };
 }
 
 export function canonicalReleaseRemoteRefs({
@@ -281,6 +334,36 @@ function canonical(value) {
     );
   }
   return value;
+}
+
+export function canonicalJsonDigest(value) {
+  return createHash("sha256")
+    .update(JSON.stringify(canonical(value)))
+    .digest("hex");
+}
+
+export function reviewedWidgetInventory(widgetRoot) {
+  const rootInfo = lstatSync(widgetRoot);
+  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) {
+    fail("reviewed hosted widget root is not one real directory");
+  }
+  const root = realpathSync(widgetRoot);
+  const inventory = RELEASE_WIDGET_FILES.map((path) => {
+    const source = resolve(root, path);
+    const info = lstatSync(source);
+    if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) {
+      fail(`reviewed hosted widget is not one regular file: ${path}`);
+    }
+    return {
+      path,
+      size: info.size,
+      sha256: digestFile(source),
+    };
+  });
+  return {
+    inventory,
+    digest: canonicalJsonDigest(inventory),
+  };
 }
 
 function sameJson(actual, expected, label) {
@@ -514,9 +597,16 @@ function requireString(value, label) {
   return value;
 }
 
+function requireSha256(value, label) {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    fail(`${label} is not one SHA-256 digest`);
+  }
+  return value;
+}
+
 export function validateAttestationShape(attestation) {
-  if (attestation?.schemaVersion !== 1) fail("unsupported release attestation schema");
-  if (attestation?.kind !== "opendexter-coordinated-release/v1") {
+  if (attestation?.schemaVersion !== 2) fail("unsupported release attestation schema");
+  if (attestation?.kind !== "opendexter-coordinated-release/v2") {
     fail("unexpected release attestation kind");
   }
   requireString(attestation.package?.name, "attestation package name");
@@ -530,8 +620,8 @@ export function validateAttestationShape(attestation) {
   if (attestation.source?.repository !== EXPECTED_RELEASE_SOURCE_REPOSITORY) {
     fail("attestation source repository is unexpected");
   }
-  requireString(attestation.source?.archiveSha256, "attestation source archive digest");
-  requireString(attestation.source?.rootLockSha256, "attestation root lock digest");
+  requireSha256(attestation.source?.archiveSha256, "attestation source archive digest");
+  requireSha256(attestation.source?.rootLockSha256, "attestation root lock digest");
   if (attestation.build?.sourceMaterial !== "archive") {
     fail("attestation source material is unsupported");
   }
@@ -539,9 +629,14 @@ export function validateAttestationShape(attestation) {
     fail("attestation build recipe is unsupported");
   }
   requireString(attestation.build?.node, "attestation build Node version");
+  requireSha256(
+    attestation.build?.nodeExecutableSha256,
+    "attestation build Node executable digest",
+  );
   if (attestation.build?.npm !== REVIEWED_RELEASE_NPM_VERSION) {
     fail("attestation build npm version is not reviewed");
   }
+  requireSha256(attestation.build?.npmCliSha256, "attestation build npm CLI digest");
   requireString(attestation.artifact?.sha256, "attestation tarball digest");
   requireString(attestation.artifact?.shasum, "attestation tarball shasum");
   requireString(attestation.artifact?.integrity, "attestation registry integrity");
@@ -584,52 +679,120 @@ export function validateAttestationShape(attestation) {
   }
   requireString(attestation.hostedContract?.sourceCommit, "hosted source commit");
   requireString(attestation.hostedContract?.sourceTree, "hosted source tree");
+  if (attestation.hostedContract?.descriptorPath !== "release/open-tool-descriptors.json") {
+    fail("attestation hosted descriptor path is unexpected");
+  }
   if (attestation.hostedContract?.widgetSourcePath !== "public/apps-sdk") {
     fail("attestation hosted widget source path is unexpected");
   }
-  requireString(
+  requireSha256(
     attestation.hostedContract?.sourceArchiveSha256,
     "hosted source archive digest",
   );
+  requireSha256(
+    attestation.hostedContract?.widgetSourceDigest,
+    "hosted widget source digest",
+  );
+  if (
+    !Array.isArray(attestation.hostedContract?.widgetInventory)
+    || attestation.hostedContract.widgetInventory.length !== RELEASE_WIDGET_FILES.length
+  ) {
+    fail("attestation hosted widget inventory is incomplete");
+  }
+  const widgetPaths = [];
+  for (const record of attestation.hostedContract.widgetInventory) {
+    requireString(record?.path, "attestation hosted widget path");
+    if (!Number.isSafeInteger(record?.size) || record.size < 0) {
+      fail(`attestation hosted widget size is invalid for ${record?.path ?? "unknown"}`);
+    }
+    requireSha256(
+      record?.sha256,
+      `attestation hosted widget digest for ${record?.path ?? "unknown"}`,
+    );
+    widgetPaths.push(record.path);
+  }
+  sameJson(widgetPaths, RELEASE_WIDGET_FILES, "attestation hosted widget paths");
+  if (
+    canonicalJsonDigest(attestation.hostedContract.widgetInventory)
+    !== attestation.hostedContract.widgetSourceDigest
+  ) {
+    fail("attestation hosted widget inventory digest is inconsistent");
+  }
   return attestation;
 }
 
 export function verifyAttestation({
   attestation,
   tarball,
-  repoRoot = repositoryRoot,
-  pkgRoot = packageRoot,
+  rebuilt,
   reviewReceipt = null,
   noviceEvidence = null,
-  requireClean = true,
-  requireTrackedLock = true,
 }) {
   validateAttestationShape(attestation);
-  const identity = repositoryIdentity(repoRoot, { requireClean });
-  const lock = verifyRootLock({ repoRoot, pkgRoot, requireTracked: requireTrackedLock });
-  const sourceArchiveSha256 = reviewedSourceArchiveDigest({
-    root: repoRoot,
-    commit: identity.commit,
-    tree: identity.tree,
-  });
-  const manifest = readJson(resolve(pkgRoot, "package.json"));
-  const contractPath = resolve(
-    repoRoot,
-    "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
-  );
-  const inspected = inspectTarball(tarball, { sourcePackageRoot: pkgRoot });
+  if (!rebuilt?.inspected || !rebuilt?.identity || !rebuilt?.hosted) {
+    fail("attestation verification requires one deterministic sterile rebuild");
+  }
+  const inspected = inspectTarball(tarball);
 
-  if (attestation.package.name !== manifest.name) fail("attestation package name drifted");
-  if (attestation.package.version !== manifest.version) fail("attestation package version drifted");
-  if (attestation.source.commit !== identity.commit) fail("attestation source commit drifted");
-  if (attestation.source.tree !== identity.tree) fail("attestation source tree drifted");
-  if (attestation.source.archiveSha256 !== sourceArchiveSha256) {
+  if (attestation.package.name !== rebuilt.manifest.name) {
+    fail("attestation package name drifted");
+  }
+  if (attestation.package.version !== rebuilt.manifest.version) {
+    fail("attestation package version drifted");
+  }
+  if (attestation.source.commit !== rebuilt.identity.commit) {
+    fail("attestation source commit drifted");
+  }
+  if (attestation.source.tree !== rebuilt.identity.tree) {
+    fail("attestation source tree drifted");
+  }
+  if (attestation.source.archiveSha256 !== rebuilt.sourceArchiveSha256) {
     fail("attestation source archive drifted");
   }
-  if (attestation.source.rootLockSha256 !== lock.sha256) fail("attestation root lock drifted");
-  if (attestation.hostedContract.contractSha256 !== digestFile(contractPath)) {
+  if (attestation.source.rootLockSha256 !== rebuilt.lock.sha256) {
+    fail("attestation root lock drifted");
+  }
+  sameJson(
+    {
+      node: attestation.build.node,
+      nodeExecutableSha256: attestation.build.nodeExecutableSha256,
+      npm: attestation.build.npm,
+      npmCliSha256: attestation.build.npmCliSha256,
+    },
+    rebuilt.runtime,
+    "attested build runtime identity",
+  );
+  if (attestation.hostedContract.sourceCommit !== rebuilt.hosted.commit) {
+    fail("attestation hosted source commit drifted");
+  }
+  if (attestation.hostedContract.sourceTree !== rebuilt.hosted.tree) {
+    fail("attestation hosted source tree drifted");
+  }
+  if (attestation.hostedContract.descriptorPath !== rebuilt.hosted.descriptorPath) {
+    fail("attestation hosted descriptor path drifted");
+  }
+  if (
+    attestation.hostedContract.sourceArchiveSha256
+    !== rebuilt.hosted.sourceArchiveSha256
+  ) {
+    fail("attestation hosted source archive drifted");
+  }
+  if (attestation.hostedContract.contractSha256 !== rebuilt.hosted.contractSha256) {
     fail("attestation hosted contract bytes drifted");
   }
+  sameJson(
+    attestation.hostedContract.widgetInventory,
+    rebuilt.hosted.widgetInventory,
+    "attested hosted widget inventory",
+  );
+  if (
+    attestation.hostedContract.widgetSourceDigest
+    !== rebuilt.hosted.widgetSourceDigest
+  ) {
+    fail("attestation hosted widget source digest drifted");
+  }
+  sameJson(inspected.artifact, rebuilt.inspected.artifact, "candidate and rebuilt tarball identity");
+  sameJson(inspected.inventory, rebuilt.inspected.inventory, "candidate and rebuilt full inventory");
   sameJson(attestation.artifact, inspected.artifact, "attested tarball identity");
   sameJson(attestation.inventory, inspected.inventory, "attested tarball inventory");
   if (reviewReceipt && digestFile(reviewReceipt) !== attestation.review.receiptSha256) {
@@ -638,7 +801,7 @@ export function verifyAttestation({
   if (noviceEvidence && digestFile(noviceEvidence) !== attestation.noviceRoutingEvaluation.evidenceSha256) {
     fail("novice evaluation bytes do not match the attestation");
   }
-  return { identity, lock, inspected };
+  return { identity: rebuilt.identity, lock: rebuilt.lock, inspected, rebuilt };
 }
 
 export function verifyRegistryMetadata(attestation, metadata) {
@@ -668,7 +831,7 @@ function parseArgs(argv) {
   return { command, values };
 }
 
-function commandMain() {
+async function commandMain() {
   const { command, values } = parseArgs(process.argv.slice(2));
   if (command === "inspect") {
     const inspected = inspectTarball(requireString(values.tarball, "--tarball"), {
@@ -681,17 +844,23 @@ function commandMain() {
   }
   if (command === "verify") {
     const attestationPath = resolve(requireString(values.attestation, "--attestation"));
-    const attestation = readJson(attestationPath);
-    const result = verifyAttestation({
-      attestation,
-      tarball: resolve(requireString(values.tarball, "--tarball")),
-      reviewReceipt: values.review ? resolve(values.review) : null,
-      noviceEvidence: values["novice-evidence"]
-        ? resolve(values["novice-evidence"])
-        : null,
+    const { verifyRebuiltReleaseCandidate } = await import(
+      "./build-release-candidate.mjs"
+    );
+    const result = await verifyRebuiltReleaseCandidate({
+      attestationPath,
+      expectedAttestationSha256: digestFile(attestationPath),
+      candidateTarball: resolve(requireString(values.tarball, "--tarball")),
+      reviewReceipt: resolve(requireString(values.review, "--review")),
+      noviceEvidence: resolve(
+        requireString(values["novice-evidence"], "--novice-evidence"),
+      ),
+      hostedSource: resolve(
+        requireString(values["hosted-source"], "--hosted-source"),
+      ),
     });
     process.stdout.write(
-      `Verified ${attestation.package.name}@${attestation.package.version} `
+      `Verified ${result.attestation.package.name}@${result.attestation.package.version} `
         + `${result.inspected.artifact.integrity}\n`,
     );
     return;
@@ -710,7 +879,7 @@ function commandMain() {
 
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    commandMain();
+    await commandMain();
   } catch (error) {
     process.stderr.write(`OpenDexter provenance refused: ${error.message}\n`);
     process.exitCode = 1;

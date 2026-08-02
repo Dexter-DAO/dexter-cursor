@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -14,20 +15,25 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  canonicalJsonDigest,
   inspectTarball,
   canonicalReleaseRemoteRefs,
   EXPECTED_RELEASE_SOURCE_REPOSITORY,
   RELEASE_BUILD_RECIPE,
+  RELEASE_WIDGET_FILES,
   repositoryIdentity,
   reviewedNpm,
   reviewedReleaseEnvironment,
   reviewedSourceArchiveDigest,
   validateAttestationShape,
+  verifyAttestation,
   verifyRegistryMetadata,
   verifyReleaseRepositoryIdentity,
   verifyRootLock,
 } from "../scripts/package-provenance.mjs";
 import { stageTreePureSource } from "../scripts/build-release-candidate.mjs";
+import { publishExactReviewedTarball } from "../scripts/publish-release-candidate.mjs";
+import { dryRunExactTarball } from "../scripts/verify-coordinated-release.mjs";
 import { listCanonicalRemoteRefs } from "../scripts/verify-hosted-source.mjs";
 import { verifyPublishPolicy } from "../scripts/release-policy.mjs";
 
@@ -101,9 +107,14 @@ function committedRepository(files: Record<string, string>) {
 }
 
 function attestation() {
+  const widgetInventory = RELEASE_WIDGET_FILES.map((path, index) => ({
+    path,
+    size: index + 1,
+    sha256: ["7", "8", "9", "a"][index].repeat(64),
+  }));
   return {
-    schemaVersion: 1,
-    kind: "opendexter-coordinated-release/v1",
+    schemaVersion: 2,
+    kind: "opendexter-coordinated-release/v2",
     package: {
       name: "@dexterai/opendexter",
       version: "1.23.0-rc.3",
@@ -121,7 +132,9 @@ function attestation() {
       sourceMaterial: "archive",
       recipe: RELEASE_BUILD_RECIPE,
       node: "v22.19.0",
+      nodeExecutableSha256: "8".repeat(64),
       npm: "10.9.3",
+      npmCliSha256: "9".repeat(64),
       exactArtifactInstalls: [],
     },
     artifact: {
@@ -146,6 +159,8 @@ function attestation() {
       sourceTree: "5".repeat(40),
       sourceArchiveSha256: "6".repeat(64),
       widgetSourcePath: "public/apps-sdk",
+      widgetSourceDigest: canonicalJsonDigest(widgetInventory),
+      widgetInventory,
       descriptorPath: "release/open-tool-descriptors.json",
       contractSha256: "7".repeat(64),
     },
@@ -205,6 +220,15 @@ describe("coordinated publish policy", () => {
 });
 
 describe("exact package provenance", () => {
+  it("refuses legacy release attestations instead of reinterpreting v1", () => {
+    const legacy = {
+      ...attestation(),
+      schemaVersion: 1,
+      kind: "opendexter-coordinated-release/v1",
+    };
+    expect(() => validateAttestationShape(legacy)).toThrow(/unsupported release attestation schema/);
+  });
+
   it("accepts only the canonical IDE origin and an advertised exact HEAD", () => {
     for (const origin of [
       "https://github.com/Dexter-DAO/opendexter-ide.git",
@@ -431,6 +455,132 @@ describe("exact package provenance", () => {
     writeFileSync(resolve(packageDir, "README.md"), "changed after pack\n");
     expect(() => inspectTarball(tarball, { sourcePackageRoot: packageDir }))
       .toThrow(/packed bytes differ/);
+  });
+
+  it("rejects an arbitrary ignored build plus a matching forged attestation", () => {
+    const { root, packageDir } = fixtureRoot();
+    const reviewedTarball = pack(root, "reviewed.tgz");
+    const reviewed = inspectTarball(reviewedTarball);
+    const release = attestation();
+    release.artifact = reviewed.artifact;
+    release.inventory = reviewed.inventory;
+    const rebuilt = {
+      inspected: reviewed,
+      identity: {
+        commit: release.source.commit,
+        tree: release.source.tree,
+      },
+      lock: { sha256: release.source.rootLockSha256 },
+      manifest: {
+        name: release.package.name,
+        version: release.package.version,
+      },
+      runtime: {
+        node: release.build.node,
+        nodeExecutableSha256: release.build.nodeExecutableSha256,
+        npm: release.build.npm,
+        npmCliSha256: release.build.npmCliSha256,
+      },
+      sourceArchiveSha256: release.source.archiveSha256,
+      hosted: {
+        commit: release.hostedContract.sourceCommit,
+        tree: release.hostedContract.sourceTree,
+        descriptorPath: release.hostedContract.descriptorPath,
+        sourceArchiveSha256: release.hostedContract.sourceArchiveSha256,
+        contractSha256: release.hostedContract.contractSha256,
+        widgetSourceDigest: release.hostedContract.widgetSourceDigest,
+        widgetInventory: release.hostedContract.widgetInventory,
+      },
+    };
+    expect(() => verifyAttestation({
+      attestation: release,
+      tarball: reviewedTarball,
+      rebuilt,
+    })).not.toThrow();
+
+    // Model an attacker rewriting ignored live dist and then forging the
+    // attestation around those same bytes. Final verification compares only
+    // with the independent sterile rebuild, so the paired forgery is refused.
+    writeFileSync(
+      resolve(packageDir, "dist/index.js"),
+      "#!/usr/bin/env node\nconsole.log('forged ignored dist');\n",
+    );
+    const forgedTarball = pack(root, "forged.tgz");
+    const forged = inspectTarball(forgedTarball);
+    const forgedAttestation = structuredClone(release);
+    forgedAttestation.artifact = forged.artifact;
+    forgedAttestation.inventory = forged.inventory;
+    expect(() => verifyAttestation({
+      attestation: forgedAttestation,
+      tarball: forgedTarball,
+      rebuilt,
+    })).toThrow(/candidate and rebuilt tarball identity|candidate and rebuilt full inventory/);
+  });
+
+  it("uses protected npm for exact-tarball dry-run and publish despite ambient PATH", () => {
+    const { root } = fixtureRoot();
+    const tarball = pack(root);
+    const inspected = inspectTarball(tarball);
+    const fakeBin = resolve(root, "fake-bin");
+    mkdirSync(fakeBin);
+    writeFileSync(resolve(fakeBin, "npm"), "#!/bin/sh\nexit 91\n", { mode: 0o755 });
+    const priorPath = process.env.PATH;
+    process.env.PATH = `${fakeBin}:${priorPath ?? ""}`;
+    try {
+      let dryRunCalled = false;
+      const dryRun = dryRunExactTarball({
+        tarball,
+        tag: "next",
+        execute(command: string, args: string[], options: { env: NodeJS.ProcessEnv }) {
+          dryRunCalled = true;
+          expect(command).toBe(process.execPath);
+          expect(args[0]).toMatch(/\/npm\/bin\/npm-cli\.js$/);
+          expect(args).toContain("--dry-run");
+          expect(args).toEqual(expect.arrayContaining([
+            "--access",
+            "public",
+            "--registry",
+            "https://registry.npmjs.org/",
+          ]));
+          expect(args.at(-1)).toBe(realpathSync(tarball));
+          expect(options.env.PATH?.startsWith(fakeBin)).toBe(false);
+          return JSON.stringify({
+            shasum: inspected.artifact.shasum,
+            integrity: inspected.artifact.integrity,
+            files: inspected.inventory.map(({ path, size }) => ({ path, size })),
+          });
+        },
+      });
+      expect(dryRunCalled).toBe(true);
+      expect(dryRun.tarball).toBe(realpathSync(tarball));
+
+      let publishCalled = false;
+      const environment = reviewedReleaseEnvironment();
+      const invocation = publishExactReviewedTarball({
+        tarball,
+        tag: "next",
+        environment,
+        execute(command: string, args: string[], options: { env: NodeJS.ProcessEnv }) {
+          publishCalled = true;
+          expect(command).toBe(process.execPath);
+          expect(args[0]).toMatch(/\/npm\/bin\/npm-cli\.js$/);
+          expect(args).not.toContain("--dry-run");
+          expect(args).toEqual(expect.arrayContaining([
+            "--access",
+            "public",
+            "--registry",
+            "https://registry.npmjs.org/",
+          ]));
+          expect(args.at(-1)).toBe(realpathSync(tarball));
+          expect(options.env.PATH?.startsWith(fakeBin)).toBe(false);
+          return Buffer.alloc(0);
+        },
+      });
+      expect(publishCalled).toBe(true);
+      expect(invocation.tarball).toBe(realpathSync(tarball));
+    } finally {
+      process.env.PATH = priorPath;
+    }
   });
 
   it("fails closed when registry integrity or shasum differs", () => {

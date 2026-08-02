@@ -145,13 +145,21 @@ describe("local package distribution", () => {
     expect(candidate).toContain("installExactArtifact({ tarball, ignoreScripts: false })");
     expect(candidate).toContain("installExactArtifact({ tarball, ignoreScripts: true })");
     expect(candidate).toContain("verifyHostedSource");
+    expect(candidate).toContain("process.umask(0o022)");
 
     const publish = read("scripts/publish-release-candidate.mjs");
+    const provenance = read("scripts/package-provenance.mjs");
     expect(publish).toContain("PUBLISH_EXACT_REVIEWED_TARBALL");
-    expect(publish).toContain('"publish"');
-    expect(publish).toContain('"--ignore-scripts"');
+    expect(publish).toContain("reviewedNpmPublishInvocation");
+    expect(provenance).toContain('"publish"');
+    expect(provenance).toContain('"--ignore-scripts"');
+    expect(provenance).toContain('"--access"');
+    expect(provenance).toContain('"public"');
     expect(publish).toContain("tarball");
     expect(publish).toContain("verify-coordinated-release.mjs");
+    expect(publish).toContain("OPENDXTER_RELEASE_NPM_TOKEN");
+    expect(publish).toContain("mode: 0o600");
+    expect(publish).not.toContain("...process.env");
   });
 
   it("requires a final source-owned complete hosted descriptor", () => {
