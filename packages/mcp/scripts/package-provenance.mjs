@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -12,8 +13,20 @@ import {
   statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import {
+  basename,
+  delimiter,
+  dirname,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createTreePureArchive,
+  listCanonicalRemoteRefs,
+} from "./verify-hosted-source.mjs";
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 export const packageRoot = resolve(scriptRoot, "..");
@@ -22,6 +35,12 @@ export const repositoryRoot = resolve(packageRoot, "../..");
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const SAFE_ARCHIVE_PATH = /^package(?:\/[A-Za-z0-9._@+/-]+)?\/?$/;
 const FORBIDDEN_BASENAME = /^(?:\.npmrc|npmrc|credentials?(?:\..*)?|secrets?(?:\..*)?|private[-_.]?key(?:\..*)?|seed[-_.]?phrase(?:\..*)?|mnemonic(?:\..*)?|wallet\.json|.*\.(?:pem|key|p12|pfx|jks|keystore))$/i;
+export const EXPECTED_RELEASE_SOURCE_REPOSITORY =
+  "https://github.com/Dexter-DAO/opendexter-ide";
+const EXPECTED_RELEASE_SOURCE_ORIGIN = `${EXPECTED_RELEASE_SOURCE_REPOSITORY}.git`;
+export const REVIEWED_RELEASE_NPM_VERSION = "10.9.3";
+export const RELEASE_BUILD_RECIPE =
+  "sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+immutable-hosted-widgets+npm-pack-once/v2";
 
 function fail(message) {
   throw new Error(message);
@@ -47,22 +66,211 @@ function run(command, args, options = {}) {
   }).trim();
 }
 
-function git(root, args) {
-  return run("git", ["-C", root, ...args]);
+function git(root, args, options = {}) {
+  return run("git", ["--no-replace-objects", "-C", root, ...args], options);
 }
 
-export function repositoryIdentity(root = repositoryRoot, { requireClean = true } = {}) {
-  const commit = git(root, ["rev-parse", "HEAD"]);
-  const tree = git(root, ["rev-parse", "HEAD^{tree}"]);
-  const status = git(root, [
+function canonicalGithubRepository(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    fail("release source origin is required");
+  }
+  const trimmed = value.trim();
+  const match =
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(trimmed)
+    ?? /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i.exec(trimmed)
+    ?? /^ssh:\/\/git@github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(trimmed);
+  if (!match) fail("release source origin is not a canonical GitHub repository");
+  return `https://github.com/${match[1]}/${match[2]}`;
+}
+
+export function verifyReleaseRepositoryIdentity(origin) {
+  const canonicalOrigin = canonicalGithubRepository(origin);
+  if (
+    canonicalOrigin.toLowerCase()
+    !== EXPECTED_RELEASE_SOURCE_REPOSITORY.toLowerCase()
+  ) {
+    fail(
+      `release source repository is ${canonicalOrigin}, expected `
+      + EXPECTED_RELEASE_SOURCE_REPOSITORY,
+    );
+  }
+  return EXPECTED_RELEASE_SOURCE_REPOSITORY;
+}
+
+export function reviewedReleaseEnvironment({ npmCache } = {}) {
+  const forbidden = [
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "TAR_OPTIONS",
+    ...Object.keys(process.env).filter((key) => key.startsWith("LD_")),
+  ];
+  for (const key of new Set(forbidden)) {
+    if (typeof process.env[key] === "string" && process.env[key].length > 0) {
+      fail(`release environment contains ${key}`);
+    }
+  }
+  const nodeBin = dirname(realpathSync(process.execPath));
+  return Object.fromEntries(Object.entries({
+    PATH: [
+      nodeBin,
+      "/usr/local/sbin",
+      "/usr/local/bin",
+      "/usr/sbin",
+      "/usr/bin",
+      "/sbin",
+      "/bin",
+    ].filter((entry, index, entries) => entries.indexOf(entry) === index)
+      .join(delimiter),
+    HOME: process.env.HOME,
+    LANG: "C",
+    LC_ALL: "C",
+    GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_ATTR_NOSYSTEM: "1",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    npm_config_audit: "false",
+    npm_config_fund: "false",
+    npm_config_ignore_scripts: "true",
+    npm_config_userconfig: "/dev/null",
+    npm_config_globalconfig: "/dev/null.opendexter-release-global-npmrc",
+    npm_config_cache: npmCache,
+  }).filter(([, value]) => value !== undefined));
+}
+
+export function reviewedNpm(args = []) {
+  const node = realpathSync(process.execPath);
+  const npmCli = realpathSync(resolve(
+    dirname(node),
+    "../lib/node_modules/npm/bin/npm-cli.js",
+  ));
+  const info = lstatSync(npmCli);
+  if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o022) !== 0) {
+    fail("reviewed npm CLI is not one protected regular file");
+  }
+  return { command: node, args: [npmCli, ...args] };
+}
+
+export function canonicalReleaseRemoteRefs({
+  environment = reviewedReleaseEnvironment(),
+  listRefs = listCanonicalRemoteRefs,
+} = {}) {
+  return listRefs(EXPECTED_RELEASE_SOURCE_ORIGIN, {
+    cwd: tmpdir(),
+    environment,
+  });
+}
+
+function remoteAdvertisesCommit(remoteRefs, commit) {
+  return remoteRefs.split(/\r?\n/).some((line) => {
+    const [remoteCommit, refname, extra] = line.trim().split(/\s+/);
+    return remoteCommit === commit && Boolean(refname) && extra === undefined;
+  });
+}
+
+export function repositoryIdentity(
+  root = repositoryRoot,
+  {
+    requireClean = true,
+    advertisedRefs = null,
+    environment = reviewedReleaseEnvironment(),
+  } = {},
+) {
+  const resolvedRoot = realpathSync(root);
+  const topLevel = realpathSync(git(
+    resolvedRoot,
+    ["rev-parse", "--show-toplevel"],
+    { env: environment },
+  ));
+  if (topLevel !== resolvedRoot) fail("release source root is not the Git toplevel");
+  verifyReleaseRepositoryIdentity(git(
+    resolvedRoot,
+    ["remote", "get-url", "origin"],
+    { env: environment },
+  ));
+  const status = git(resolvedRoot, [
     "status",
-    "--porcelain=v1",
+    "--porcelain=v2",
+    "-z",
     "--untracked-files=all",
-  ]);
+  ], { env: environment });
   if (requireClean && status) {
     fail(`release source is not clean:\n${status}`);
   }
-  return { commit, tree, clean: status.length === 0 };
+  const hidden = git(resolvedRoot, ["ls-files", "-v", "-z"], {
+    env: environment,
+  }).split("\0").filter((entry) => /^[a-zS] /.test(entry));
+  if (hidden.length > 0) {
+    fail("release source contains assume-unchanged or skip-worktree state");
+  }
+  const replaceRefs = git(
+    resolvedRoot,
+    ["for-each-ref", "--format=%(refname)", "refs/replace"],
+    { env: environment },
+  );
+  if (replaceRefs) fail("release source contains Git replace refs");
+  const commit = git(resolvedRoot, ["rev-parse", "HEAD^{commit}"], {
+    env: environment,
+  });
+  const tree = git(resolvedRoot, ["rev-parse", "HEAD^{tree}"], {
+    env: environment,
+  });
+  const remoteRefs = advertisedRefs ?? canonicalReleaseRemoteRefs({ environment });
+  if (!remoteAdvertisesCommit(remoteRefs, commit)) {
+    fail("canonical release source does not advertise HEAD");
+  }
+  return {
+    repository: EXPECTED_RELEASE_SOURCE_REPOSITORY,
+    commit,
+    tree,
+    clean: status.length === 0,
+  };
+}
+
+export function createReviewedSourceArchive({
+  root,
+  commit,
+  tree,
+  output,
+  disposableRoot,
+  environment = reviewedReleaseEnvironment(),
+}) {
+  createTreePureArchive({
+    root,
+    commit,
+    tree,
+    output,
+    disposableRoot,
+    cleanEnvironment: environment,
+  });
+  return digestFile(output);
+}
+
+export function reviewedSourceArchiveDigest({
+  root,
+  commit,
+  tree,
+  environment = reviewedReleaseEnvironment(),
+}) {
+  const disposableRoot = mkdtempSync(join(tmpdir(), "opendexter-release-source-"));
+  const archive = resolve(disposableRoot, "source.tar");
+  const gitStage = resolve(disposableRoot, "git");
+  try {
+    // createTreePureArchive requires one dedicated Git staging directory.
+    mkdirSync(gitStage);
+    return createReviewedSourceArchive({
+      root,
+      commit,
+      tree,
+      output: archive,
+      disposableRoot: gitStage,
+      environment,
+    });
+  } finally {
+    rmSync(disposableRoot, { recursive: true, force: true });
+  }
 }
 
 function canonical(value) {
@@ -102,6 +310,9 @@ export function verifyRootLock({
   const rootPackage = readJson(resolve(repoRoot, "package.json"));
   const pkg = readJson(resolve(pkgRoot, "package.json"));
   const lock = readJson(rootLock);
+  if (rootPackage.packageManager !== `npm@${REVIEWED_RELEASE_NPM_VERSION}`) {
+    fail("root packageManager does not pin the reviewed npm version");
+  }
   if (lock.lockfileVersion !== 3) fail("root lockfileVersion must be 3");
   sameJson(lock.packages?.[""]?.workspaces, rootPackage.workspaces, "root lock workspaces");
   const locked = lock.packages?.["packages/mcp"];
@@ -316,7 +527,21 @@ export function validateAttestationShape(attestation) {
   }
   requireString(attestation.source?.commit, "attestation source commit");
   requireString(attestation.source?.tree, "attestation source tree");
+  if (attestation.source?.repository !== EXPECTED_RELEASE_SOURCE_REPOSITORY) {
+    fail("attestation source repository is unexpected");
+  }
+  requireString(attestation.source?.archiveSha256, "attestation source archive digest");
   requireString(attestation.source?.rootLockSha256, "attestation root lock digest");
+  if (attestation.build?.sourceMaterial !== "archive") {
+    fail("attestation source material is unsupported");
+  }
+  if (attestation.build?.recipe !== RELEASE_BUILD_RECIPE) {
+    fail("attestation build recipe is unsupported");
+  }
+  requireString(attestation.build?.node, "attestation build Node version");
+  if (attestation.build?.npm !== REVIEWED_RELEASE_NPM_VERSION) {
+    fail("attestation build npm version is not reviewed");
+  }
   requireString(attestation.artifact?.sha256, "attestation tarball digest");
   requireString(attestation.artifact?.shasum, "attestation tarball shasum");
   requireString(attestation.artifact?.integrity, "attestation registry integrity");
@@ -351,6 +576,21 @@ export function validateAttestationShape(attestation) {
     "novice evaluation evidence digest",
   );
   requireString(attestation.hostedContract?.contractSha256, "hosted contract digest");
+  if (
+    attestation.hostedContract?.sourceRepository
+    !== "https://github.com/Dexter-DAO/dexter-mcp"
+  ) {
+    fail("attestation hosted source repository is unexpected");
+  }
+  requireString(attestation.hostedContract?.sourceCommit, "hosted source commit");
+  requireString(attestation.hostedContract?.sourceTree, "hosted source tree");
+  if (attestation.hostedContract?.widgetSourcePath !== "public/apps-sdk") {
+    fail("attestation hosted widget source path is unexpected");
+  }
+  requireString(
+    attestation.hostedContract?.sourceArchiveSha256,
+    "hosted source archive digest",
+  );
   return attestation;
 }
 
@@ -367,6 +607,11 @@ export function verifyAttestation({
   validateAttestationShape(attestation);
   const identity = repositoryIdentity(repoRoot, { requireClean });
   const lock = verifyRootLock({ repoRoot, pkgRoot, requireTracked: requireTrackedLock });
+  const sourceArchiveSha256 = reviewedSourceArchiveDigest({
+    root: repoRoot,
+    commit: identity.commit,
+    tree: identity.tree,
+  });
   const manifest = readJson(resolve(pkgRoot, "package.json"));
   const contractPath = resolve(
     repoRoot,
@@ -378,6 +623,9 @@ export function verifyAttestation({
   if (attestation.package.version !== manifest.version) fail("attestation package version drifted");
   if (attestation.source.commit !== identity.commit) fail("attestation source commit drifted");
   if (attestation.source.tree !== identity.tree) fail("attestation source tree drifted");
+  if (attestation.source.archiveSha256 !== sourceArchiveSha256) {
+    fail("attestation source archive drifted");
+  }
   if (attestation.source.rootLockSha256 !== lock.sha256) fail("attestation root lock drifted");
   if (attestation.hostedContract.contractSha256 !== digestFile(contractPath)) {
     fail("attestation hosted contract bytes drifted");

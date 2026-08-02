@@ -15,10 +15,20 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   inspectTarball,
+  canonicalReleaseRemoteRefs,
+  EXPECTED_RELEASE_SOURCE_REPOSITORY,
+  RELEASE_BUILD_RECIPE,
+  repositoryIdentity,
+  reviewedNpm,
+  reviewedReleaseEnvironment,
+  reviewedSourceArchiveDigest,
   validateAttestationShape,
   verifyRegistryMetadata,
+  verifyReleaseRepositoryIdentity,
   verifyRootLock,
 } from "../scripts/package-provenance.mjs";
+import { stageTreePureSource } from "../scripts/build-release-candidate.mjs";
+import { listCanonicalRemoteRefs } from "../scripts/verify-hosted-source.mjs";
 import { verifyPublishPolicy } from "../scripts/release-policy.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -58,6 +68,38 @@ function pack(root: string, name = "candidate.tgz") {
   return tarball;
 }
 
+function git(root: string, args: string[]): string {
+  return execFileSync("git", ["-C", root, ...args], {
+    encoding: "utf8",
+  }).trim();
+}
+
+function committedRepository(files: Record<string, string>) {
+  const root = mkdtempSync(resolve(tmpdir(), "opendexter-source-fixture-"));
+  temporaryRoots.push(root);
+  for (const [relativePath, contents] of Object.entries(files)) {
+    const path = resolve(root, relativePath);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, contents);
+  }
+  execFileSync("git", ["init", "-q", root]);
+  git(root, ["config", "user.name", "OpenDexter Test"]);
+  git(root, ["config", "user.email", "test@invalid.example"]);
+  git(root, ["add", "."]);
+  git(root, ["commit", "-qm", "fixture"]);
+  git(root, [
+    "remote",
+    "add",
+    "origin",
+    "https://github.com/Dexter-DAO/opendexter-ide.git",
+  ]);
+  return {
+    root,
+    commit: git(root, ["rev-parse", "HEAD^{commit}"]),
+    tree: git(root, ["rev-parse", "HEAD^{tree}"]),
+  };
+}
+
 function attestation() {
   return {
     schemaVersion: 1,
@@ -69,9 +111,18 @@ function attestation() {
       distTag: "next",
     },
     source: {
+      repository: EXPECTED_RELEASE_SOURCE_REPOSITORY,
       commit: "a".repeat(40),
       tree: "b".repeat(40),
+      archiveSha256: "3".repeat(64),
       rootLockSha256: "c".repeat(64),
+    },
+    build: {
+      sourceMaterial: "archive",
+      recipe: RELEASE_BUILD_RECIPE,
+      node: "v22.19.0",
+      npm: "10.9.3",
+      exactArtifactInstalls: [],
     },
     artifact: {
       fileName: "candidate.tgz",
@@ -89,7 +140,15 @@ function attestation() {
     }],
     review: { decision: "accepted", receiptSha256: "1".repeat(64) },
     noviceRoutingEvaluation: { status: "passed", evidenceSha256: "2".repeat(64) },
-    hostedContract: { contractSha256: "3".repeat(64) },
+    hostedContract: {
+      sourceRepository: "https://github.com/Dexter-DAO/dexter-mcp",
+      sourceCommit: "4".repeat(40),
+      sourceTree: "5".repeat(40),
+      sourceArchiveSha256: "6".repeat(64),
+      widgetSourcePath: "public/apps-sdk",
+      descriptorPath: "release/open-tool-descriptors.json",
+      contractSha256: "7".repeat(64),
+    },
   };
 }
 
@@ -146,6 +205,178 @@ describe("coordinated publish policy", () => {
 });
 
 describe("exact package provenance", () => {
+  it("accepts only the canonical IDE origin and an advertised exact HEAD", () => {
+    for (const origin of [
+      "https://github.com/Dexter-DAO/opendexter-ide.git",
+      "git@github.com:Dexter-DAO/opendexter-ide.git",
+      "ssh://git@github.com/Dexter-DAO/opendexter-ide.git",
+    ]) {
+      expect(verifyReleaseRepositoryIdentity(origin))
+        .toBe(EXPECTED_RELEASE_SOURCE_REPOSITORY);
+    }
+    expect(() => verifyReleaseRepositoryIdentity(
+      "https://github.com/example/opendexter-ide.git",
+    )).toThrow(/expected https:\/\/github\.com\/Dexter-DAO\/opendexter-ide/);
+
+    const repository = committedRepository({ "tracked.txt": "reviewed\n" });
+    expect(() => repositoryIdentity(repository.root, {
+      advertisedRefs: `${"f".repeat(40)}\trefs/heads/lookalike`,
+    })).toThrow(/canonical release source does not advertise HEAD/);
+    expect(repositoryIdentity(repository.root, {
+      advertisedRefs: `${repository.commit}\trefs/heads/release`,
+    })).toMatchObject({
+      repository: EXPECTED_RELEASE_SOURCE_REPOSITORY,
+      commit: repository.commit,
+      tree: repository.tree,
+      clean: true,
+    });
+  });
+
+  it("ignores caller Git URL rewrites for canonical remote advertisement", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "opendexter-release-redirect-"));
+    temporaryRoots.push(root);
+    const attacker = resolve(root, "attacker.git");
+    const runner = resolve(root, "runner");
+    mkdirSync(runner);
+    execFileSync("git", ["init", "--bare", "-q", attacker]);
+    execFileSync("git", ["init", "-q", runner]);
+    writeFileSync(resolve(runner, "attacker.txt"), "attacker\n");
+    git(runner, ["config", "user.name", "OpenDexter Test"]);
+    git(runner, ["config", "user.email", "test@invalid.example"]);
+    git(runner, ["add", "attacker.txt"]);
+    git(runner, ["commit", "-qm", "attacker"]);
+    git(runner, ["push", `file://${attacker}`, "HEAD:refs/heads/attacker"]);
+    git(runner, [
+      "config",
+      `url.file://${attacker}.insteadOf`,
+      "test://canonical-release/repository.git",
+    ]);
+    expect(git(runner, ["ls-remote", "test://canonical-release/repository.git"]))
+      .toMatch(/refs\/heads\/attacker/);
+    expect(() => listCanonicalRemoteRefs(
+      "test://canonical-release/repository.git",
+      { cwd: runner, environment: reviewedReleaseEnvironment() },
+    )).toThrow(/remote-test|not a git command|unable to find remote helper/i);
+
+    let queriedRemote: string | null = null;
+    let queriedEnvironment: NodeJS.ProcessEnv | null = null;
+    const refs = canonicalReleaseRemoteRefs({
+      environment: reviewedReleaseEnvironment(),
+      listRefs(
+        remote: string,
+        options: { environment: NodeJS.ProcessEnv },
+      ) {
+        queriedRemote = remote;
+        queriedEnvironment = options.environment;
+        return `${"a".repeat(40)}\trefs/heads/release`;
+      },
+    });
+    expect(refs).toContain("refs/heads/release");
+    expect(queriedRemote).toBe(`${EXPECTED_RELEASE_SOURCE_REPOSITORY}.git`);
+    expect(queriedEnvironment?.GIT_CONFIG_GLOBAL).toBe("/dev/null");
+    expect(queriedEnvironment?.GIT_CONFIG_NOSYSTEM).toBe("1");
+  });
+
+  it("refuses hidden index flags and replace refs before release", () => {
+    for (const flag of ["--assume-unchanged", "--skip-worktree"]) {
+      const repository = committedRepository({ "tracked.txt": "reviewed\n" });
+      git(repository.root, ["update-index", flag, "tracked.txt"]);
+      expect(() => repositoryIdentity(repository.root, {
+        advertisedRefs: `${repository.commit}\trefs/heads/release`,
+      })).toThrow(/assume-unchanged or skip-worktree/);
+    }
+
+    const repository = committedRepository({ "tracked.txt": "one\n" });
+    writeFileSync(resolve(repository.root, "tracked.txt"), "two\n");
+    git(repository.root, ["add", "tracked.txt"]);
+    git(repository.root, ["commit", "-qm", "second"]);
+    const head = git(repository.root, ["rev-parse", "HEAD"]);
+    git(repository.root, ["replace", head, `${head}^`]);
+    expect(() => repositoryIdentity(repository.root, {
+      advertisedRefs: `${head}\trefs/heads/release`,
+    })).toThrow(/Git replace refs/);
+  });
+
+  it("stages tree-pure source and ignores attributes plus later hosted mutations", () => {
+    const repository = committedRepository({
+      "public/apps-sdk/widget.html": "reviewed widget\n",
+      "public/apps-sdk/kept.txt": "$Format:%H$\n",
+    });
+    const attributes = resolve(repository.root, ".git/local-attributes");
+    writeFileSync(
+      attributes,
+      "public/apps-sdk/widget.html export-ignore\n"
+        + "public/apps-sdk/kept.txt export-subst\n",
+    );
+    git(repository.root, ["config", "core.attributesFile", attributes]);
+    writeFileSync(
+      resolve(repository.root, ".git/info/attributes"),
+      "public/apps-sdk/widget.html export-ignore\n"
+        + "public/apps-sdk/kept.txt export-subst\n",
+    );
+    const stageRoot = mkdtempSync(resolve(tmpdir(), "opendexter-tree-pure-stage-"));
+    temporaryRoots.push(stageRoot);
+    const environment = reviewedReleaseEnvironment();
+    const staged = stageTreePureSource({
+      sourceRoot: repository.root,
+      commit: repository.commit,
+      tree: repository.tree,
+      stageRoot,
+      name: "hosted-source",
+      environment,
+    });
+    expect(readFileSync(
+      resolve(staged.extractedRoot, "public/apps-sdk/widget.html"),
+      "utf8",
+    )).toBe("reviewed widget\n");
+    expect(readFileSync(
+      resolve(staged.extractedRoot, "public/apps-sdk/kept.txt"),
+      "utf8",
+    )).toBe("$Format:%H$\n");
+
+    writeFileSync(
+      resolve(repository.root, "public/apps-sdk/widget.html"),
+      "mutated working file\n",
+    );
+    expect(readFileSync(
+      resolve(staged.extractedRoot, "public/apps-sdk/widget.html"),
+      "utf8",
+    )).toBe("reviewed widget\n");
+    expect(reviewedSourceArchiveDigest({
+      root: repository.root,
+      commit: repository.commit,
+      tree: repository.tree,
+      environment,
+    })).toBe(staged.archiveSha256);
+  });
+
+  it("uses the protected exact npm CLI and scrubbed release environment", () => {
+    const environment = reviewedReleaseEnvironment();
+    const npm = reviewedNpm(["--version"]);
+    expect(npm.command).toBe(process.execPath);
+    expect(execFileSync(npm.command, npm.args, {
+      encoding: "utf8",
+      env: environment,
+    }).trim()).toBe("10.9.3");
+    expect(environment.GIT_CONFIG_GLOBAL).toBe("/dev/null");
+    expect(environment.npm_config_userconfig).toBe("/dev/null");
+    expect(environment.npm_config_ignore_scripts).toBe("true");
+    expect(Object.hasOwn(environment, "NODE_OPTIONS")).toBe(false);
+  });
+
+  it("revalidates novice evidence with the archived release script", () => {
+    const candidate = readFileSync(
+      resolve(packageRoot, "scripts/build-release-candidate.mjs"),
+      "utf8",
+    );
+    expect(candidate).toContain(
+      'resolve(cleanRoot, "tests/opendexter-novice-routing-evaluation.mjs")',
+    );
+    expect(candidate).not.toContain(
+      'resolve(repositoryRoot, "tests/opendexter-novice-routing-evaluation.mjs")',
+    );
+  });
+
   it("uses one canonical root lock and rejects a nested package lock", () => {
     const lock = verifyRootLock({ requireTracked: false });
     expect(lock.path).toBe("package-lock.json");

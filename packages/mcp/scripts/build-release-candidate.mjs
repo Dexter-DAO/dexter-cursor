@@ -11,16 +11,26 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
+  createReviewedSourceArchive,
   digestFile,
+  EXPECTED_RELEASE_SOURCE_REPOSITORY,
   inspectTarball,
   packageRoot,
+  RELEASE_BUILD_RECIPE,
+  REVIEWED_RELEASE_NPM_VERSION,
+  reviewedNpm,
+  reviewedReleaseEnvironment,
   repositoryIdentity,
   repositoryRoot,
   verifyRootLock,
 } from "./package-provenance.mjs";
 import { releaseChannel } from "./release-policy.mjs";
-import { verifyHostedSource } from "./verify-hosted-source.mjs";
+import {
+  EXPECTED_HOSTED_SOURCE_REPOSITORY,
+  verifyHostedSource,
+} from "./verify-hosted-source.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -67,9 +77,50 @@ function verifyEvidence(path, { kind, statusField, status, identity }) {
   return evidence;
 }
 
+function runReviewedNpm(args, options = {}) {
+  const npm = reviewedNpm(args);
+  return run(npm.command, npm.args, options);
+}
+
+export function stageTreePureSource({
+  sourceRoot,
+  commit,
+  tree,
+  stageRoot,
+  name,
+  environment = reviewedReleaseEnvironment(),
+}) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) fail("invalid source stage name");
+  const gitStage = resolve(stageRoot, `${name}-git`);
+  const archive = resolve(stageRoot, `${name}.tar`);
+  const extractedRoot = resolve(stageRoot, name);
+  mkdirSync(gitStage);
+  mkdirSync(extractedRoot);
+  const archiveSha256 = createReviewedSourceArchive({
+    root: sourceRoot,
+    commit,
+    tree,
+    output: archive,
+    disposableRoot: gitStage,
+    environment,
+  });
+  run("tar", ["-xf", archive, "-C", extractedRoot], {
+    env: environment,
+    stdio: "pipe",
+  });
+  return { archive, archiveSha256, extractedRoot };
+}
+
 function installExactArtifact({ tarball, ignoreScripts }) {
   const installRoot = mkdtempSync(joinTmp("opendexter-artifact-install-"));
   try {
+    const environment = reviewedReleaseEnvironment({
+      npmCache: resolve(installRoot, "npm-cache"),
+    });
+    const installEnvironment = {
+      ...environment,
+      npm_config_ignore_scripts: ignoreScripts ? "true" : "false",
+    };
     writeFileSync(
       resolve(installRoot, "package.json"),
       `${JSON.stringify({ private: true }, null, 2)}\n`,
@@ -77,11 +128,16 @@ function installExactArtifact({ tarball, ignoreScripts }) {
     const args = ["install", "--save-exact", "--no-audit", "--no-fund"];
     if (ignoreScripts) args.push("--ignore-scripts");
     args.push(tarball);
-    run("npm", args, { cwd: installRoot, stdio: "pipe" });
+    runReviewedNpm(args, {
+      cwd: installRoot,
+      env: installEnvironment,
+      stdio: "pipe",
+    });
     const installedRoot = resolve(installRoot, "node_modules/@dexterai/opendexter");
     const manifest = readJson(resolve(installedRoot, "package.json"));
     run(process.execPath, [resolve(installedRoot, "dist/index.js"), "--help"], {
       cwd: installRoot,
+      env: installEnvironment,
       stdio: "pipe",
     });
     return { version: manifest.version, ignoredScripts: ignoreScripts };
@@ -125,11 +181,6 @@ async function main() {
     status: "passed",
     identity,
   });
-  run(
-    process.execPath,
-    [resolve(repositoryRoot, "tests/opendexter-novice-routing-evaluation.mjs"), "--results", novicePath],
-    { cwd: repositoryRoot, stdio: "pipe" },
-  );
   const hosted = await verifyHostedSource({ sourceRoot: hostedSource, mode: "check" });
 
   const candidateRoot = resolve(
@@ -144,79 +195,147 @@ async function main() {
   }
   const buildStage = mkdtempSync(joinTmp("opendexter-clean-build-"));
   try {
-    const archive = resolve(buildStage, "source.tar");
-    run("git", ["-C", repositoryRoot, "archive", "--format=tar", `--output=${archive}`, identity.commit]);
-    const cleanRoot = resolve(buildStage, "source");
-    mkdirSync(cleanRoot);
-    run("tar", ["-xf", archive, "-C", cleanRoot]);
+    const npmCache = resolve(buildStage, "npm-cache");
+    const environment = reviewedReleaseEnvironment({ npmCache });
+    const reviewedVersion = runReviewedNpm(["--version"], { env: environment });
+    if (reviewedVersion !== REVIEWED_RELEASE_NPM_VERSION) {
+      fail("installed npm differs from the reviewed release npm version");
+    }
+    const sourceStage = stageTreePureSource({
+      sourceRoot: repositoryRoot,
+      commit: identity.commit,
+      tree: identity.tree,
+      stageRoot: buildStage,
+      name: "source",
+      environment,
+    });
+    const hostedStage = stageTreePureSource({
+      sourceRoot: hostedSource,
+      commit: hosted.commit,
+      tree: hosted.tree,
+      stageRoot: buildStage,
+      name: "hosted-source",
+      environment,
+    });
+    const cleanRoot = sourceStage.extractedRoot;
+    const immutableWidgetSource = resolve(
+      hostedStage.extractedRoot,
+      "public/apps-sdk",
+    );
+    const cleanPackageRoot = resolve(cleanRoot, "packages/mcp");
+    const hostedContractPath = resolve(
+      cleanRoot,
+      "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
+    );
+    const cleanManifest = readJson(resolve(cleanPackageRoot, "package.json"));
+    if (
+      JSON.stringify(readJson(hostedContractPath))
+      !== JSON.stringify(hosted.contract)
+    ) {
+      fail("archived IDE hosted contract differs from verified hosted source");
+    }
+    const archivedLock = verifyRootLock({
+      repoRoot: cleanRoot,
+      pkgRoot: cleanPackageRoot,
+      requireTracked: false,
+    });
+    if (archivedLock.sha256 !== lock.sha256) {
+      fail("archived release lock differs from the reviewed source lock");
+    }
+    if (
+      cleanManifest.name !== manifest.name
+      || cleanManifest.version !== manifest.version
+    ) {
+      fail("archived package identity differs from the reviewed checkout");
+    }
+    run(
+      process.execPath,
+      [
+        resolve(cleanRoot, "tests/opendexter-novice-routing-evaluation.mjs"),
+        "--results",
+        novicePath,
+      ],
+      { cwd: cleanRoot, env: environment, stdio: "pipe" },
+    );
 
     // The candidate is always rebuilt from the committed root lock. No current
-    // checkout node_modules, ignored lock, or untracked build output is reused.
-    run("npm", ["ci", "--ignore-scripts"], { cwd: cleanRoot, stdio: "pipe" });
-    run("npm", ["run", "version:check", "--workspace=@dexterai/opendexter"], {
+    // checkout node_modules, ignored lock, untracked build output, or mutable
+    // hosted widget file is reused.
+    const npmCiArgs = ["ci", "--ignore-scripts"];
+    npmCiArgs.push("--no-audit", "--no-fund");
+    runReviewedNpm(npmCiArgs, {
       cwd: cleanRoot,
+      env: environment,
       stdio: "pipe",
     });
-    run("npm", ["run", "build", "--workspace=@dexterai/opendexter"], {
+    runReviewedNpm(["run", "version:check", "--workspace=@dexterai/opendexter"], {
+      cwd: cleanRoot,
+      env: environment,
+      stdio: "pipe",
+    });
+    runReviewedNpm(["run", "build", "--workspace=@dexterai/opendexter"], {
       cwd: cleanRoot,
       env: {
-        ...process.env,
-        DEXTER_WIDGET_SOURCE: resolve(hostedSource, "public/apps-sdk"),
+        ...environment,
+        DEXTER_WIDGET_SOURCE: immutableWidgetSource,
       },
       stdio: "pipe",
     });
-    const rawPack = run(
-      "npm",
-      [
-        "pack",
-        "--json",
-        "--ignore-scripts",
-        `--pack-destination=${candidateRoot}`,
-      ],
-      { cwd: resolve(cleanRoot, "packages/mcp") },
-    );
+    const rawPack = runReviewedNpm([
+      "pack",
+      "--json",
+      "--ignore-scripts",
+      `--pack-destination=${candidateRoot}`,
+    ], {
+      cwd: cleanPackageRoot,
+      env: environment,
+    });
     const [pack] = JSON.parse(rawPack);
     const tarball = resolve(candidateRoot, pack.filename);
     const inspected = inspectTarball(tarball, {
-      sourcePackageRoot: resolve(cleanRoot, "packages/mcp"),
+      sourcePackageRoot: cleanPackageRoot,
     });
 
     const normalInstall = installExactArtifact({ tarball, ignoreScripts: false });
     const inertInstall = installExactArtifact({ tarball, ignoreScripts: true });
-    if (normalInstall.version !== manifest.version || inertInstall.version !== manifest.version) {
+    if (
+      normalInstall.version !== cleanManifest.version
+      || inertInstall.version !== cleanManifest.version
+    ) {
       fail("exact-artifact install resolved the wrong package version");
     }
 
-    const hostedContractPath = resolve(
-      repositoryRoot,
-      "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
-    );
     const attestation = {
       schemaVersion: 1,
       kind: "opendexter-coordinated-release/v1",
       package: {
-        name: manifest.name,
-        version: manifest.version,
+        name: cleanManifest.name,
+        version: cleanManifest.version,
         releaseChannel: channel,
         distTag,
       },
       source: {
-        repository: manifest.repository?.url,
+        repository: EXPECTED_RELEASE_SOURCE_REPOSITORY,
         commit: identity.commit,
         tree: identity.tree,
+        archiveSha256: sourceStage.archiveSha256,
         rootLockSha256: lock.sha256,
       },
       build: {
-        recipe: "git-archive+npm-ci-ignore-scripts+workspace-build+npm-pack-once/v1",
+        sourceMaterial: "archive",
+        recipe: RELEASE_BUILD_RECIPE,
         node: process.version,
-        npm: run("npm", ["--version"]),
+        npm: reviewedVersion,
         exactArtifactInstalls: [normalInstall, inertInstall],
       },
       artifact: inspected.artifact,
       inventory: inspected.inventory,
       hostedContract: {
+        sourceRepository: EXPECTED_HOSTED_SOURCE_REPOSITORY,
         sourceCommit: hosted.commit,
         sourceTree: hosted.tree,
+        sourceArchiveSha256: hostedStage.archiveSha256,
+        widgetSourcePath: "public/apps-sdk",
         descriptorPath: hosted.descriptorPath,
         contractSha256: digestFile(hostedContractPath),
       },
@@ -245,9 +364,14 @@ async function main() {
   }
 }
 
-try {
-  await main();
-} catch (error) {
-  process.stderr.write(`OpenDexter candidate build refused: ${error.message}\n`);
-  process.exitCode = 1;
+if (
+  process.argv[1]
+  && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  try {
+    await main();
+  } catch (error) {
+    process.stderr.write(`OpenDexter candidate build refused: ${error.message}\n`);
+    process.exitCode = 1;
+  }
 }
