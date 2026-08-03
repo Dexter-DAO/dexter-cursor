@@ -43,6 +43,11 @@ clients, configures the clients it can edit safely, and prints any remaining
 manual step. Codex uses TOML, so OpenDexter prints the exact block instead of
 editing that file automatically.
 
+Setup refuses to replace an existing `opendexter` MCP registration. The hosted
+connector uses the user's Dexter Wallet; this package uses a separate local
+signer. If a client already has either surface under that name, setup leaves it
+unchanged and asks the user to remove or rename it intentionally first.
+
 Then try a search that describes the result you need:
 
 ```bash

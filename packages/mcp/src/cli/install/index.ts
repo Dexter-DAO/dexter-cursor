@@ -8,6 +8,7 @@ import { VERSION } from "../../config.js";
 import { loadOrCreateWallet } from "../../wallet/index.js";
 import { getClientConfig, CLIENTS, detectInstalledClients, type ClientId } from "./clients.js";
 import { buildClaudeCodeMcpCommand } from "./claude.js";
+import { existingRegistrationMessage, inspectExistingMcp } from "./collision.js";
 
 interface InstallOpts {
   client?: string;
@@ -34,7 +35,7 @@ function renderTomlBlock(entry: Record<string, unknown>): string {
   ].join("\n");
 }
 
-function writeClientConfig(clientId: ClientId, dev: boolean): { ok: boolean; message: string } {
+export function writeClientConfig(clientId: ClientId, dev: boolean): { ok: boolean; message: string } {
   const config = getClientConfig(clientId, dev);
 
   if (config.manual) {
@@ -63,6 +64,20 @@ function writeClientConfig(clientId: ClientId, dev: boolean): { ok: boolean; mes
       copyFileSync(config.configPath, config.configPath + ".bak");
       existing = {};
     }
+
+    const existingSection = existing[config.sectionKey];
+    if (
+      existingSection
+      && typeof existingSection === "object"
+      && !Array.isArray(existingSection)
+      && Object.prototype.hasOwnProperty.call(existingSection, "opendexter")
+    ) {
+      return {
+        ok: false,
+        message: existingRegistrationMessage(CLIENTS[clientId].name, "present"),
+      };
+    }
+
     // Back up valid configs too
     if (Object.keys(existing).length > 0) {
       copyFileSync(config.configPath, config.configPath + ".bak");
@@ -262,6 +277,14 @@ export async function runInstall(opts: InstallOpts): Promise<void> {
   const failures: string[] = [];
 
   for (const clientId of targetClients) {
+    if (clientId === "claude-code" || clientId === "codex") {
+      const existing = await inspectExistingMcp(clientId);
+      if (existing.state !== "absent") {
+        failures.push(existingRegistrationMessage(CLIENTS[clientId].name, existing.state));
+        continue;
+      }
+    }
+
     if (clientId === "claude-code") {
       // Use Claude Code's supported MCP command. The repository plugin is the
       // separate hosted product and must not be installed by this local CLI.
@@ -281,9 +304,12 @@ export async function runInstall(opts: InstallOpts): Promise<void> {
       const s = spinner();
       s.start("Installing OpenDexter plugin into Cursor");
       const result = writeClientConfig(clientId, opts.dev);
-      if (result.ok) {
-        successes.push(result.message);
+      if (!result.ok) {
+        s.stop("Existing OpenDexter registration left unchanged");
+        failures.push(result.message);
+        continue;
       }
+      successes.push(result.message);
       try {
         const pluginResult = installCursorPlugin(opts.dev);
         s.stop("Cursor plugin installed (MCP + skills)");
