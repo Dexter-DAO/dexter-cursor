@@ -63,9 +63,9 @@ describe("published OpenDexter dependency graph", () => {
     expect(pkg.scripts.prepublishOnly).toBe(
       "node scripts/publish-release-candidate.mjs",
     );
-    expect(pkg.scripts["release:publish"]).toBe(
-      "node scripts/publish-release-candidate.mjs",
-    );
+    expect(pkg.scripts["release:publish"]).toBeUndefined();
+    expect(pkg.scripts["release:candidate"]).toBeUndefined();
+    expect(pkg.scripts["release:verify"]).toBeUndefined();
     const publishRefusal = await readFile(
       new URL("../scripts/publish-release-candidate.mjs", import.meta.url),
       "utf8",

@@ -137,7 +137,7 @@ describe("local package distribution", () => {
     expect(verifier).toContain('"--json"');
   });
 
-  it("builds once from the locked archive and publishes only that reviewed tarball", () => {
+  it("builds once from the locked archive and publishes only that immutable tarball", () => {
     const candidate = read("scripts/build-release-candidate.mjs");
     expect(candidate).toContain('"archive"');
     expect(candidate).toContain('["ci", "--ignore-scripts"]');
@@ -145,12 +145,13 @@ describe("local package distribution", () => {
     expect(candidate.match(/ignoreScripts: (?:false|true)/g)).toHaveLength(2);
     expect(candidate).toContain("toolchain: rebuilt.toolchain");
     expect(candidate).toContain("stageReviewedToolchain");
-    expect(candidate).toContain("verifyHostedSource");
+    expect(candidate).toContain("hostedContractRelativePath");
     expect(candidate).toContain("process.umask(0o022)");
 
     const publish = read("scripts/publish-release-candidate.mjs");
     const provenance = read("scripts/package-provenance.mjs");
     const hosted = read("scripts/verify-hosted-source.mjs");
+    const publicHosted = read("scripts/public-hosted-release.mjs");
     const githubHosted = read("scripts/github-hosted-release.mjs");
     const toolchain = read("scripts/reviewed-toolchain.mjs");
     const toolchainPin = JSON.parse(
@@ -165,10 +166,19 @@ describe("local package distribution", () => {
     expect(provenance).toContain('"public"');
     expect(publish).not.toContain("...process.env");
     expect(githubHosted).toContain('from "./build-release-candidate.mjs"');
-    expect(githubHosted).toContain("buildReviewedReleaseCandidate([");
-    expect(githubHosted).toContain("verifyCoordinatedRelease({");
+    expect(githubHosted).toContain("buildReviewedReleaseArtifact({");
+    expect(githubHosted).toContain("runValidation: true");
+    expect(githubHosted).toContain("validatePublishBundle({");
+    expect(githubHosted).toContain("validateProvenanceStatement");
     expect(githubHosted).toContain("publisher-npm");
+    expect(githubHosted).toContain("verifyFrozenPublicHostedSource");
+    expect(githubHosted).not.toContain("apiSourceRoot");
+    expect(githubHosted).not.toContain("facilitatorSourceRoot");
+    expect(githubHosted).not.toContain("GH_TOKEN");
+    expect(publicHosted).toContain("https://open.dexter.cash/health");
+    expect(publicHosted).toContain("materializeArchivedPublicHostedSource");
     expect(hosted).toContain("materializeOpenToolDescriptorsFromGit");
+    expect(hosted).toContain("verifyCrossRepositorySources: false");
     expect(hosted).toContain("verifyCrossRepositorySources: true");
     expect(hosted).toContain("apiSourceRoot");
     expect(hosted).toContain("facilitatorSourceRoot");

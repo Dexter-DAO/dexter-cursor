@@ -1,24 +1,10 @@
-name: Publish reviewed OpenDexter package
+name: Publish OpenDexter package
 
 on:
+  push:
+    tags:
+      - "opendexter-v*"
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Exact protected tag, opendexter-v<package.version>
-        required: true
-        type: string
-      evidence_run_id:
-        description: Successful protected evidence-producer workflow run
-        required: true
-        type: string
-      evidence_artifact_id:
-        description: Immutable evidence artifact ID from that run
-        required: true
-        type: string
-      evidence_artifact_digest:
-        description: Artifact service digest, sha256:<64 lowercase hex>
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -30,15 +16,11 @@ concurrency:
 env:
   OPENDXTER_RELEASE_CONTAINER_IMAGE: node:22.19.0-bookworm@sha256:f2bf1588ef7e8dd183d9e4cb4330a0d952204b7348ead42afb1aab11f9c4911b
   OPENDXTER_RELEASE_REGISTRY: https://registry.npmjs.org/
-  OPENDXTER_WORKFLOW_REF: ${{ github.ref }}
-  OPENDXTER_WORKFLOW_REF_TYPE: ${{ github.ref_type }}
-  OPENDXTER_WORKFLOW_REF_NAME: ${{ github.ref_name }}
 
 jobs:
-  candidate:
-    name: Build exact candidate
+  build:
+    name: Verify source, test, build, and pack once
     runs-on: ubuntu-24.04
-    environment: opendexter-source-read
     container:
       image: node:22.19.0-bookworm@sha256:f2bf1588ef7e8dd183d9e4cb4330a0d952204b7348ead42afb1aab11f9c4911b
     defaults:
@@ -47,370 +29,69 @@ jobs:
         working-directory: ide
     permissions:
       contents: read
-      actions: read
     outputs:
-      artifact_id: ${{ steps.upload.outputs.artifact-id }}
-      artifact_digest: sha256:${{ steps.upload.outputs.artifact-digest }}
+      artifact_name: ${{ steps.context.outputs.artifact_name }}
+      tarball_sha256: ${{ steps.build.outputs.tarball_sha256 }}
+      release_sha256: ${{ steps.build.outputs.release_sha256 }}
+      version: ${{ steps.context.outputs.version }}
     steps:
-      - name: Check out the exact tagged IDE source
+      - name: Check out exact tagged package source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.ref }}
           path: ide
           fetch-depth: 0
           persist-credentials: false
           show-progress: false
 
-      - name: Mint repository-scoped read-only release-audit token
-        id: audit-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
-        with:
-          app-id: ${{ vars.OPENDXTER_RELEASE_AUDIT_APP_ID }}
-          private-key: ${{ secrets.OPENDXTER_RELEASE_AUDIT_APP_PRIVATE_KEY }}
-          owner: Dexter-DAO
-          repositories: opendexter-ide
-          permission-actions: read
-          permission-administration: read
-
-      - name: Download exact evidence by immutable artifact ID
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
-        with:
-          artifact-ids: ${{ inputs.evidence_artifact_id }}
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.evidence_run_id }}
-          path: ${{ runner.temp }}/opendexter-evidence
-
-      - name: Validate evidence producer and service metadata
-        env:
-          GITHUB_TOKEN: ${{ steps.audit-token.outputs.token }}
-          OPENDXTER_RELEASE_TAG: ${{ inputs.release_tag }}
-          OPENDXTER_EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
-          OPENDXTER_EVIDENCE_ARTIFACT_ID: ${{ inputs.evidence_artifact_id }}
-          OPENDXTER_EVIDENCE_ARTIFACT_DIGEST: ${{ inputs.evidence_artifact_digest }}
+      - name: Fetch canonical main for ancestry verification
         run: |
           set -eu
-          node packages/mcp/scripts/github-hosted-release.mjs evidence \
-            --release-tag "$OPENDXTER_RELEASE_TAG" \
-            --run-id "$OPENDXTER_EVIDENCE_RUN_ID" \
-            --artifact-id "$OPENDXTER_EVIDENCE_ARTIFACT_ID" \
-            --artifact-digest "$OPENDXTER_EVIDENCE_ARTIFACT_DIGEST" \
-            --evidence "$RUNNER_TEMP/opendexter-evidence" \
-            --output "$RUNNER_TEMP/opendexter-evidence-binding.json"
+          git -c credential.helper= fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main
 
-      - name: Freeze exact tagged source context
+      - name: Freeze tag, version, and source contract
         id: context
-        env:
-          OPENDXTER_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -eu
           node packages/mcp/scripts/github-hosted-release.mjs context \
-            --release-tag "$OPENDXTER_RELEASE_TAG" \
-            --evidence-binding "$RUNNER_TEMP/opendexter-evidence-binding.json" \
             --output "$RUNNER_TEMP/opendexter-context.json" \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Check out exact public MCP source without private credentials
-        env:
-          MCP_COMMIT: ${{ steps.context.outputs.mcp_commit }}
-        run: |
-          set -eu
-          mcp_root="$GITHUB_WORKSPACE/mcp"
-          mkdir -p "$mcp_root" "$RUNNER_TEMP/opendexter-mcp-home"
-          export HOME="$RUNNER_TEMP/opendexter-mcp-home"
-          export GIT_CONFIG_GLOBAL=/dev/null
-          export GIT_CONFIG_NOSYSTEM=1
-          export GIT_NO_REPLACE_OBJECTS=1
-          git -C "$mcp_root" init --quiet
-          git -C "$mcp_root" remote add origin https://github.com/Dexter-DAO/dexter-mcp.git
-          git -C "$mcp_root" -c credential.helper= fetch --no-tags origin "$MCP_COMMIT"
-          git -C "$mcp_root" checkout --detach FETCH_HEAD
-
-      - name: Resolve exact private source identities
-        id: sources
-        run: |
-          node packages/mcp/scripts/github-hosted-release.mjs sources \
-            --mode plan \
-            --context "$RUNNER_TEMP/opendexter-context.json" \
-            --mcp-root "$GITHUB_WORKSPACE/mcp" \
-            --github-output "$GITHUB_OUTPUT"
-
-      - name: Mint repository-scoped read-only source token
-        id: source-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
-        with:
-          app-id: ${{ vars.OPENDXTER_SOURCE_APP_ID }}
-          private-key: ${{ secrets.OPENDXTER_SOURCE_APP_PRIVATE_KEY }}
-          owner: Dexter-DAO
-          repositories: |-
-            dexter-api
-            dexter-facilitator
-          permission-contents: read
-
-      - name: Check out exact private API source
+      - name: Check out exact public hosted MCP source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          repository: Dexter-DAO/dexter-api
-          ref: ${{ steps.sources.outputs.api_commit }}
-          path: api
-          token: ${{ steps.source-token.outputs.token }}
+          repository: Dexter-DAO/dexter-mcp
+          ref: ${{ steps.context.outputs.mcp_commit }}
+          path: mcp
           fetch-depth: 0
           persist-credentials: false
           show-progress: false
 
-      - name: Check out exact private facilitator source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          repository: Dexter-DAO/dexter-facilitator
-          ref: ${{ steps.sources.outputs.facilitator_commit }}
-          path: facilitator
-          token: ${{ steps.source-token.outputs.token }}
-          fetch-depth: 1
-          persist-credentials: false
-          show-progress: false
-
-      - name: Normalize credential-free private source origins
+      - name: Test, build, pack once, and fresh-install the tarball
+        id: build
         run: |
           set -eu
-          git -C "$GITHUB_WORKSPACE/api" remote set-url origin \
-            https://github.com/Dexter-DAO/dexter-api.git
-          git -C "$GITHUB_WORKSPACE/facilitator" remote set-url origin \
-            https://github.com/Dexter-DAO/dexter-facilitator.git
-
-      - name: Verify all paired source contracts
-        run: |
-          node packages/mcp/scripts/github-hosted-release.mjs sources \
-            --mode verify \
-            --context "$RUNNER_TEMP/opendexter-context.json" \
-            --mcp-root "$GITHUB_WORKSPACE/mcp" \
-            --api-root "$GITHUB_WORKSPACE/api" \
-            --facilitator-root "$GITHUB_WORKSPACE/facilitator" \
-            --output "$RUNNER_TEMP/opendexter-sources.json"
-
-      - name: Run the accepted archive materialization and install pipeline
-        id: build
-        env:
-          GH_TOKEN: ${{ steps.source-token.outputs.token }}
-        run: |
           node packages/mcp/scripts/github-hosted-release.mjs build \
             --context "$RUNNER_TEMP/opendexter-context.json" \
-            --sources "$RUNNER_TEMP/opendexter-sources.json" \
-            --evidence "$RUNNER_TEMP/opendexter-evidence" \
             --mcp-root "$GITHUB_WORKSPACE/mcp" \
-            --api-root "$GITHUB_WORKSPACE/api" \
-            --facilitator-root "$GITHUB_WORKSPACE/facilitator" \
-            --output-parent "$RUNNER_TEMP/opendexter-candidate" \
+            --output "$RUNNER_TEMP/opendexter-package" \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Upload exact candidate bundle
-        id: upload
+      - name: Upload the exact tarball and receipt
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
-          name: opendexter-candidate-${{ github.sha }}
-          path: ${{ steps.build.outputs.bundle }}
+          name: ${{ steps.context.outputs.artifact_name }}
+          path: ${{ runner.temp }}/opendexter-package
           if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-          overwrite: false
-          include-hidden-files: false
-
-  rebuild:
-    name: Independently rebuild and compare
-    needs: candidate
-    runs-on: ubuntu-24.04
-    environment: opendexter-source-read
-    container:
-      image: node:22.19.0-bookworm@sha256:f2bf1588ef7e8dd183d9e4cb4330a0d952204b7348ead42afb1aab11f9c4911b
-    defaults:
-      run:
-        shell: bash
-        working-directory: ide
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      artifact_id: ${{ steps.upload.outputs.artifact-id }}
-      artifact_digest: sha256:${{ steps.upload.outputs.artifact-digest }}
-    steps:
-      - name: Check out the exact tagged IDE source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ github.sha }}
-          path: ide
-          fetch-depth: 0
-          persist-credentials: false
-          show-progress: false
-
-      - name: Mint repository-scoped read-only release-audit token
-        id: audit-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
-        with:
-          app-id: ${{ vars.OPENDXTER_RELEASE_AUDIT_APP_ID }}
-          private-key: ${{ secrets.OPENDXTER_RELEASE_AUDIT_APP_PRIVATE_KEY }}
-          owner: Dexter-DAO
-          repositories: opendexter-ide
-          permission-actions: read
-          permission-administration: read
-
-      - name: Download exact evidence by immutable artifact ID
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
-        with:
-          artifact-ids: ${{ inputs.evidence_artifact_id }}
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.evidence_run_id }}
-          path: ${{ runner.temp }}/opendexter-evidence
-
-      - name: Download candidate by immutable artifact ID
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
-        with:
-          artifact-ids: ${{ needs.candidate.outputs.artifact_id }}
-          path: ${{ runner.temp }}/opendexter-candidate
-
-      - name: Revalidate evidence producer and service metadata
-        env:
-          GITHUB_TOKEN: ${{ steps.audit-token.outputs.token }}
-          OPENDXTER_RELEASE_TAG: ${{ inputs.release_tag }}
-          OPENDXTER_EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
-          OPENDXTER_EVIDENCE_ARTIFACT_ID: ${{ inputs.evidence_artifact_id }}
-          OPENDXTER_EVIDENCE_ARTIFACT_DIGEST: ${{ inputs.evidence_artifact_digest }}
-        run: |
-          set -eu
-          node packages/mcp/scripts/github-hosted-release.mjs evidence \
-            --release-tag "$OPENDXTER_RELEASE_TAG" \
-            --run-id "$OPENDXTER_EVIDENCE_RUN_ID" \
-            --artifact-id "$OPENDXTER_EVIDENCE_ARTIFACT_ID" \
-            --artifact-digest "$OPENDXTER_EVIDENCE_ARTIFACT_DIGEST" \
-            --evidence "$RUNNER_TEMP/opendexter-evidence" \
-            --output "$RUNNER_TEMP/opendexter-evidence-binding.json"
-
-      - name: Freeze tagged source context independently
-        id: context
-        env:
-          OPENDXTER_RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          set -eu
-          node packages/mcp/scripts/github-hosted-release.mjs context \
-            --release-tag "$OPENDXTER_RELEASE_TAG" \
-            --evidence-binding "$RUNNER_TEMP/opendexter-evidence-binding.json" \
-            --output "$RUNNER_TEMP/opendexter-context.json" \
-            --github-output "$GITHUB_OUTPUT"
-
-      - name: Check out exact public MCP source without private credentials
-        env:
-          MCP_COMMIT: ${{ steps.context.outputs.mcp_commit }}
-        run: |
-          set -eu
-          mcp_root="$GITHUB_WORKSPACE/mcp"
-          mkdir -p "$mcp_root" "$RUNNER_TEMP/opendexter-mcp-home"
-          export HOME="$RUNNER_TEMP/opendexter-mcp-home"
-          export GIT_CONFIG_GLOBAL=/dev/null
-          export GIT_CONFIG_NOSYSTEM=1
-          export GIT_NO_REPLACE_OBJECTS=1
-          git -C "$mcp_root" init --quiet
-          git -C "$mcp_root" remote add origin https://github.com/Dexter-DAO/dexter-mcp.git
-          git -C "$mcp_root" -c credential.helper= fetch --no-tags origin "$MCP_COMMIT"
-          git -C "$mcp_root" checkout --detach FETCH_HEAD
-
-      - name: Resolve exact private source identities
-        id: sources
-        run: |
-          node packages/mcp/scripts/github-hosted-release.mjs sources \
-            --mode plan \
-            --context "$RUNNER_TEMP/opendexter-context.json" \
-            --mcp-root "$GITHUB_WORKSPACE/mcp" \
-            --github-output "$GITHUB_OUTPUT"
-
-      - name: Mint repository-scoped read-only source token
-        id: source-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
-        with:
-          app-id: ${{ vars.OPENDXTER_SOURCE_APP_ID }}
-          private-key: ${{ secrets.OPENDXTER_SOURCE_APP_PRIVATE_KEY }}
-          owner: Dexter-DAO
-          repositories: |-
-            dexter-api
-            dexter-facilitator
-          permission-contents: read
-
-      - name: Check out exact private API source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          repository: Dexter-DAO/dexter-api
-          ref: ${{ steps.sources.outputs.api_commit }}
-          path: api
-          token: ${{ steps.source-token.outputs.token }}
-          fetch-depth: 0
-          persist-credentials: false
-          show-progress: false
-
-      - name: Check out exact private facilitator source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          repository: Dexter-DAO/dexter-facilitator
-          ref: ${{ steps.sources.outputs.facilitator_commit }}
-          path: facilitator
-          token: ${{ steps.source-token.outputs.token }}
-          fetch-depth: 1
-          persist-credentials: false
-          show-progress: false
-
-      - name: Normalize credential-free private source origins
-        run: |
-          set -eu
-          git -C "$GITHUB_WORKSPACE/api" remote set-url origin \
-            https://github.com/Dexter-DAO/dexter-api.git
-          git -C "$GITHUB_WORKSPACE/facilitator" remote set-url origin \
-            https://github.com/Dexter-DAO/dexter-facilitator.git
-
-      - name: Verify all paired source contracts independently
-        run: |
-          node packages/mcp/scripts/github-hosted-release.mjs sources \
-            --mode verify \
-            --context "$RUNNER_TEMP/opendexter-context.json" \
-            --mcp-root "$GITHUB_WORKSPACE/mcp" \
-            --api-root "$GITHUB_WORKSPACE/api" \
-            --facilitator-root "$GITHUB_WORKSPACE/facilitator" \
-            --output "$RUNNER_TEMP/opendexter-sources.json"
-
-      - name: Run the accepted independent rebuild and coordinated verifier
-        id: verify
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GH_TOKEN: ${{ steps.source-token.outputs.token }}
-          OPENDXTER_CANDIDATE_RUN_ID: ${{ github.run_id }}
-          OPENDXTER_CANDIDATE_ARTIFACT_ID: ${{ needs.candidate.outputs.artifact_id }}
-          OPENDXTER_CANDIDATE_ARTIFACT_DIGEST: ${{ needs.candidate.outputs.artifact_digest }}
-        run: |
-          node packages/mcp/scripts/github-hosted-release.mjs verify \
-            --context "$RUNNER_TEMP/opendexter-context.json" \
-            --sources "$RUNNER_TEMP/opendexter-sources.json" \
-            --evidence "$RUNNER_TEMP/opendexter-evidence" \
-            --mcp-root "$GITHUB_WORKSPACE/mcp" \
-            --api-root "$GITHUB_WORKSPACE/api" \
-            --facilitator-root "$GITHUB_WORKSPACE/facilitator" \
-            --candidate "$RUNNER_TEMP/opendexter-candidate" \
-            --candidate-run-id "$OPENDXTER_CANDIDATE_RUN_ID" \
-            --candidate-artifact-id "$OPENDXTER_CANDIDATE_ARTIFACT_ID" \
-            --candidate-artifact-digest "$OPENDXTER_CANDIDATE_ARTIFACT_DIGEST" \
-            --output "$RUNNER_TEMP/opendexter-accepted" \
-            --github-output "$GITHUB_OUTPUT"
-
-      - name: Upload exact accepted bundle
-        id: upload
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
-        with:
-          name: opendexter-accepted-${{ github.sha }}
-          path: ${{ steps.verify.outputs.bundle }}
-          if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
           compression-level: 0
           overwrite: false
           include-hidden-files: false
 
   publish:
-    name: Publish exact accepted tarball with OIDC
-    needs: rebuild
+    name: Approve, publish with OIDC, and reconcile
+    needs: build
     runs-on: ubuntu-24.04
     environment: opendexter-npm-production
     container:
@@ -425,78 +106,99 @@ jobs:
     env:
       OPENDXTER_RELEASE_ENVIRONMENT: opendexter-npm-production
     steps:
-      - name: Check out only the exact tagged verifier source
+      - name: Check out exact tagged verifier source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.ref }}
           path: ide
           fetch-depth: 1
           persist-credentials: false
           show-progress: false
 
-      - name: Download accepted bundle by immutable artifact ID
+      - name: Download the build job artifact by deterministic name
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
-          artifact-ids: ${{ needs.rebuild.outputs.artifact_id }}
-          path: ${{ runner.temp }}/opendexter-accepted
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: ${{ runner.temp }}/opendexter-package
 
-      - name: Revalidate exact publish input and handoff
-        id: publish-input
-        env:
-          OPENDXTER_ACCEPTED_RUN_ID: ${{ github.run_id }}
-          OPENDXTER_ACCEPTED_ARTIFACT_ID: ${{ needs.rebuild.outputs.artifact_id }}
-          OPENDXTER_ACCEPTED_ARTIFACT_DIGEST: ${{ needs.rebuild.outputs.artifact_digest }}
+      - name: Verify exact tarball and receipt hashes
+        id: package
         run: |
+          set -eu
           node packages/mcp/scripts/github-hosted-release.mjs publish-input \
-            --accepted "$RUNNER_TEMP/opendexter-accepted" \
-            --accepted-run-id "$OPENDXTER_ACCEPTED_RUN_ID" \
-            --accepted-artifact-id "$OPENDXTER_ACCEPTED_ARTIFACT_ID" \
-            --accepted-artifact-digest "$OPENDXTER_ACCEPTED_ARTIFACT_DIGEST" \
+            --bundle "$RUNNER_TEMP/opendexter-package" \
+            --tarball-sha256 "${{ needs.build.outputs.tarball_sha256 }}" \
+            --release-sha256 "${{ needs.build.outputs.release_sha256 }}" \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Prepare exact npm 11.5.1 publisher without credentials
+      - name: Reuse an identical published version on retry
+        id: registry
+        run: |
+          set -eu
+          node packages/mcp/scripts/github-hosted-release.mjs registry \
+            --mode preflight \
+            --bundle "$RUNNER_TEMP/opendexter-package" \
+            --tarball-sha256 "${{ needs.build.outputs.tarball_sha256 }}" \
+            --release-sha256 "${{ needs.build.outputs.release_sha256 }}" \
+            --require-dist-tag false \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Prepare pinned npm OIDC publisher
+        if: steps.registry.outputs.should_publish == 'true'
         id: publisher
         run: |
+          set -eu
           test -z "${NODE_AUTH_TOKEN:-}"
           test -z "${NPM_TOKEN:-}"
-          test -z "${OPENDXTER_RELEASE_NPM_TOKEN:-}"
           node packages/mcp/scripts/github-hosted-release.mjs publisher-npm \
             --output "$RUNNER_TEMP/opendexter-npm-publisher" \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Publish exact existing tarball using OIDC only
+      - name: Publish the exact existing tarball with OIDC
+        if: steps.registry.outputs.should_publish == 'true'
         env:
           NPM_CONFIG_USERCONFIG: /dev/null
           NPM_CONFIG_GLOBALCONFIG: /dev/null.opendexter-github-release
           OPENDXTER_NPM_CLI: ${{ steps.publisher.outputs.npm_cli }}
-          OPENDXTER_ACCEPTED_TARBALL: ${{ steps.publish-input.outputs.tarball }}
+          OPENDXTER_TARBALL: ${{ steps.package.outputs.tarball }}
+          OPENDXTER_DIST_TAG: ${{ steps.package.outputs.dist_tag }}
         run: |
           set -eu
           test -n "$ACTIONS_ID_TOKEN_REQUEST_URL"
           test -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN"
           test -z "${NODE_AUTH_TOKEN:-}"
           test -z "${NPM_TOKEN:-}"
-          test -z "${OPENDXTER_RELEASE_NPM_TOKEN:-}"
-          node "$OPENDXTER_NPM_CLI" publish \
-            "$OPENDXTER_ACCEPTED_TARBALL" \
+          node "$OPENDXTER_NPM_CLI" publish "$OPENDXTER_TARBALL" \
             --ignore-scripts \
             --provenance \
             --access public \
             --registry "$OPENDXTER_RELEASE_REGISTRY" \
             --strict-ssl=true \
-            --tag next
+            --tag "$OPENDXTER_DIST_TAG"
 
-      - name: Reconcile immutable registry bytes
+      - name: Verify registry integrity and provenance
         env:
-          OPENDXTER_PUBLISHED_VERSION: ${{ steps.publish-input.outputs.version }}
+          REQUIRE_DIST_TAG: ${{ steps.registry.outputs.should_publish }}
         run: |
-          node packages/mcp/scripts/github-hosted-release.mjs reconcile \
-            --accepted "$RUNNER_TEMP/opendexter-accepted" \
+          set -eu
+          node packages/mcp/scripts/github-hosted-release.mjs registry \
+            --mode reconcile \
+            --bundle "$RUNNER_TEMP/opendexter-package" \
+            --tarball-sha256 "${{ needs.build.outputs.tarball_sha256 }}" \
+            --release-sha256 "${{ needs.build.outputs.release_sha256 }}" \
+            --require-dist-tag "$REQUIRE_DIST_TAG" \
             --output "$RUNNER_TEMP/opendexter-registry-reconciliation.json"
+
+      - name: Summarize the immutable release
+        env:
+          PACKAGE_VERSION: ${{ needs.build.outputs.version }}
+          REGISTRY_STATE: ${{ steps.registry.outputs.state }}
+        run: |
           {
-            echo "### npm registry reconciliation"
+            echo "### OpenDexter npm release"
             echo
-            echo "\`@dexterai/opendexter@$OPENDXTER_PUBLISHED_VERSION\`"
-            echo
-            echo "Exact registry integrity and shasum match the accepted artifact."
+            echo "Package: \`@dexterai/opendexter@$PACKAGE_VERSION\`"
+            echo "Preflight: \`$REGISTRY_STATE\`"
+            echo "Tarball SHA-256: \`${{ needs.build.outputs.tarball_sha256 }}\`"
+            echo "Registry integrity and GitHub OIDC provenance verified."
           } >> "$GITHUB_STEP_SUMMARY"

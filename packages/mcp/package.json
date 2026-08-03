@@ -31,11 +31,8 @@
     "version:sync": "node scripts/sync-version-references.mjs",
     "prepublishOnly": "node scripts/publish-release-candidate.mjs",
     "release": "node scripts/refuse-direct-release.mjs",
-    "release:candidate": "node scripts/build-release-candidate.mjs",
-    "release:verify": "node scripts/package-provenance.mjs verify",
     "release:hosted-source": "node scripts/verify-hosted-source.mjs",
-    "release:publish": "node scripts/publish-release-candidate.mjs",
-    "release:hosted": "node scripts/github-hosted-release.mjs",
+    "release:prepare-hosted": "node scripts/public-hosted-release.mjs prepare",
     "inspect:tarball": "bash scripts/inspect-package-tarball.sh",
     "test:fresh-install": "bash scripts/test-registry-install.sh"
   },

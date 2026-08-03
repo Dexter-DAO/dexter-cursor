@@ -152,8 +152,11 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
   expectedLockSha256,
   hostedSource,
   hosted,
+  hostedContractRelativePath =
+    "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
   stageRoot,
   outputRoot,
+  runValidation = false,
 }) {
   let toolchain = null;
   try {
@@ -202,7 +205,7 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
     );
     const hostedContractPath = resolve(
       cleanRoot,
-      "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
+      hostedContractRelativePath,
     );
     const cleanManifest = readJson(resolve(cleanPackageRoot, "package.json"));
     const archivedRuntime = loadReviewedToolchainPin(
@@ -234,6 +237,29 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
       env: environment,
       stdio: "pipe",
     });
+    runReviewedNpm(
+      toolchain,
+      [
+        "run",
+        "build",
+        "--workspace=@dexterai/mcp-instructions",
+        "--workspace=@dexterai/dextercard",
+        "--workspace=@dexterai/x402-mcp-tools",
+      ],
+      { cwd: cleanRoot, env: environment, stdio: "pipe" },
+    );
+    if (runValidation) {
+      runReviewedNpm(
+        toolchain,
+        ["run", "test", "--workspace=@dexterai/opendexter"],
+        { cwd: cleanRoot, env: environment, stdio: "pipe" },
+      );
+      runReviewedNpm(
+        toolchain,
+        ["run", "typecheck", "--workspace=@dexterai/opendexter"],
+        { cwd: cleanRoot, env: environment, stdio: "pipe" },
+      );
+    }
     runReviewedNpm(
       toolchain,
       ["run", "version:check", "--workspace=@dexterai/opendexter"],
@@ -399,7 +425,7 @@ export async function verifyRebuiltReleaseCandidate({
   }
 }
 
-function installExactArtifact({ tarball, ignoreScripts, toolchain }) {
+export function installExactArtifact({ tarball, ignoreScripts, toolchain }) {
   const installRoot = mkdtempSync(joinTmp("opendexter-artifact-install-"));
   try {
     const installHome = resolve(installRoot, "home");
@@ -432,7 +458,12 @@ function installExactArtifact({ tarball, ignoreScripts, toolchain }) {
       env: installEnvironment,
       stdio: "pipe",
     });
-    return { version: manifest.version, ignoredScripts: ignoreScripts };
+    return {
+      package: manifest.name,
+      version: manifest.version,
+      ignoredScripts: ignoreScripts,
+      cliHelpVerified: true,
+    };
   } finally {
     rmSync(installRoot, { recursive: true, force: true });
   }

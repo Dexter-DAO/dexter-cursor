@@ -10,6 +10,10 @@ interface SetupOpts {
   yes: boolean;
 }
 
+export interface SetupResult {
+  complete: boolean;
+}
+
 function fundingAdvice(totalUsdc: number, wallet: { solanaAddress?: string; evmAddress?: string }) {
   if (totalUsdc > 0) {
     return [
@@ -29,7 +33,7 @@ function fundingAdvice(totalUsdc: number, wallet: { solanaAddress?: string; evmA
   return lines;
 }
 
-export async function runSetup(opts: SetupOpts): Promise<void> {
+export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   const cli = `npx @dexterai/opendexter@${VERSION}`;
 
   intro(chalk.bold("OpenDexter setup"));
@@ -54,13 +58,15 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
   if (wallet.info.evmAddress) log.info(`EVM rail:    ${wallet.info.evmAddress}`);
 
   const detected = detectInstalledClients();
+  let clientsComplete = true;
   if (detected.length > 0) {
-    await runInstall({
+    const install = await runInstall({
       dev: opts.dev,
       yes: opts.yes,
       all: true,
       skipWalletSetup: true,
     });
+    clientsComplete = install.complete;
   } else {
     log.warn("No supported clients were auto-detected.");
     log.message("You can still run `opendexter install --client <name>` manually later.");
@@ -88,5 +94,14 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
   } else {
     nextMove = `Fund a rail, then start with \`${cli} search <what-you-need>\`.`;
   }
-  outro(nextMove);
+  if (clientsComplete) {
+    outro(nextMove);
+  } else {
+    outro(
+      "Wallet setup completed, but OpenDexter is not wired into every detected client. "
+      + "Resolve the registration issue above, then rerun setup.",
+    );
+  }
+
+  return { complete: clientsComplete };
 }

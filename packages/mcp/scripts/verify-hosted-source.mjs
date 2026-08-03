@@ -335,11 +335,10 @@ export function verifyHostedRepositoryIdentity(origin) {
   return EXPECTED_HOSTED_SOURCE_REPOSITORY;
 }
 
-export function validateHostedDescriptor(descriptor) {
+export function validatePublicHostedDescriptor(descriptor) {
   exactKeys(descriptor, [
     "schemaVersion",
     "kind",
-    "sourceContracts",
     "oauth",
     "anonymousToolNames",
     "oauthPromotedToolNames",
@@ -351,7 +350,6 @@ export function validateHostedDescriptor(descriptor) {
   if (descriptor?.kind !== DESCRIPTOR_KIND) {
     fail("unexpected hosted descriptor kind");
   }
-  validateSourceContracts(descriptor.sourceContracts);
   validateOAuth(descriptor.oauth);
   for (const field of [
     "anonymousToolNames",
@@ -449,6 +447,26 @@ export function validateHostedDescriptor(descriptor) {
   return descriptor;
 }
 
+export function validateHostedDescriptor(descriptor) {
+  exactKeys(descriptor, [
+    "schemaVersion",
+    "kind",
+    "sourceContracts",
+    "oauth",
+    "anonymousToolNames",
+    "oauthPromotedToolNames",
+    "connectedToolNames",
+    "optionalOAuthToolNames",
+    "tools",
+  ], "hosted descriptor");
+  if (descriptor?.schemaVersion !== 2) fail("unsupported hosted descriptor schema");
+  if (descriptor?.kind !== DESCRIPTOR_KIND) fail("unexpected hosted descriptor kind");
+  validateSourceContracts(descriptor.sourceContracts);
+  const { sourceContracts: _sourceContracts, ...publicDescriptor } = descriptor;
+  validatePublicHostedDescriptor(publicDescriptor);
+  return descriptor;
+}
+
 export function verifyMaterializedHostedDescriptor(descriptor, materialized) {
   const committed = validateHostedDescriptor(descriptor);
   const actual = validateHostedDescriptor(materialized);
@@ -460,7 +478,7 @@ export function verifyMaterializedHostedDescriptor(descriptor, materialized) {
   return committed;
 }
 
-function reviewedEnvironment({ npmCache, production = false, nodeBin } = {}) {
+export function reviewedEnvironment({ npmCache, production = false, nodeBin } = {}) {
   const forbidden = [
     "NODE_OPTIONS",
     "NODE_PATH",
@@ -538,6 +556,75 @@ export function hasCanonicalHostedAdvertisement(remoteRefs, commit) {
       && /^refs\/(?:heads|tags)\/.+/.test(refname ?? "")
       && extra === undefined;
   });
+}
+
+export function inspectHostedSourceCheckout({
+  sourceRoot,
+  verifyCanonicalAdvertisement = true,
+}) {
+  const root = realpathSync(sourceRoot);
+  const cleanEnvironment = reviewedEnvironment();
+  const topLevel = realpathSync(git(
+    root,
+    ["rev-parse", "--show-toplevel"],
+    { env: cleanEnvironment },
+  ));
+  if (topLevel !== root) fail("hosted source root is not the Git toplevel");
+  verifyHostedRepositoryIdentity(git(
+    root,
+    ["remote", "get-url", "origin"],
+    { env: cleanEnvironment },
+  ));
+  const status = git(
+    root,
+    ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
+    { env: cleanEnvironment },
+  );
+  if (status) fail(`hosted source is not clean:\n${status}`);
+  const hidden = git(root, ["ls-files", "-v", "-z"], {
+    env: cleanEnvironment,
+  }).split("\0").filter((entry) => /^[a-zS] /.test(entry));
+  if (hidden.length > 0) {
+    fail("hosted source contains assume-unchanged or skip-worktree state");
+  }
+  const replaceRefs = git(
+    root,
+    ["for-each-ref", "--format=%(refname)", "refs/replace"],
+    { env: cleanEnvironment },
+  );
+  if (replaceRefs) fail("hosted source contains Git replace refs");
+  const commit = git(root, ["rev-parse", "HEAD^{commit}"], {
+    env: cleanEnvironment,
+  });
+  const tree = git(root, ["rev-parse", "HEAD^{tree}"], {
+    env: cleanEnvironment,
+  });
+  if (verifyCanonicalAdvertisement) {
+    const remoteRefs = listCanonicalRemoteRefs(EXPECTED_HOSTED_SOURCE_ORIGIN, {
+      environment: cleanEnvironment,
+    });
+    if (!hasCanonicalHostedAdvertisement(remoteRefs, commit)) {
+      fail("canonical hosted source does not advertise HEAD");
+    }
+  }
+  return { root, commit, tree, cleanEnvironment };
+}
+
+export function cloneCanonicalHostedSourceAt({ commit, workspace }) {
+  requireHex(commit, 40, "canonical hosted source commit");
+  const root = resolve(workspace, "dexter-mcp");
+  const environment = reviewedEnvironment();
+  run("git", [
+    "clone",
+    "--quiet",
+    "--no-checkout",
+    EXPECTED_HOSTED_SOURCE_ORIGIN,
+    root,
+  ], { cwd: workspace, env: environment, timeout: 60_000 });
+  git(root, ["checkout", "--detach", "--quiet", commit], {
+    env: environment,
+  });
+  return root;
 }
 
 function sterileGitEnvironment(cleanEnvironment, disposableRoot) {
@@ -618,14 +705,13 @@ export function createTreePureArchive({
   });
 }
 
-async function materializeArchivedHostedSource({
+async function materializeArchivedDescriptor({
   root,
   commit,
   tree,
   cleanEnvironment,
-  apiSourceRoot,
-  facilitatorSourceRoot,
-  outerEnvironment,
+  recipe,
+  prepareMaterialization,
 }) {
   const disposableRoot = mkdtempSync(resolve(tmpdir(), "opendexter-hosted-source-"));
   const sourceArchive = resolve(disposableRoot, "source.tar");
@@ -671,38 +757,23 @@ async function materializeArchivedHostedSource({
     if (npmVersion !== REVIEWED_RELEASE_NPM_VERSION) {
       fail("hosted source materializer npm version drifted");
     }
-    const token = outerEnvironment?.GH_TOKEN;
-    if (
-      typeof token !== "string"
-      || token.length === 0
-      || token.length > 4096
-      || /[\0\r\n]/.test(token)
-    ) {
-      fail("hosted private source token is absent or malformed");
+    let materializedDescriptor;
+    if (prepareMaterialization) {
+      const materializeArguments = prepareMaterialization(cleanEnvironment);
+      const materializerModule = await import(
+        `${pathToFileURL(resolve(
+          archivedRoot,
+          DESCRIPTOR_MATERIALIZER_PATH,
+        )).href}?source=${commit}`
+      );
+      if (typeof materializerModule.materializeOpenToolDescriptorsFromGit !== "function") {
+        fail("hosted source lacks the reviewed outer materializer export");
+      }
+      materializedDescriptor =
+        await materializerModule.materializeOpenToolDescriptorsFromGit(
+          materializeArguments,
+        );
     }
-    if (outerEnvironment?.GITHUB_PERSONAL_ACCESS_TOKEN) {
-      fail("hosted source refuses a reusable personal-access token");
-    }
-    const materializerModule = await import(
-      `${pathToFileURL(resolve(
-        archivedRoot,
-        DESCRIPTOR_MATERIALIZER_PATH,
-      )).href}?source=${commit}`
-    );
-    if (typeof materializerModule.materializeOpenToolDescriptorsFromGit !== "function") {
-      fail("hosted source lacks the reviewed outer materializer export");
-    }
-    const materializedDescriptor =
-      await materializerModule.materializeOpenToolDescriptorsFromGit({
-        sourceRoot: root,
-        apiSourceRoot,
-        facilitatorSourceRoot,
-        verifyCrossRepositorySources: true,
-        environment: {
-          ...cleanEnvironment,
-          GH_TOKEN: token,
-        },
-      });
     const committedDescriptorBytes = readFileSync(
       resolve(archivedRoot, DESCRIPTOR_PATH),
     );
@@ -710,7 +781,7 @@ async function materializeArchivedHostedSource({
       committedDescriptor: JSON.parse(committedDescriptorBytes.toString("utf8")),
       materializedDescriptor,
       materialization: {
-        recipe: MATERIALIZATION_RECIPE,
+        recipe,
         node: process.version,
         npm: npmVersion,
         packageLockSha256: sha256(readFileSync(resolve(archivedRoot, "package-lock.json"))),
@@ -721,6 +792,84 @@ async function materializeArchivedHostedSource({
   } finally {
     rmSync(disposableRoot, { recursive: true, force: true });
   }
+}
+
+export async function inspectArchivedHostedSourceEvidence({
+  root,
+  commit,
+  tree,
+  cleanEnvironment = reviewedEnvironment(),
+  recipe,
+}) {
+  requireNonemptyString(recipe, "public hosted materialization recipe");
+  return materializeArchivedDescriptor({
+    root,
+    commit,
+    tree,
+    cleanEnvironment,
+    recipe,
+  });
+}
+
+async function materializeArchivedHostedSource({
+  root,
+  commit,
+  tree,
+  cleanEnvironment,
+  apiSourceRoot,
+  facilitatorSourceRoot,
+  outerEnvironment,
+}) {
+  return materializeArchivedDescriptor({
+    root,
+    commit,
+    tree,
+    cleanEnvironment,
+    recipe: MATERIALIZATION_RECIPE,
+    prepareMaterialization: (environment) => {
+      const token = outerEnvironment?.GH_TOKEN;
+      if (
+        typeof token !== "string"
+        || token.length === 0
+        || token.length > 4096
+        || /[\0\r\n]/.test(token)
+      ) {
+        fail("hosted private source token is absent or malformed");
+      }
+      if (outerEnvironment?.GITHUB_PERSONAL_ACCESS_TOKEN) {
+        fail("hosted source refuses a reusable personal-access token");
+      }
+      return {
+        sourceRoot: root,
+        apiSourceRoot,
+        facilitatorSourceRoot,
+        verifyCrossRepositorySources: true,
+        environment: { ...environment, GH_TOKEN: token },
+      };
+    },
+  });
+}
+
+export async function materializeArchivedPublicHostedSource({
+  root,
+  commit,
+  tree,
+  cleanEnvironment = reviewedEnvironment(),
+  recipe,
+}) {
+  requireNonemptyString(recipe, "public hosted materialization recipe");
+  return materializeArchivedDescriptor({
+    root,
+    commit,
+    tree,
+    cleanEnvironment,
+    recipe,
+    prepareMaterialization: (environment) => ({
+      sourceRoot: root,
+      verifyCrossRepositorySources: false,
+      environment,
+    }),
+  });
 }
 
 export function buildHostedContract({ descriptor, commit, tree, materialization }) {
@@ -771,52 +920,11 @@ export async function verifyHostedSource({
   mode = "check",
   outerEnvironment = process.env,
 }) {
-  const root = realpathSync(sourceRoot);
-  const cleanEnvironment = reviewedEnvironment();
-  const topLevel = realpathSync(git(
-    root,
-    ["rev-parse", "--show-toplevel"],
-    { env: cleanEnvironment },
-  ));
-  if (topLevel !== root) {
-    fail("hosted source root is not the Git toplevel");
-  }
-  verifyHostedRepositoryIdentity(git(
-    root,
-    ["remote", "get-url", "origin"],
-    { env: cleanEnvironment },
-  ));
-  const status = git(
-    root,
-    ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
-    { env: cleanEnvironment },
-  );
-  if (status) fail(`hosted source is not clean:\n${status}`);
-  const hidden = git(root, ["ls-files", "-v", "-z"], {
-    env: cleanEnvironment,
-  }).split("\0").filter((entry) => /^[a-zS] /.test(entry));
-  if (hidden.length > 0) {
-    fail("hosted source contains assume-unchanged or skip-worktree state");
-  }
-  const replaceRefs = git(
-    root,
-    ["for-each-ref", "--format=%(refname)", "refs/replace"],
-    { env: cleanEnvironment },
-  );
-  if (replaceRefs) fail("hosted source contains Git replace refs");
-  const commit = git(root, ["rev-parse", "HEAD^{commit}"], {
-    env: cleanEnvironment,
-  });
-  const tree = git(root, ["rev-parse", "HEAD^{tree}"], {
-    env: cleanEnvironment,
+  const { root, commit, tree, cleanEnvironment } = inspectHostedSourceCheckout({
+    sourceRoot,
   });
   const exactApiSourceRoot = realpathSync(apiSourceRoot);
   const exactFacilitatorSourceRoot = realpathSync(facilitatorSourceRoot);
-  const remoteRefs = listCanonicalRemoteRefs(EXPECTED_HOSTED_SOURCE_ORIGIN, {
-    environment: cleanEnvironment,
-  });
-  const advertised = hasCanonicalHostedAdvertisement(remoteRefs, commit);
-  if (!advertised) fail("canonical hosted source does not advertise HEAD");
   const archived = await materializeArchivedHostedSource({
     root,
     commit,

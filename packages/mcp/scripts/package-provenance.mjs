@@ -797,13 +797,39 @@ export function verifyAttestation({
 }
 
 export function verifyRegistryMetadata(attestation, metadata) {
-  validateAttestationShape(attestation);
-  if (metadata?.name !== attestation.package.name) fail("registry package name mismatch");
-  if (metadata?.version !== attestation.package.version) fail("registry version mismatch");
-  if (metadata?.dist?.integrity !== attestation.artifact.integrity) {
+  let packageIdentity;
+  let artifact;
+  if (
+    (
+      attestation?.schemaVersion === 2
+      && attestation?.kind === "opendexter-npm-release/v2"
+    )
+    || (
+      attestation?.schemaVersion === 3
+      && attestation?.kind === "opendexter-npm-release/v3"
+    )
+  ) {
+    packageIdentity = attestation.context?.package;
+    artifact = attestation.artifact;
+    if (
+      packageIdentity?.name !== "@dexterai/opendexter"
+      || !EXACT_VERSION.test(packageIdentity?.version ?? "")
+      || typeof artifact?.integrity !== "string"
+      || typeof artifact?.shasum !== "string"
+    ) {
+      fail("release receipt registry identity is invalid");
+    }
+  } else {
+    validateAttestationShape(attestation);
+    packageIdentity = attestation.package;
+    artifact = attestation.artifact;
+  }
+  if (metadata?.name !== packageIdentity.name) fail("registry package name mismatch");
+  if (metadata?.version !== packageIdentity.version) fail("registry version mismatch");
+  if (metadata?.dist?.integrity !== artifact.integrity) {
     fail("registry dist.integrity does not match the reviewed tarball");
   }
-  if (metadata?.dist?.shasum !== attestation.artifact.shasum) {
+  if (metadata?.dist?.shasum !== artifact.shasum) {
     fail("registry dist.shasum does not match the reviewed tarball");
   }
   return true;
@@ -865,7 +891,8 @@ async function commandMain() {
     const metadata = readJson(resolve(requireString(values.metadata, "--metadata")));
     verifyRegistryMetadata(attestation, metadata);
     process.stdout.write(
-      `Registry integrity matches ${attestation.package.name}@${attestation.package.version}.\n`,
+      `Registry integrity matches ${attestation.context?.package?.name ?? attestation.package.name}`
+        + `@${attestation.context?.package?.version ?? attestation.package.version}.\n`,
     );
     return;
   }

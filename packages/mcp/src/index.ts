@@ -57,7 +57,13 @@ async function main() {
           }),
       async (args) => {
         const { runInstall } = await import("./cli/install/index.js");
-        await runInstall({ client: args.client, yes: args.yes, all: args.all, dev: args.dev });
+        const result = await runInstall({
+          client: args.client,
+          yes: args.yes,
+          all: args.all,
+          dev: args.dev,
+        });
+        if (!result.complete) process.exitCode = 1;
       },
     )
     .command(
@@ -72,7 +78,8 @@ async function main() {
         }),
       async (args) => {
         const { runSetup } = await import("./cli/onboard.js");
-        await runSetup({ yes: args.yes, dev: args.dev });
+        const result = await runSetup({ yes: args.yes, dev: args.dev });
+        if (!result.complete) process.exitCode = 1;
       },
     )
     .command(
