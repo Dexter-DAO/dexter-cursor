@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Post-publication proof for one exact immutable registry version. Registry
 # metadata `dist.integrity` and `dist.shasum` must match the pre-publication
-# tarball attestation before install.
+# tarball release receipt before install.
 set -euo pipefail
 
 SCRIPT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 if [[ $# -ne 2 ]]; then
-  echo "Usage: $0 VERSION /absolute/path/to/release-attestation.json" >&2
+  echo "Usage: $0 VERSION /absolute/path/to/release.json" >&2
   exit 2
 fi
 
@@ -18,7 +18,7 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
   exit 2
 fi
 if [[ ! "$ATTESTATION" = /* || ! -f "$ATTESTATION" ]]; then
-  echo "Expected an absolute path to the reviewed release attestation" >&2
+  echo "Expected an absolute path to the immutable release receipt" >&2
   exit 2
 fi
 

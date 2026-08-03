@@ -370,25 +370,17 @@ review the candidate routes before running it.
 To build an x402 client or server, use
 [`@dexterai/x402`](https://www.npmjs.com/package/@dexterai/x402).
 
-## Candidate verification
+## Release verification
 
-The source checkout includes a coordinated release-candidate builder. It
-requires a clean reviewed commit, the committed root lock, a final
-source-pinned hosted descriptor, and an accepted review receipt. It builds and
-packs once from a clean Git archive, records every packed file and digest, and
-installs that exact tarball both normally and with lifecycle scripts disabled.
-Ordinary-language novice proof is explicitly pending until this exact package
-is installed and the paired hosted service is activated:
-
-```bash
-npm run release:candidate -- \
-  --output-dir /absolute/existing/candidate-directory \
-  --hosted-source /absolute/path/to/final/dexter-mcp \
-  --api-source /absolute/path/to/final/dexter-api \
-  --facilitator-source /absolute/path/to/final/dexter-facilitator \
-  --review /absolute/path/to/accepted-review.json \
-  --dist-tag next
-```
+The repository has one release workflow and one approval boundary. Pushing an
+exact `opendexter-v<package.version>` tag on `main` starts
+`.github/workflows/publish-opendexter.yml`. Its build job verifies the pinned
+MCP/API/facilitator contract, then tests, typechecks, builds, and packs once
+from a clean Git archive. Its publish job waits for the single
+`opendexter-npm-production` environment approval, verifies the downloaded
+tarball and receipt hashes, publishes through npm trusted-publisher OIDC, and
+reconciles registry integrity and provenance. See
+[`release/README.md`](release/README.md) for setup and retry instructions.
 
 The tarball gate rejects source maps, environment or credential files,
 symlinks, hardlinks, special files, undeclared files, and undeclared
@@ -399,14 +391,14 @@ or contacting the npm registry:
 npm run inspect:tarball -- /absolute/path/to/dexterai-opendexter-VERSION.tgz
 ```
 
-That is package-content evidence only. A plain `npm publish` fails closed. The
-coordinated publish must supply the exact attestation, its SHA-256, its exact
-tarball and evidence paths, and an explicit prerelease tag. After an exact
-version has been published through that separately authorized train, prove
-that the registry bytes and a new-user install match the attestation:
+That is package-content evidence only. A plain `npm publish` fails closed.
+There is no review-bot workflow or manual artifact-ID handoff. Re-running the
+one workflow at the same tag skips publication only when npm already has the
+same integrity, shasum, and trusted-publisher provenance. After an exact
+version has been published, prove a new-user install from its registry bytes:
 
 ```bash
-npm run test:fresh-install -- VERSION /absolute/path/to/release-attestation.json
+npm run test:fresh-install -- VERSION /absolute/path/to/release.json
 ```
 
 The registry proof accepts only an exact version, verifies `dist.integrity`

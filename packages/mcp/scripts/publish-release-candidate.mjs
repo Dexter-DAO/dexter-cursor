@@ -4,10 +4,10 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const MESSAGE =
-  "Local OpenDexter publishing is disabled. Dispatch the protected "
-  + ".github/workflows/review-opendexter-release.yml evidence producer at "
-  + "the exact release tag, then dispatch .github/workflows/publish-opendexter.yml. "
-  + "Only its opendexter-npm-production OIDC job may publish the accepted tarball.";
+  "Local OpenDexter publishing is disabled. Tag the exact package version "
+  + "with opendexter-v<version>; .github/workflows/publish-opendexter.yml "
+  + "will test, build, and pack once, then wait for the single "
+  + "opendexter-npm-production approval before OIDC publication.";
 
 export function main() {
   throw new Error(MESSAGE);

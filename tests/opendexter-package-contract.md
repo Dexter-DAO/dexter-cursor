@@ -18,10 +18,11 @@ An actual RC.3 release may not rely on the optional historical check. The final
 clean `dexter-mcp` source must commit
 `release/open-tool-descriptors.json` with every tool's title, description,
 input schema, output schema, security, annotations, visibility, and widget
-access. `npm run release:candidate` makes that source root mandatory, verifies
-it, and requires this repository's materialized hosted contract to pin the
-same exact commit/tree. Until that file and final source exist, candidate
-building fails closed.
+access. The single `publish-opendexter.yml` workflow makes that source root
+mandatory, verifies it, and requires this repository's materialized hosted
+contract to pin the same exact commit/tree. Until that file and final source
+exist, its one build-and-pack job fails closed. Publication then waits for the
+single `opendexter-npm-production` environment approval.
 
 It checks:
 
