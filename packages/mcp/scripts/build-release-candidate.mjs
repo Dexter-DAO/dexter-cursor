@@ -154,6 +154,7 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
   hosted,
   stageRoot,
   outputRoot,
+  runValidation = false,
 }) {
   let toolchain = null;
   try {
@@ -234,6 +235,29 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
       env: environment,
       stdio: "pipe",
     });
+    runReviewedNpm(
+      toolchain,
+      [
+        "run",
+        "build",
+        "--workspace=@dexterai/mcp-instructions",
+        "--workspace=@dexterai/dextercard",
+        "--workspace=@dexterai/x402-mcp-tools",
+      ],
+      { cwd: cleanRoot, env: environment, stdio: "pipe" },
+    );
+    if (runValidation) {
+      runReviewedNpm(
+        toolchain,
+        ["run", "test", "--workspace=@dexterai/opendexter"],
+        { cwd: cleanRoot, env: environment, stdio: "pipe" },
+      );
+      runReviewedNpm(
+        toolchain,
+        ["run", "typecheck", "--workspace=@dexterai/opendexter"],
+        { cwd: cleanRoot, env: environment, stdio: "pipe" },
+      );
+    }
     runReviewedNpm(
       toolchain,
       ["run", "version:check", "--workspace=@dexterai/opendexter"],

@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "kind": "opendexter-github-hosted-release/v1",
+  "schemaVersion": 2,
+  "kind": "opendexter-github-release/v2",
   "repository": "Dexter-DAO/opendexter-ide",
   "package": {
     "name": "@dexterai/opendexter",
@@ -16,46 +16,27 @@
   },
   "publisher": {
     "environment": "opendexter-npm-production",
+    "workflowPath": ".github/workflows/publish-opendexter.yml",
     "npm": "11.5.1",
     "npmPackageIntegrity": "sha512-Iy5vXZ55m8tIaSCz6bqQf9+W5XbPfoyURsgWLjOkFglqHTep6RDZqRj2sfYGeRyZvGu2HuJWm0lux0rxPQ29lQ==",
     "npmPackageShasum": "83b06a00dae2a8e5d72dc951ddf56a2e0dbf2cc1",
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://registry.npmjs.org/",
+    "provenancePredicate": "https://slsa.dev/provenance/v1"
   },
   "sourceRead": {
-    "environment": "opendexter-source-read",
     "owner": "Dexter-DAO",
     "repositories": [
       "dexter-api",
       "dexter-facilitator"
     ],
+    "appIdVariable": "OPENDXTER_SOURCE_APP_ID",
+    "privateKeySecret": "OPENDXTER_SOURCE_APP_PRIVATE_KEY",
     "permission": "contents:read"
-  },
-  "releaseAudit": {
-    "owner": "Dexter-DAO",
-    "repositories": [
-      "opendexter-ide"
-    ],
-    "permissions": [
-      "actions:read",
-      "administration:read"
-    ]
   },
   "actions": {
     "checkout": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
     "uploadArtifact": "actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
     "downloadArtifact": "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
     "createGithubAppToken": "actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349"
-  },
-  "evidence": {
-    "environment": "opendexter-release-review",
-    "workflowPath": ".github/workflows/review-opendexter-release.yml",
-    "proposalArtifactNamePrefix": "opendexter-release-proposal-",
-    "artifactNamePrefix": "opendexter-release-evidence-",
-    "reviewKind": "opendexter-release-review/v1",
-    "requiredReviewer": {
-      "login": "dexter-skill-bot",
-      "id": 284909648
-    },
-    "reviewerMustDifferFromDispatcher": true
   }
 }

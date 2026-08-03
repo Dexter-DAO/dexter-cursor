@@ -137,7 +137,7 @@ describe("local package distribution", () => {
     expect(verifier).toContain('"--json"');
   });
 
-  it("builds once from the locked archive and publishes only that reviewed tarball", () => {
+  it("builds once from the locked archive and publishes only that immutable tarball", () => {
     const candidate = read("scripts/build-release-candidate.mjs");
     expect(candidate).toContain('"archive"');
     expect(candidate).toContain('["ci", "--ignore-scripts"]');
@@ -165,8 +165,10 @@ describe("local package distribution", () => {
     expect(provenance).toContain('"public"');
     expect(publish).not.toContain("...process.env");
     expect(githubHosted).toContain('from "./build-release-candidate.mjs"');
-    expect(githubHosted).toContain("buildReviewedReleaseCandidate([");
-    expect(githubHosted).toContain("verifyCoordinatedRelease({");
+    expect(githubHosted).toContain("buildReviewedReleaseArtifact({");
+    expect(githubHosted).toContain("runValidation: true");
+    expect(githubHosted).toContain("validatePublishBundle({");
+    expect(githubHosted).toContain("validateProvenanceStatement");
     expect(githubHosted).toContain("publisher-npm");
     expect(hosted).toContain("materializeOpenToolDescriptorsFromGit");
     expect(hosted).toContain("verifyCrossRepositorySources: true");
