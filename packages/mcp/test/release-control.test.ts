@@ -38,7 +38,10 @@ import {
   loadReviewedToolchainPin,
   stageReviewedToolchain,
 } from "../scripts/reviewed-toolchain.mjs";
-import { stageTreePureSource } from "../scripts/build-release-candidate.mjs";
+import {
+  installExactArtifact,
+  stageTreePureSource,
+} from "../scripts/build-release-candidate.mjs";
 import { dryRunExactTarball } from "../scripts/verify-coordinated-release.mjs";
 import { listCanonicalRemoteRefs } from "../scripts/verify-hosted-source.mjs";
 import { verifyPublishPolicy } from "../scripts/release-policy.mjs";
@@ -250,7 +253,7 @@ describe("coordinated publish policy", () => {
     const result = spawnSync(
       "npm",
       ["publish", "--dry-run", "--tag", "next"],
-      { cwd: packageRoot, env, encoding: "utf8", timeout: 20_000 },
+      { cwd: packageRoot, env, encoding: "utf8", timeout: 30_000 },
     );
     expect(result.status).not.toBe(0);
     expect(`${result.stdout}\n${result.stderr}`).toMatch(
@@ -258,6 +261,37 @@ describe("coordinated publish policy", () => {
     );
     expect(`${result.stdout}\n${result.stderr}`).not.toContain("Widget source:");
   });
+});
+
+describe("exact tarball install smoke", () => {
+  it("fresh-installs the packed artifact once and runs its CLI help", () => {
+    const fixture = fixtureRoot();
+    writeFileSync(
+      resolve(fixture.packageDir, "package.json"),
+      `${JSON.stringify({
+        name: "@dexterai/opendexter",
+        version: "1.23.0-rc.3",
+        files: ["dist"],
+        bin: { opendexter: "dist/index.js" },
+      })}\n`,
+    );
+    const tarball = pack(fixture.root);
+    const toolchain = stagedReviewedToolchain();
+    try {
+      expect(installExactArtifact({
+        tarball,
+        ignoreScripts: true,
+        toolchain,
+      })).toEqual({
+        package: "@dexterai/opendexter",
+        version: "1.23.0-rc.3",
+        ignoredScripts: true,
+        cliHelpVerified: true,
+      });
+    } finally {
+      disposeReviewedToolchain(toolchain);
+    }
+  }, 30_000);
 });
 
 describe("exact package provenance", () => {

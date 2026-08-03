@@ -423,7 +423,7 @@ export async function verifyRebuiltReleaseCandidate({
   }
 }
 
-function installExactArtifact({ tarball, ignoreScripts, toolchain }) {
+export function installExactArtifact({ tarball, ignoreScripts, toolchain }) {
   const installRoot = mkdtempSync(joinTmp("opendexter-artifact-install-"));
   try {
     const installHome = resolve(installRoot, "home");
@@ -456,7 +456,12 @@ function installExactArtifact({ tarball, ignoreScripts, toolchain }) {
       env: installEnvironment,
       stdio: "pipe",
     });
-    return { version: manifest.version, ignoredScripts: ignoreScripts };
+    return {
+      package: manifest.name,
+      version: manifest.version,
+      ignoredScripts: ignoreScripts,
+      cliHelpVerified: true,
+    };
   } finally {
     rmSync(installRoot, { recursive: true, force: true });
   }
