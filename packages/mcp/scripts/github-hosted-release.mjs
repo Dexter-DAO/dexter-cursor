@@ -775,6 +775,12 @@ export function validateRegistryIdentity({
   return { currentDistTag: currentDistTag ?? null };
 }
 
+export function registryPublishDecision(state) {
+  if (state === "absent") return true;
+  if (state === "same") return false;
+  fail("registry state is unsupported");
+}
+
 async function fetchRegistryState(receipt, { requireDistTag }) {
   const config = loadConfig();
   const encodedName = encodeURIComponent(receipt.context.package.name);
@@ -851,7 +857,7 @@ async function commandRegistry(values) {
   });
   githubOutput(values, {
     state: state.state,
-    should_publish: state.state === "absent" ? "true" : "false",
+    should_publish: registryPublishDecision(state.state) ? "true" : "false",
   });
   return state;
 }

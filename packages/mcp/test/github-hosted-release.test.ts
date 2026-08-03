@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   validateHostedReleaseConfig,
+  registryPublishDecision,
   validateProvenanceStatement,
   validatePublishBundle,
   validateRegistryIdentity,
@@ -306,6 +307,8 @@ describe("repeatable GitHub npm release", () => {
       packument,
       requireDistTag: true,
     })).toEqual({ currentDistTag: "1.23.0-rc.3" });
+    expect(registryPublishDecision("same")).toBe(false);
+    expect(registryPublishDecision("absent")).toBe(true);
     const hostile = structuredClone(metadata);
     hostile.dist.integrity = "sha512-ZGlmZmVyZW50";
     expect(() => validateRegistryIdentity({
