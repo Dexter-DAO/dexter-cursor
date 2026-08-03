@@ -16,6 +16,7 @@ import {
   validateHostedReleaseConfig,
   validateProvenanceStatement,
   validatePublishBundle,
+  validateRegistryIdentity,
   validateReleaseInvocation,
 } from "../scripts/github-hosted-release.mjs";
 import {
@@ -261,5 +262,32 @@ describe("repeatable GitHub npm release", () => {
       statement: hostile,
       receipt: fixture.receipt,
     })).toThrow(/workflow identity differs/);
+  });
+
+  it("makes same-version retries idempotent and rejects different bytes", () => {
+    const fixture = packageBundle();
+    const metadata = {
+      name: "@dexterai/opendexter",
+      version: "1.23.0-rc.3",
+      dist: {
+        integrity: fixture.receipt.artifact.integrity,
+        shasum: fixture.receipt.artifact.shasum,
+      },
+    };
+    const packument = { "dist-tags": { next: "1.23.0-rc.3" } };
+    expect(validateRegistryIdentity({
+      receipt: fixture.receipt,
+      metadata,
+      packument,
+      requireDistTag: true,
+    })).toEqual({ currentDistTag: "1.23.0-rc.3" });
+    const hostile = structuredClone(metadata);
+    hostile.dist.integrity = "sha512-ZGlmZmVyZW50";
+    expect(() => validateRegistryIdentity({
+      receipt: fixture.receipt,
+      metadata: hostile,
+      packument,
+      requireDistTag: false,
+    })).toThrow(/different immutable bytes/);
   });
 });

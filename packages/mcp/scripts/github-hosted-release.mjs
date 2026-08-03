@@ -731,6 +731,27 @@ async function verifyRegistryProvenance(metadata, receipt) {
   return { url: url.href, predicateType: provenance.predicateType };
 }
 
+export function validateRegistryIdentity({
+  receipt,
+  metadata,
+  packument,
+  requireDistTag,
+}) {
+  if (
+    metadata?.name !== receipt.context.package.name
+    || metadata?.version !== receipt.context.package.version
+    || metadata?.dist?.integrity !== receipt.artifact.integrity
+    || metadata?.dist?.shasum !== receipt.artifact.shasum
+  ) {
+    fail("published version exists with different immutable bytes");
+  }
+  const currentDistTag = packument?.["dist-tags"]?.[receipt.context.package.distTag];
+  if (requireDistTag && currentDistTag !== receipt.context.package.version) {
+    fail("registry dist-tag does not resolve to the published version");
+  }
+  return { currentDistTag: currentDistTag ?? null };
+}
+
 async function fetchRegistryState(receipt, { requireDistTag }) {
   const config = loadConfig();
   const encodedName = encodeURIComponent(receipt.context.package.name);
@@ -751,18 +772,12 @@ async function fetchRegistryState(receipt, { requireDistTag }) {
     versionResponse.json(),
     packumentResponse.json(),
   ]);
-  if (
-    metadata?.name !== receipt.context.package.name
-    || metadata?.version !== receipt.context.package.version
-    || metadata?.dist?.integrity !== receipt.artifact.integrity
-    || metadata?.dist?.shasum !== receipt.artifact.shasum
-  ) {
-    fail("published version exists with different immutable bytes");
-  }
-  const currentDistTag = packument?.["dist-tags"]?.[receipt.context.package.distTag];
-  if (requireDistTag && currentDistTag !== receipt.context.package.version) {
-    fail("registry dist-tag does not resolve to the published version");
-  }
+  const { currentDistTag } = validateRegistryIdentity({
+    receipt,
+    metadata,
+    packument,
+    requireDistTag,
+  });
   const provenance = await verifyRegistryProvenance(metadata, receipt);
   return {
     state: "same",
