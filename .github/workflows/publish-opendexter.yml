@@ -68,59 +68,13 @@ jobs:
           persist-credentials: false
           show-progress: false
 
-      - name: Mint one contents-read token for paired private sources
-        id: source-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
-        with:
-          app-id: ${{ vars.OPENDXTER_SOURCE_APP_ID }}
-          private-key: ${{ secrets.OPENDXTER_SOURCE_APP_PRIVATE_KEY }}
-          owner: Dexter-DAO
-          repositories: |-
-            dexter-api
-            dexter-facilitator
-          permission-contents: read
-
-      - name: Check out exact private API source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          repository: Dexter-DAO/dexter-api
-          ref: ${{ steps.context.outputs.api_commit }}
-          path: api
-          token: ${{ steps.source-token.outputs.token }}
-          fetch-depth: 0
-          persist-credentials: false
-          show-progress: false
-
-      - name: Check out exact private facilitator source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          repository: Dexter-DAO/dexter-facilitator
-          ref: ${{ steps.context.outputs.facilitator_commit }}
-          path: facilitator
-          token: ${{ steps.source-token.outputs.token }}
-          fetch-depth: 1
-          persist-credentials: false
-          show-progress: false
-
-      - name: Remove checkout credential surfaces
-        run: |
-          set -eu
-          git -C "$GITHUB_WORKSPACE/api" remote set-url origin \
-            https://github.com/Dexter-DAO/dexter-api.git
-          git -C "$GITHUB_WORKSPACE/facilitator" remote set-url origin \
-            https://github.com/Dexter-DAO/dexter-facilitator.git
-
       - name: Test, build, pack once, and fresh-install the tarball
         id: build
-        env:
-          GH_TOKEN: ${{ steps.source-token.outputs.token }}
         run: |
           set -eu
           node packages/mcp/scripts/github-hosted-release.mjs build \
             --context "$RUNNER_TEMP/opendexter-context.json" \
             --mcp-root "$GITHUB_WORKSPACE/mcp" \
-            --api-root "$GITHUB_WORKSPACE/api" \
-            --facilitator-root "$GITHUB_WORKSPACE/facilitator" \
             --output "$RUNNER_TEMP/opendexter-package" \
             --github-output "$GITHUB_OUTPUT"
 

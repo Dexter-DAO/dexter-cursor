@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 2,
-  "kind": "opendexter-github-release/v2",
+  "schemaVersion": 3,
+  "kind": "opendexter-github-release/v3",
   "repository": "Dexter-DAO/opendexter-ide",
   "package": {
     "name": "@dexterai/opendexter",
@@ -23,20 +23,9 @@
     "registry": "https://registry.npmjs.org/",
     "provenancePredicate": "https://slsa.dev/provenance/v1"
   },
-  "sourceRead": {
-    "owner": "Dexter-DAO",
-    "repositories": [
-      "dexter-api",
-      "dexter-facilitator"
-    ],
-    "appIdVariable": "OPENDXTER_SOURCE_APP_ID",
-    "privateKeySecret": "OPENDXTER_SOURCE_APP_PRIVATE_KEY",
-    "permission": "contents:read"
-  },
   "actions": {
     "checkout": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
     "uploadArtifact": "actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
-    "downloadArtifact": "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
-    "createGithubAppToken": "actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349"
+    "downloadArtifact": "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0"
   }
 }

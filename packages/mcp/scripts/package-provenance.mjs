@@ -800,8 +800,14 @@ export function verifyRegistryMetadata(attestation, metadata) {
   let packageIdentity;
   let artifact;
   if (
-    attestation?.schemaVersion === 2
-    && attestation?.kind === "opendexter-npm-release/v2"
+    (
+      attestation?.schemaVersion === 2
+      && attestation?.kind === "opendexter-npm-release/v2"
+    )
+    || (
+      attestation?.schemaVersion === 3
+      && attestation?.kind === "opendexter-npm-release/v3"
+    )
   ) {
     packageIdentity = attestation.context?.package;
     artifact = attestation.artifact;

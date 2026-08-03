@@ -375,13 +375,17 @@ To build an x402 client or server, use
 The repository has one release workflow and one approval boundary. Pushing an
 exact `opendexter-v<package.version>` tag on `main` starts
 `.github/workflows/publish-opendexter.yml`. Its build job verifies the pinned
-MCP/API/facilitator contract, then tests, typechecks, builds, and packs once
-from a clean Git archive. It fresh-installs that exact tarball and runs its
-installed `opendexter --help` before upload. Its publish job waits for the single
+accepted public hosted MCP commit/tree, artifact-manifest digest, descriptor
+digest, and public tool/OAuth materialization, then tests, typechecks, builds,
+and packs once from a clean Git archive. It never checks out private API or
+facilitator source. It fresh-installs that exact tarball and runs its installed
+`opendexter --help` before upload. Its publish job waits for the single
 `opendexter-npm-production` environment approval, verifies the downloaded
 tarball and receipt hashes, publishes through npm trusted-publisher OIDC, and
-reconciles registry integrity and provenance. See
-[`release/README.md`](release/README.md) for setup and retry instructions.
+reconciles registry integrity and provenance. Prepare the generated hosted
+contract before tagging with `npm run release:prepare-hosted`; tagged builds
+and retries use only that frozen committed evidence for the hosted dependency.
+See [`release/README.md`](release/README.md) for setup and retry instructions.
 
 The tarball gate rejects source maps, environment or credential files,
 symlinks, hardlinks, special files, undeclared files, and undeclared

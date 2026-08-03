@@ -152,6 +152,8 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
   expectedLockSha256,
   hostedSource,
   hosted,
+  hostedContractRelativePath =
+    "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
   stageRoot,
   outputRoot,
   runValidation = false,
@@ -203,7 +205,7 @@ function buildReviewedReleaseArtifactUnderCanonicalUmask({
     );
     const hostedContractPath = resolve(
       cleanRoot,
-      "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
+      hostedContractRelativePath,
     );
     const cleanManifest = readJson(resolve(cleanPackageRoot, "package.json"));
     const archivedRuntime = loadReviewedToolchainPin(

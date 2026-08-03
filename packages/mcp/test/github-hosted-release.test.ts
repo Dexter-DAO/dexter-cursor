@@ -47,26 +47,19 @@ function config() {
 }
 
 function hostedContract() {
-  return {
-    source: {
-      repository: "https://github.com/Dexter-DAO/dexter-mcp",
-      commit: "4".repeat(40),
-      tree: "5".repeat(40),
-    },
-    sourceContracts: {
-      kind: "opendexter-source-contracts/v3",
-      integratedApiRelease: {
-        repository: "https://github.com/Dexter-DAO/dexter-api",
-        commit: "6".repeat(40),
-        tree: "7".repeat(40),
-      },
-      facilitator: {
-        repository: "https://github.com/Dexter-DAO/dexter-facilitator",
-        commit: "8".repeat(40),
-        tree: "9".repeat(40),
-      },
-    },
+  const contract = JSON.parse(readFileSync(
+    resolve(packageRoot, "release/hosted-public-release.json"),
+    "utf8",
+  ));
+  contract.release = {
+    repository: "https://github.com/Dexter-DAO/dexter-mcp",
+    commit: "4".repeat(40),
+    tree: "5".repeat(40),
+    artifactManifestSha256: "6".repeat(64),
+    descriptorSha256: "7".repeat(64),
+    packageVersion: "0.5.0",
   };
+  return contract;
 }
 
 function invocation() {
@@ -123,21 +116,15 @@ function packageBundle() {
   });
   const inspected = inspectTarball(tarball);
   const context = validateReleaseInvocation(invocation());
-  const pins = {
-    mcp: context.hosted,
-    api: context.privateSources.api,
-    facilitator: context.privateSources.facilitator,
-  };
   const receipt = {
-    schemaVersion: 2,
-    kind: "opendexter-npm-release/v2",
+    schemaVersion: 3,
+    kind: "opendexter-npm-release/v3",
     context,
     sourceContract: {
-      schemaVersion: 1,
-      kind: "opendexter-source-pins/v1",
-      pinsDigest: canonicalJsonDigest(pins),
-      hostedContractDigest: "c".repeat(64),
-      ...pins,
+      schemaVersion: 2,
+      kind: "opendexter-hosted-release-pin/v2",
+      hostedContractSha256: context.hosted.contractSha256,
+      hosted: context.hosted,
     },
     build: {
       recipe: RELEASE_BUILD_RECIPE,
@@ -202,8 +189,11 @@ describe("repeatable GitHub npm release", () => {
     ]) {
       expect(workflow).not.toContain(obsolete);
     }
-    expect(workflow).toContain("OPENDXTER_SOURCE_APP_ID");
-    expect(workflow.match(/actions\/create-github-app-token@/g)).toHaveLength(1);
+    expect(workflow).not.toContain("OPENDXTER_SOURCE_APP_ID");
+    expect(workflow).not.toContain("OPENDXTER_SOURCE_APP_PRIVATE_KEY");
+    expect(workflow).not.toContain("actions/create-github-app-token@");
+    expect(workflow).not.toContain("Dexter-DAO/dexter-api");
+    expect(workflow).not.toContain("Dexter-DAO/dexter-facilitator");
   });
 
   it("pins the minimal config and refuses obsolete release machinery", () => {
@@ -211,14 +201,14 @@ describe("repeatable GitHub npm release", () => {
     expect(validateHostedReleaseConfig(policy)).toEqual(policy);
     expect(policy).not.toHaveProperty("releaseAudit");
     expect(policy).not.toHaveProperty("evidence");
-    expect(policy.sourceRead).not.toHaveProperty("environment");
+    expect(policy).not.toHaveProperty("sourceRead");
     expect(policy.publisher.environment).toBe("opendexter-npm-production");
     const hostile = structuredClone(policy);
     hostile.publisher.workflowPath = ".github/workflows/other.yml";
     expect(() => validateHostedReleaseConfig(hostile)).toThrow(/publisher policy/);
   });
 
-  it("binds tag, version, source commit, image, and paired contracts", () => {
+  it("binds tag, version, image, and one accepted public hosted release", () => {
     const valid = invocation();
     expect(validateReleaseInvocation(valid)).toMatchObject({
       releaseTag: "opendexter-v1.23.0-rc.3",
@@ -231,7 +221,7 @@ describe("repeatable GitHub npm release", () => {
       (value: any) => { value.sha = "c".repeat(40); },
       (value: any) => { value.tagCommitSha = "c".repeat(40); },
       (value: any) => { value.packageManifest.publishConfig.tag = "latest"; },
-      (value: any) => { value.hostedContract.source.commit = "short"; },
+      (value: any) => { value.hostedContract.release.commit = "short"; },
     ]) {
       const hostile = structuredClone(valid);
       mutate(hostile);
@@ -295,8 +285,10 @@ describe("repeatable GitHub npm release", () => {
     const fixture = packageBundle();
     expect(validateReleaseReceipt(fixture.receipt, config())).toBe(fixture.receipt);
     for (const mutate of [
-      (value: any) => { value.sourceContract.mcp.commit = ""; },
-      (value: any) => { value.sourceContract.pinsDigest = "f".repeat(64); },
+      (value: any) => { value.sourceContract.hosted.commit = ""; },
+      (value: any) => {
+        value.sourceContract.hostedContractSha256 = "f".repeat(64);
+      },
       (value: any) => { value.build.recipe = "rebuild-something-else"; },
       (value: any) => { value.build.exactTarballInstall.cliHelpVerified = false; },
       (value: any) => { value.provenance.workflowPath = ".github/workflows/other.yml"; },

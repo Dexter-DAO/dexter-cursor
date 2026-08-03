@@ -38,19 +38,19 @@ import {
 } from "./reviewed-toolchain.mjs";
 import { releaseChannel } from "./release-policy.mjs";
 import {
-  EXPECTED_HOSTED_SOURCE_REPOSITORY,
-  verifyHostedSource,
-} from "./verify-hosted-source.mjs";
+  EXPECTED_PUBLIC_HOSTED_REPOSITORY,
+  PUBLIC_HOSTED_CONTRACT_PATH,
+  PUBLIC_HOSTED_CONTRACT_RELATIVE_PATH,
+  validatePublicHostedContract,
+  verifyFrozenPublicHostedSource,
+} from "./public-hosted-release.mjs";
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 const defaultConfigPath = resolve(
   packageRoot,
   "release/github-hosted-release.json",
 );
-const hostedContractPath = resolve(
-  repositoryRoot,
-  "plugins/opendexter/skills/opendexter/references/hosted-contract.json",
-);
+const hostedContractPath = PUBLIC_HOSTED_CONTRACT_PATH;
 const releaseWorkflowPath = ".github/workflows/publish-opendexter.yml";
 
 function fail(message) {
@@ -154,12 +154,11 @@ export function validateHostedReleaseConfig(config) {
     "package",
     "runner",
     "publisher",
-    "sourceRead",
     "actions",
   ], "release config");
   if (
-    config.schemaVersion !== 2
-    || config.kind !== "opendexter-github-release/v2"
+    config.schemaVersion !== 3
+    || config.kind !== "opendexter-github-release/v3"
   ) {
     fail("release config schema is unsupported");
   }
@@ -189,21 +188,12 @@ export function validateHostedReleaseConfig(config) {
     registry: "https://registry.npmjs.org/",
     provenancePredicate: "https://slsa.dev/provenance/v1",
   }, "publisher policy");
-  same(config.sourceRead, {
-    owner: "Dexter-DAO",
-    repositories: ["dexter-api", "dexter-facilitator"],
-    appIdVariable: "OPENDXTER_SOURCE_APP_ID",
-    privateKeySecret: "OPENDXTER_SOURCE_APP_PRIVATE_KEY",
-    permission: "contents:read",
-  }, "private source policy");
   same(config.actions, {
     checkout: "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
     uploadArtifact:
       "actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
     downloadArtifact:
       "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
-    createGithubAppToken:
-      "actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349",
   }, "action pins");
   return config;
 }
@@ -213,32 +203,7 @@ function loadConfig(path = defaultConfigPath) {
 }
 
 function validateHostedContract(contract) {
-  if (
-    contract?.source?.repository !== EXPECTED_HOSTED_SOURCE_REPOSITORY
-    || contract?.sourceContracts?.kind !== "opendexter-source-contracts/v3"
-  ) {
-    fail("pinned hosted source contract is unsupported");
-  }
-  const integratedApi = contract.sourceContracts.integratedApiRelease;
-  const facilitator = contract.sourceContracts.facilitator;
-  for (const [label, value] of [
-    ["hosted MCP commit", contract.source.commit],
-    ["hosted MCP tree", contract.source.tree],
-    ["API commit", integratedApi?.commit],
-    ["API tree", integratedApi?.tree],
-    ["facilitator commit", facilitator?.commit],
-    ["facilitator tree", facilitator?.tree],
-  ]) {
-    requireSha(value, 40, label);
-  }
-  if (
-    integratedApi.repository !== "https://github.com/Dexter-DAO/dexter-api"
-    || facilitator.repository
-      !== "https://github.com/Dexter-DAO/dexter-facilitator"
-  ) {
-    fail("pinned private source repositories differ");
-  }
-  return contract;
+  return validatePublicHostedContract(contract);
 }
 
 export function validateReleaseInvocation({
@@ -295,8 +260,8 @@ export function validateReleaseInvocation({
   }
   const hosted = validateHostedContract(hostedContract);
   return {
-    schemaVersion: 2,
-    kind: "opendexter-release-context/v2",
+    schemaVersion: 3,
+    kind: "opendexter-release-context/v3",
     repository,
     releaseTag: expectedTag,
     workflow: { eventName, sha },
@@ -316,37 +281,42 @@ export function validateReleaseInvocation({
     },
     runner: config.runner,
     hosted: {
-      repository: hosted.source.repository,
-      commit: hosted.source.commit,
-      tree: hosted.source.tree,
-    },
-    privateSources: {
-      api: {
-        repository: hosted.sourceContracts.integratedApiRelease.repository,
-        commit: hosted.sourceContracts.integratedApiRelease.commit,
-        tree: hosted.sourceContracts.integratedApiRelease.tree,
-      },
-      facilitator: {
-        repository: hosted.sourceContracts.facilitator.repository,
-        commit: hosted.sourceContracts.facilitator.commit,
-        tree: hosted.sourceContracts.facilitator.tree,
-      },
+      ...hosted.release,
+      contractSha256: canonicalJsonDigest(hosted),
     },
   };
 }
 
-function validatePinnedSource(source, expectedRepository, label) {
-  exactKeys(source, ["repository", "commit", "tree"], label);
-  if (source.repository !== expectedRepository) fail(`${label} repository differs`);
+function validateHostedReleaseIdentity(source, label) {
+  exactKeys(source, [
+    "repository",
+    "commit",
+    "tree",
+    "artifactManifestSha256",
+    "descriptorSha256",
+    "packageVersion",
+    "contractSha256",
+  ], label);
+  if (source.repository !== EXPECTED_PUBLIC_HOSTED_REPOSITORY) {
+    fail(`${label} repository differs`);
+  }
   requireSha(source.commit, 40, `${label} commit`);
   requireSha(source.tree, 40, `${label} tree`);
+  requireSha(
+    source.artifactManifestSha256,
+    64,
+    `${label} artifact manifest digest`,
+  );
+  requireSha(source.descriptorSha256, 64, `${label} descriptor digest`);
+  requireSha(source.contractSha256, 64, `${label} contract digest`);
+  requireString(source.packageVersion, `${label} package version`);
   return source;
 }
 
 export function validateContext(context, config = loadConfig()) {
   if (
-    context?.schemaVersion !== 2
-    || context?.kind !== "opendexter-release-context/v2"
+    context?.schemaVersion !== 3
+    || context?.kind !== "opendexter-release-context/v3"
   ) {
     fail("release context schema is unsupported");
   }
@@ -362,7 +332,6 @@ export function validateContext(context, config = loadConfig()) {
     "package",
     "runner",
     "hosted",
-    "privateSources",
   ], "release context");
   if (context.repository !== config.repository) fail("context repository differs");
   exactKeys(context.package, [
@@ -410,22 +379,7 @@ export function validateContext(context, config = loadConfig()) {
     fail("context workflow SHA is outside the exact tag identity");
   }
   same(context.runner, config.runner, "context runner");
-  validatePinnedSource(
-    context.hosted,
-    EXPECTED_HOSTED_SOURCE_REPOSITORY,
-    "context hosted source",
-  );
-  exactKeys(context.privateSources, ["api", "facilitator"], "private sources");
-  validatePinnedSource(
-    context.privateSources.api,
-    "https://github.com/Dexter-DAO/dexter-api",
-    "context API source",
-  );
-  validatePinnedSource(
-    context.privateSources.facilitator,
-    "https://github.com/Dexter-DAO/dexter-facilitator",
-    "context facilitator source",
-  );
+  validateHostedReleaseIdentity(context.hosted, "context hosted release");
   return context;
 }
 
@@ -543,8 +497,6 @@ function commandContext(values) {
     dist_tag: context.package.distTag,
     release_tag: context.releaseTag,
     mcp_commit: context.hosted.commit,
-    api_commit: context.privateSources.api.commit,
-    facilitator_commit: context.privateSources.facilitator.commit,
     artifact_name: `opendexter-package-${context.commit}`,
   });
   return context;
@@ -576,15 +528,21 @@ async function commandBuild(values) {
   }
   assertExactTagOnMain(context);
   const mcpRoot = absolute(values, "mcp-root");
-  const apiRoot = absolute(values, "api-root");
-  const facilitatorRoot = absolute(values, "facilitator-root");
-  const hosted = await verifyHostedSource({
+  const frozenHostedContract = validateHostedContract(readJson(hostedContractPath));
+  if (canonicalJsonDigest(frozenHostedContract) !== context.hosted.contractSha256) {
+    fail("tagged hosted contract differs from the frozen context");
+  }
+  const hosted = await verifyFrozenPublicHostedSource({
     sourceRoot: mcpRoot,
-    apiSourceRoot: apiRoot,
-    facilitatorSourceRoot: facilitatorRoot,
-    mode: "check",
+    contract: frozenHostedContract,
   });
-  if (hosted.commit !== context.hosted.commit || hosted.tree !== context.hosted.tree) {
+  if (
+    hosted.commit !== context.hosted.commit
+    || hosted.tree !== context.hosted.tree
+    || hosted.descriptorSha256 !== context.hosted.descriptorSha256
+    || hosted.artifactManifestSha256
+      !== context.hosted.artifactManifestSha256
+  ) {
     fail("verified hosted source differs from the frozen context");
   }
   const rootLock = verifyRootLock({ requireTracked: true });
@@ -600,6 +558,7 @@ async function commandBuild(values) {
       expectedLockSha256: rootLock.sha256,
       hostedSource: mcpRoot,
       hosted,
+      hostedContractRelativePath: PUBLIC_HOSTED_CONTRACT_RELATIVE_PATH,
       stageRoot: stage,
       outputRoot: bundle,
       runValidation: true,
@@ -622,21 +581,15 @@ async function commandBuild(values) {
       ignoredScripts: true,
       cliHelpVerified: true,
     }, "fresh exact-tarball install");
-    const sourcePins = {
-      mcp: context.hosted,
-      api: context.privateSources.api,
-      facilitator: context.privateSources.facilitator,
-    };
     const receipt = {
-      schemaVersion: 2,
-      kind: "opendexter-npm-release/v2",
+      schemaVersion: 3,
+      kind: "opendexter-npm-release/v3",
       context,
       sourceContract: {
-        schemaVersion: 1,
-        kind: "opendexter-source-pins/v1",
-        pinsDigest: canonicalJsonDigest(sourcePins),
-        hostedContractDigest: canonicalJsonDigest(hosted.contract),
-        ...sourcePins,
+        schemaVersion: 2,
+        kind: "opendexter-hosted-release-pin/v2",
+        hostedContractSha256: canonicalJsonDigest(hosted.contract),
+        hosted: context.hosted,
       },
       build: {
         recipe: RELEASE_BUILD_RECIPE,
@@ -697,8 +650,8 @@ function exactBundle(root) {
 
 export function validateReleaseReceipt(receipt, config = loadConfig()) {
   if (
-    receipt?.schemaVersion !== 2
-    || receipt?.kind !== "opendexter-npm-release/v2"
+    receipt?.schemaVersion !== 3
+    || receipt?.kind !== "opendexter-npm-release/v3"
   ) {
     fail("release receipt schema is unsupported");
   }
@@ -718,48 +671,30 @@ export function validateReleaseReceipt(receipt, config = loadConfig()) {
   exactKeys(receipt.sourceContract, [
     "schemaVersion",
     "kind",
-    "pinsDigest",
-    "hostedContractDigest",
-    "mcp",
-    "api",
-    "facilitator",
+    "hostedContractSha256",
+    "hosted",
   ], "source contract receipt");
   if (
-    receipt.sourceContract.schemaVersion !== 1
-    || receipt.sourceContract.kind !== "opendexter-source-pins/v1"
+    receipt.sourceContract.schemaVersion !== 2
+    || receipt.sourceContract.kind !== "opendexter-hosted-release-pin/v2"
   ) {
     fail("source contract receipt schema is unsupported");
   }
-  const pins = {
-    mcp: validatePinnedSource(
-      receipt.sourceContract.mcp,
-      EXPECTED_HOSTED_SOURCE_REPOSITORY,
-      "receipt MCP source",
-    ),
-    api: validatePinnedSource(
-      receipt.sourceContract.api,
-      "https://github.com/Dexter-DAO/dexter-api",
-      "receipt API source",
-    ),
-    facilitator: validatePinnedSource(
-      receipt.sourceContract.facilitator,
-      "https://github.com/Dexter-DAO/dexter-facilitator",
-      "receipt facilitator source",
-    ),
-  };
-  same(pins, {
-    mcp: context.hosted,
-    api: context.privateSources.api,
-    facilitator: context.privateSources.facilitator,
-  }, "receipt source pins and context");
+  const hosted = validateHostedReleaseIdentity(
+    receipt.sourceContract.hosted,
+    "receipt hosted release",
+  );
+  same(hosted, context.hosted, "receipt hosted release and context");
   requireSha(
-    receipt.sourceContract.hostedContractDigest,
+    receipt.sourceContract.hostedContractSha256,
     64,
     "hosted contract digest",
   );
-  requireSha(receipt.sourceContract.pinsDigest, 64, "source pins digest");
-  if (canonicalJsonDigest(pins) !== receipt.sourceContract.pinsDigest) {
-    fail("source contract pins digest is not canonical");
+  if (
+    receipt.sourceContract.hostedContractSha256
+      !== context.hosted.contractSha256
+  ) {
+    fail("hosted contract receipt digest differs from the frozen context");
   }
 
   exactKeys(receipt.build, [
