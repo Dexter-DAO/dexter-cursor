@@ -18,6 +18,12 @@ interface InstallOpts {
   skipWalletSetup?: boolean;
 }
 
+export interface InstallResult {
+  complete: boolean;
+  successes: string[];
+  failures: string[];
+}
+
 /**
  * Render a client's MCP entry as a Codex-style TOML `[mcp_servers.opendexter]`
  * block. Used for clients we can't safely auto-edit (TOML config), so the
@@ -213,7 +219,7 @@ async function promptForClient(): Promise<ClientId> {
   return answer as ClientId;
 }
 
-export async function runInstall(opts: InstallOpts): Promise<void> {
+export async function runInstall(opts: InstallOpts): Promise<InstallResult> {
   // Step 1: ensure wallet exists
   let wallet = null;
   if (!opts.skipWalletSetup) {
@@ -337,7 +343,21 @@ export async function runInstall(opts: InstallOpts): Promise<void> {
   for (const line of successes) log.success(line);
   for (const line of failures) log.warn(line);
 
+  const result = {
+    complete: failures.length === 0,
+    successes,
+    failures,
+  } satisfies InstallResult;
+
   if (!opts.skipWalletSetup) {
-    outro("OpenDexter is wired in. Fund your rails when you're ready to settle your first paid call.");
+    if (result.complete) {
+      outro("OpenDexter is wired in. Fund your rails when you're ready to settle your first paid call.");
+    } else if (successes.length > 0) {
+      outro("OpenDexter installation is incomplete. Resolve the client setup failures above, then rerun install.");
+    } else {
+      outro("OpenDexter was not installed. Resolve the client registration issue above, then rerun install.");
+    }
   }
+
+  return result;
 }

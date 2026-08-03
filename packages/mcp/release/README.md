@@ -13,7 +13,8 @@ The repository needs exactly these external settings:
    `opendexter-v*`. Do not put an npm token in the environment.
 2. Configure npm trusted publishing for `@dexterai/opendexter` with GitHub
    owner `Dexter-DAO`, repository `opendexter-ide`, workflow filename
-   `publish-opendexter.yml`, and environment `opendexter-npm-production`.
+   `publish-opendexter.yml`, environment `opendexter-npm-production`, and the
+   `npm publish` action explicitly allowed.
 3. Protect `refs/tags/opendexter-v*` from update and deletion with a GitHub
    ruleset. The workflow separately requires the tagged commit to be on
    `origin/main` and the tag to exactly equal `opendexter-v<package.version>`.

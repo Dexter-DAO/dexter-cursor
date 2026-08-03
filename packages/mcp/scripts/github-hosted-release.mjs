@@ -264,7 +264,6 @@ export function validateReleaseInvocation({
     kind: "opendexter-release-context/v3",
     repository,
     releaseTag: expectedTag,
-    workflow: { eventName, sha },
     tag: {
       ref: `refs/tags/${expectedTag}`,
       name: expectedTag,
@@ -325,7 +324,6 @@ export function validateContext(context, config = loadConfig()) {
     "kind",
     "repository",
     "releaseTag",
-    "workflow",
     "tag",
     "commit",
     "tree",
@@ -353,11 +351,6 @@ export function validateContext(context, config = loadConfig()) {
   }
   requireSha(context.commit, 40, "context commit");
   requireSha(context.tree, 40, "context tree");
-  exactKeys(context.workflow, ["eventName", "sha"], "context workflow");
-  if (!["push", "workflow_dispatch"].includes(context.workflow.eventName)) {
-    fail("context workflow event is unsupported");
-  }
-  requireSha(context.workflow.sha, 40, "context workflow SHA");
   exactKeys(
     context.tag,
     ["ref", "name", "objectSha", "commitSha"],
@@ -372,12 +365,6 @@ export function validateContext(context, config = loadConfig()) {
   }
   requireSha(context.tag.objectSha, 40, "context tag object");
   requireSha(context.tag.commitSha, 40, "context tag commit");
-  if (
-    context.workflow.sha !== context.tag.objectSha
-    && context.workflow.sha !== context.tag.commitSha
-  ) {
-    fail("context workflow SHA is outside the exact tag identity");
-  }
   same(context.runner, config.runner, "context runner");
   validateHostedReleaseIdentity(context.hosted, "context hosted release");
   return context;
@@ -793,8 +780,11 @@ export function validatePublishBundle({
     || environment.GITHUB_REF !== context.tag.ref
     || environment.GITHUB_REF_TYPE !== "tag"
     || environment.GITHUB_REF_NAME !== context.tag.name
-    || environment.GITHUB_EVENT_NAME !== context.workflow.eventName
-    || environment.GITHUB_SHA !== context.workflow.sha
+    || !["push", "workflow_dispatch"].includes(environment.GITHUB_EVENT_NAME)
+    || (
+      environment.GITHUB_SHA !== context.tag.objectSha
+      && environment.GITHUB_SHA !== context.tag.commitSha
+    )
     || environment.OPENDXTER_RELEASE_CONTAINER_IMAGE
       !== config.runner.containerImage
   ) {

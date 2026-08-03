@@ -232,16 +232,19 @@ describe("repeatable GitHub npm release", () => {
   it("supports lightweight and annotated tags for push or tagged dispatch", () => {
     const lightweight = invocation();
     expect(validateReleaseInvocation(lightweight)).toMatchObject({
-      workflow: { eventName: "push", sha: "a".repeat(40) },
       tag: { objectSha: "a".repeat(40), commitSha: "a".repeat(40) },
       commit: "a".repeat(40),
     });
-    const annotated = invocation();
-    annotated.sha = "c".repeat(40);
-    annotated.tagObjectSha = "c".repeat(40);
-    annotated.eventName = "workflow_dispatch";
-    expect(validateReleaseInvocation(annotated)).toMatchObject({
-      workflow: { eventName: "workflow_dispatch", sha: "c".repeat(40) },
+    const annotatedPush = invocation();
+    annotatedPush.sha = "c".repeat(40);
+    annotatedPush.tagObjectSha = "c".repeat(40);
+    const annotatedDispatch = structuredClone(annotatedPush);
+    annotatedDispatch.eventName = "workflow_dispatch";
+    annotatedDispatch.sha = annotatedDispatch.tagCommitSha;
+    const pushContext = validateReleaseInvocation(annotatedPush);
+    const dispatchContext = validateReleaseInvocation(annotatedDispatch);
+    expect(pushContext).toEqual(dispatchContext);
+    expect(pushContext).toMatchObject({
       tag: { objectSha: "c".repeat(40), commitSha: "a".repeat(40) },
       commit: "a".repeat(40),
     });
@@ -271,6 +274,17 @@ describe("repeatable GitHub npm release", () => {
       expectedReleaseSha256: digestFile(fixture.release),
       config: config(),
       environment,
+    }).receipt.artifact).toEqual(fixture.receipt.artifact);
+    expect(validatePublishBundle({
+      root: fixture.bundle,
+      expectedTarballSha256: digestFile(fixture.tarball),
+      expectedReleaseSha256: digestFile(fixture.release),
+      config: config(),
+      environment: {
+        ...environment,
+        GITHUB_EVENT_NAME: "workflow_dispatch",
+        GITHUB_SHA: fixture.receipt.context.tag.commitSha,
+      },
     }).receipt.artifact).toEqual(fixture.receipt.artifact);
     expect(() => validatePublishBundle({
       root: fixture.bundle,

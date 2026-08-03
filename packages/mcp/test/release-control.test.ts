@@ -246,7 +246,13 @@ describe("coordinated publish policy", () => {
   });
 
   it("makes a plain npm publish lifecycle fail before build or registry work", () => {
-    const env = { ...process.env };
+    const env = {
+      ...process.env,
+      // The reviewed release builder intentionally disables lifecycle scripts
+      // globally. This assertion is specifically proving that an ordinary
+      // user-run npm publish invokes and is refused by prepublishOnly.
+      npm_config_ignore_scripts: "false",
+    };
     for (const name of Object.keys(env)) {
       if (name.startsWith("OPENDXTER_RELEASE_")) delete env[name];
     }
