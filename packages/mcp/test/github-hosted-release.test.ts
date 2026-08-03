@@ -74,6 +74,8 @@ function invocation() {
     refType: "tag",
     refName: "opendexter-v1.23.0-rc.3",
     sha: "a".repeat(40),
+    tagObjectSha: "a".repeat(40),
+    tagCommitSha: "a".repeat(40),
     identity: { commit: "a".repeat(40), tree: "b".repeat(40) },
     containerImage: releaseConfig.runner.containerImage,
     packageManifest: {
@@ -192,6 +194,7 @@ describe("repeatable GitHub npm release", () => {
       (value: any) => { value.refType = "branch"; },
       (value: any) => { value.refName = "opendexter-v1.23.0-rc.2"; },
       (value: any) => { value.sha = "c".repeat(40); },
+      (value: any) => { value.tagCommitSha = "c".repeat(40); },
       (value: any) => { value.packageManifest.publishConfig.tag = "latest"; },
       (value: any) => { value.hostedContract.source.commit = "short"; },
     ]) {
@@ -199,6 +202,28 @@ describe("repeatable GitHub npm release", () => {
       mutate(hostile);
       expect(() => validateReleaseInvocation(hostile)).toThrow();
     }
+  });
+
+  it("supports lightweight and annotated tags for push or tagged dispatch", () => {
+    const lightweight = invocation();
+    expect(validateReleaseInvocation(lightweight)).toMatchObject({
+      workflowSha: "a".repeat(40),
+      commit: "a".repeat(40),
+    });
+    const annotated = invocation();
+    annotated.sha = "c".repeat(40);
+    annotated.tagObjectSha = "c".repeat(40);
+    expect(validateReleaseInvocation(annotated)).toMatchObject({
+      workflowSha: "c".repeat(40),
+      commit: "a".repeat(40),
+    });
+    const workflow = readFileSync(
+      resolve(repositoryRoot, ".github/workflows/publish-opendexter.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain("push:\n    tags:");
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow.match(/ref: \$\{\{ github\.ref \}\}/g)).toHaveLength(2);
   });
 
   it("accepts only the exact downloaded tarball and receipt hashes", () => {

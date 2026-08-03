@@ -38,7 +38,7 @@ jobs:
       - name: Check out exact tagged package source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.ref }}
           path: ide
           fetch-depth: 0
           persist-credentials: false
@@ -155,7 +155,7 @@ jobs:
       - name: Check out exact tagged verifier source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.ref }}
           path: ide
           fetch-depth: 1
           persist-credentials: false

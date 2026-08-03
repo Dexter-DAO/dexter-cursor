@@ -245,6 +245,8 @@ export function validateReleaseInvocation({
   refType,
   refName,
   sha,
+  tagObjectSha,
+  tagCommitSha,
   identity,
   containerImage,
   packageManifest,
@@ -258,7 +260,12 @@ export function validateReleaseInvocation({
     fail("release tag does not exactly match package version");
   }
   requireSha(sha, 40, "GITHUB_SHA");
-  if (identity?.commit !== sha) fail("checked-out commit differs from GITHUB_SHA");
+  requireSha(tagObjectSha, 40, "release tag object");
+  requireSha(tagCommitSha, 40, "release tag commit");
+  if (tagObjectSha !== sha) fail("release tag object differs from GITHUB_SHA");
+  if (tagCommitSha !== identity?.commit) {
+    fail("release tag does not resolve to the checked-out commit");
+  }
   requireSha(identity?.tree, 40, "checked-out tree");
   if (containerImage !== config.runner.containerImage) {
     fail("workflow container differs from the pinned image");
@@ -283,6 +290,7 @@ export function validateReleaseInvocation({
     kind: "opendexter-release-context/v2",
     repository,
     releaseTag: expectedTag,
+    workflowSha: sha,
     commit: identity.commit,
     tree: identity.tree,
     package: {
@@ -322,6 +330,7 @@ function validateContext(context, config = loadConfig()) {
   }
   requireSha(context.commit, 40, "context commit");
   requireSha(context.tree, 40, "context tree");
+  requireSha(context.workflowSha, 40, "context workflow SHA");
   same(context.runner, config.runner, "context runner");
   return context;
 }
@@ -364,10 +373,15 @@ function githubOutput(values, entries) {
 }
 
 function assertExactTagOnMain(context) {
+  const tagObject = git(repositoryRoot, [
+    "rev-parse",
+    `refs/tags/${context.releaseTag}^{object}`,
+  ]);
   const tagCommit = git(repositoryRoot, [
     "rev-parse",
     `refs/tags/${context.releaseTag}^{commit}`,
   ]);
+  if (tagObject !== context.workflowSha) fail("tag object differs from GITHUB_SHA");
   if (tagCommit !== context.commit) fail("tag does not resolve to GITHUB_SHA");
   try {
     git(repositoryRoot, [
@@ -385,6 +399,7 @@ function commandContext(values) {
   const config = loadConfig(values.config ?? defaultConfigPath);
   const manifest = readJson(resolve(packageRoot, "package.json"));
   const identity = repositoryIdentity(repositoryRoot, { requireClean: true });
+  const releaseTag = process.env.GITHUB_REF_NAME;
   const context = validateReleaseInvocation({
     config,
     repository: process.env.GITHUB_REPOSITORY,
@@ -392,6 +407,14 @@ function commandContext(values) {
     refType: process.env.GITHUB_REF_TYPE,
     refName: process.env.GITHUB_REF_NAME,
     sha: process.env.GITHUB_SHA,
+    tagObjectSha: git(repositoryRoot, [
+      "rev-parse",
+      `refs/tags/${releaseTag}^{object}`,
+    ]),
+    tagCommitSha: git(repositoryRoot, [
+      "rev-parse",
+      `refs/tags/${releaseTag}^{commit}`,
+    ]),
     identity,
     containerImage: process.env.OPENDXTER_RELEASE_CONTAINER_IMAGE,
     packageManifest: manifest,
@@ -575,7 +598,7 @@ export function validatePublishBundle({
     environment.GITHUB_REPOSITORY !== config.repository
     || environment.GITHUB_REF_TYPE !== "tag"
     || environment.GITHUB_REF_NAME !== context.releaseTag
-    || environment.GITHUB_SHA !== context.commit
+    || environment.GITHUB_SHA !== context.workflowSha
     || environment.OPENDXTER_RELEASE_CONTAINER_IMAGE
       !== config.runner.containerImage
   ) {
