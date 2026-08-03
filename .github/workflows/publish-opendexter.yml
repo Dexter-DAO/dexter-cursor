@@ -110,7 +110,7 @@ jobs:
           git -C "$GITHUB_WORKSPACE/facilitator" remote set-url origin \
             https://github.com/Dexter-DAO/dexter-facilitator.git
 
-      - name: Test, build, and pack the immutable tarball once
+      - name: Test, build, pack once, and fresh-install the tarball
         id: build
         env:
           GH_TOKEN: ${{ steps.source-token.outputs.token }}

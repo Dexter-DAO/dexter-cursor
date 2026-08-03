@@ -17,6 +17,7 @@ import {
   registryPublishDecision,
   validateProvenanceStatement,
   validatePublishBundle,
+  validateReleaseReceipt,
   validateRegistryIdentity,
   validateReleaseInvocation,
 } from "../scripts/github-hosted-release.mjs";
@@ -24,7 +25,9 @@ import {
   canonicalJsonDigest,
   digestFile,
   inspectTarball,
+  RELEASE_BUILD_RECIPE,
 } from "../scripts/package-provenance.mjs";
+import { loadReviewedToolchainPin } from "../scripts/reviewed-toolchain.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "../..");
@@ -75,6 +78,7 @@ function invocation() {
     refType: "tag",
     refName: "opendexter-v1.23.0-rc.3",
     sha: "a".repeat(40),
+    eventName: "push",
     tagObjectSha: "a".repeat(40),
     tagCommitSha: "a".repeat(40),
     identity: { commit: "a".repeat(40), tree: "b".repeat(40) },
@@ -119,12 +123,42 @@ function packageBundle() {
   });
   const inspected = inspectTarball(tarball);
   const context = validateReleaseInvocation(invocation());
+  const pins = {
+    mcp: context.hosted,
+    api: context.privateSources.api,
+    facilitator: context.privateSources.facilitator,
+  };
   const receipt = {
     schemaVersion: 2,
     kind: "opendexter-npm-release/v2",
     context,
-    sourceContract: {},
-    build: {},
+    sourceContract: {
+      schemaVersion: 1,
+      kind: "opendexter-source-pins/v1",
+      pinsDigest: canonicalJsonDigest(pins),
+      hostedContractDigest: "c".repeat(64),
+      ...pins,
+    },
+    build: {
+      recipe: RELEASE_BUILD_RECIPE,
+      sourceArchiveSha256: "d".repeat(64),
+      rootLockSha256: "e".repeat(64),
+      runtime: loadReviewedToolchainPin(),
+      validation: [
+        "test",
+        "typecheck",
+        "build",
+        "pack-inventory",
+        "fresh-install-exact-tarball",
+        "opendexter-help",
+      ],
+      exactTarballInstall: {
+        package: "@dexterai/opendexter",
+        version: "1.23.0-rc.3",
+        ignoredScripts: true,
+        cliHelpVerified: true,
+      },
+    },
     artifact: inspected.artifact,
     inventory: inspected.inventory,
     inventoryDigest: canonicalJsonDigest(inspected.inventory),
@@ -208,14 +242,17 @@ describe("repeatable GitHub npm release", () => {
   it("supports lightweight and annotated tags for push or tagged dispatch", () => {
     const lightweight = invocation();
     expect(validateReleaseInvocation(lightweight)).toMatchObject({
-      workflowSha: "a".repeat(40),
+      workflow: { eventName: "push", sha: "a".repeat(40) },
+      tag: { objectSha: "a".repeat(40), commitSha: "a".repeat(40) },
       commit: "a".repeat(40),
     });
     const annotated = invocation();
     annotated.sha = "c".repeat(40);
     annotated.tagObjectSha = "c".repeat(40);
+    annotated.eventName = "workflow_dispatch";
     expect(validateReleaseInvocation(annotated)).toMatchObject({
-      workflowSha: "c".repeat(40),
+      workflow: { eventName: "workflow_dispatch", sha: "c".repeat(40) },
+      tag: { objectSha: "c".repeat(40), commitSha: "a".repeat(40) },
       commit: "a".repeat(40),
     });
     const workflow = readFileSync(
@@ -231,8 +268,10 @@ describe("repeatable GitHub npm release", () => {
     const fixture = packageBundle();
     const environment = {
       GITHUB_REPOSITORY: "Dexter-DAO/opendexter-ide",
+      GITHUB_REF: "refs/tags/opendexter-v1.23.0-rc.3",
       GITHUB_REF_TYPE: "tag",
       GITHUB_REF_NAME: "opendexter-v1.23.0-rc.3",
+      GITHUB_EVENT_NAME: "push",
       GITHUB_SHA: "a".repeat(40),
       OPENDXTER_RELEASE_CONTAINER_IMAGE: config().runner.containerImage,
     };
@@ -250,6 +289,22 @@ describe("repeatable GitHub npm release", () => {
       config: config(),
       environment,
     })).toThrow(/tarball SHA-256 differs/);
+  });
+
+  it("independently rejects malformed source, build, and provenance receipts", () => {
+    const fixture = packageBundle();
+    expect(validateReleaseReceipt(fixture.receipt, config())).toBe(fixture.receipt);
+    for (const mutate of [
+      (value: any) => { value.sourceContract.mcp.commit = ""; },
+      (value: any) => { value.sourceContract.pinsDigest = "f".repeat(64); },
+      (value: any) => { value.build.recipe = "rebuild-something-else"; },
+      (value: any) => { value.build.exactTarballInstall.cliHelpVerified = false; },
+      (value: any) => { value.provenance.workflowPath = ".github/workflows/other.yml"; },
+    ]) {
+      const hostile = structuredClone(fixture.receipt);
+      mutate(hostile);
+      expect(() => validateReleaseReceipt(hostile, config())).toThrow();
+    }
   });
 
   it("binds registry provenance to the exact bytes, workflow, and tag", () => {

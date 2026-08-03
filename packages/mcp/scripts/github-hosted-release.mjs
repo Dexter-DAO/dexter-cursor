@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import {
   buildReviewedReleaseArtifact,
+  installExactArtifact,
 } from "./build-release-candidate.mjs";
 import {
   canonicalJsonDigest,
@@ -32,6 +33,8 @@ import {
 } from "./package-provenance.mjs";
 import {
   disposeReviewedToolchain,
+  loadReviewedToolchainPin,
+  validateReviewedToolchainRuntime,
 } from "./reviewed-toolchain.mjs";
 import { releaseChannel } from "./release-policy.mjs";
 import {
@@ -245,6 +248,7 @@ export function validateReleaseInvocation({
   refType,
   refName,
   sha,
+  eventName,
   tagObjectSha,
   tagCommitSha,
   identity,
@@ -262,7 +266,12 @@ export function validateReleaseInvocation({
   requireSha(sha, 40, "GITHUB_SHA");
   requireSha(tagObjectSha, 40, "release tag object");
   requireSha(tagCommitSha, 40, "release tag commit");
-  if (tagObjectSha !== sha) fail("release tag object differs from GITHUB_SHA");
+  if (!["push", "workflow_dispatch"].includes(eventName)) {
+    fail("release workflow event is unsupported");
+  }
+  if (sha !== tagObjectSha && sha !== tagCommitSha) {
+    fail("GITHUB_SHA is neither the tag object nor its resolved commit");
+  }
   if (tagCommitSha !== identity?.commit) {
     fail("release tag does not resolve to the checked-out commit");
   }
@@ -290,7 +299,13 @@ export function validateReleaseInvocation({
     kind: "opendexter-release-context/v2",
     repository,
     releaseTag: expectedTag,
-    workflowSha: sha,
+    workflow: { eventName, sha },
+    tag: {
+      ref: `refs/tags/${expectedTag}`,
+      name: expectedTag,
+      objectSha: tagObjectSha,
+      commitSha: tagCommitSha,
+    },
     commit: identity.commit,
     tree: identity.tree,
     package: {
@@ -306,20 +321,56 @@ export function validateReleaseInvocation({
       tree: hosted.source.tree,
     },
     privateSources: {
-      api: hosted.sourceContracts.integratedApiRelease,
-      facilitator: hosted.sourceContracts.facilitator,
+      api: {
+        repository: hosted.sourceContracts.integratedApiRelease.repository,
+        commit: hosted.sourceContracts.integratedApiRelease.commit,
+        tree: hosted.sourceContracts.integratedApiRelease.tree,
+      },
+      facilitator: {
+        repository: hosted.sourceContracts.facilitator.repository,
+        commit: hosted.sourceContracts.facilitator.commit,
+        tree: hosted.sourceContracts.facilitator.tree,
+      },
     },
   };
 }
 
-function validateContext(context, config = loadConfig()) {
+function validatePinnedSource(source, expectedRepository, label) {
+  exactKeys(source, ["repository", "commit", "tree"], label);
+  if (source.repository !== expectedRepository) fail(`${label} repository differs`);
+  requireSha(source.commit, 40, `${label} commit`);
+  requireSha(source.tree, 40, `${label} tree`);
+  return source;
+}
+
+export function validateContext(context, config = loadConfig()) {
   if (
     context?.schemaVersion !== 2
     || context?.kind !== "opendexter-release-context/v2"
   ) {
     fail("release context schema is unsupported");
   }
+  exactKeys(context, [
+    "schemaVersion",
+    "kind",
+    "repository",
+    "releaseTag",
+    "workflow",
+    "tag",
+    "commit",
+    "tree",
+    "package",
+    "runner",
+    "hosted",
+    "privateSources",
+  ], "release context");
   if (context.repository !== config.repository) fail("context repository differs");
+  exactKeys(context.package, [
+    "name",
+    "version",
+    "releaseChannel",
+    "distTag",
+  ], "context package");
   if (
     context.releaseTag
       !== `${config.package.tagPrefix}${context.package?.version ?? ""}`
@@ -328,10 +379,53 @@ function validateContext(context, config = loadConfig()) {
   ) {
     fail("release context package identity differs");
   }
+  if (releaseChannel(context.package.version) !== context.package.releaseChannel) {
+    fail("context package release channel differs");
+  }
   requireSha(context.commit, 40, "context commit");
   requireSha(context.tree, 40, "context tree");
-  requireSha(context.workflowSha, 40, "context workflow SHA");
+  exactKeys(context.workflow, ["eventName", "sha"], "context workflow");
+  if (!["push", "workflow_dispatch"].includes(context.workflow.eventName)) {
+    fail("context workflow event is unsupported");
+  }
+  requireSha(context.workflow.sha, 40, "context workflow SHA");
+  exactKeys(
+    context.tag,
+    ["ref", "name", "objectSha", "commitSha"],
+    "context tag",
+  );
+  if (
+    context.tag.name !== context.releaseTag
+    || context.tag.ref !== `refs/tags/${context.releaseTag}`
+    || context.tag.commitSha !== context.commit
+  ) {
+    fail("context tag identity differs");
+  }
+  requireSha(context.tag.objectSha, 40, "context tag object");
+  requireSha(context.tag.commitSha, 40, "context tag commit");
+  if (
+    context.workflow.sha !== context.tag.objectSha
+    && context.workflow.sha !== context.tag.commitSha
+  ) {
+    fail("context workflow SHA is outside the exact tag identity");
+  }
   same(context.runner, config.runner, "context runner");
+  validatePinnedSource(
+    context.hosted,
+    EXPECTED_HOSTED_SOURCE_REPOSITORY,
+    "context hosted source",
+  );
+  exactKeys(context.privateSources, ["api", "facilitator"], "private sources");
+  validatePinnedSource(
+    context.privateSources.api,
+    "https://github.com/Dexter-DAO/dexter-api",
+    "context API source",
+  );
+  validatePinnedSource(
+    context.privateSources.facilitator,
+    "https://github.com/Dexter-DAO/dexter-facilitator",
+    "context facilitator source",
+  );
   return context;
 }
 
@@ -381,8 +475,8 @@ function assertExactTagOnMain(context) {
     "rev-parse",
     `refs/tags/${context.releaseTag}^{commit}`,
   ]);
-  if (tagObject !== context.workflowSha) fail("tag object differs from GITHUB_SHA");
-  if (tagCommit !== context.commit) fail("tag does not resolve to GITHUB_SHA");
+  if (tagObject !== context.tag.objectSha) fail("tag object differs from context");
+  if (tagCommit !== context.tag.commitSha) fail("tag commit differs from context");
   try {
     git(repositoryRoot, [
       "merge-base",
@@ -392,6 +486,27 @@ function assertExactTagOnMain(context) {
     ]);
   } catch {
     fail("release tag commit is not on origin/main");
+  }
+}
+
+function validatePublishCheckout(context) {
+  const identity = repositoryIdentity(repositoryRoot, { requireClean: true });
+  if (identity.commit !== context.commit || identity.tree !== context.tree) {
+    fail("publish checkout differs from the frozen release source");
+  }
+  const objectSha = git(repositoryRoot, [
+    "rev-parse",
+    `${context.tag.ref}^{object}`,
+  ]);
+  const commitSha = git(repositoryRoot, [
+    "rev-parse",
+    `${context.tag.ref}^{commit}`,
+  ]);
+  if (
+    objectSha !== context.tag.objectSha
+    || commitSha !== context.tag.commitSha
+  ) {
+    fail("publish checkout tag differs from the frozen tag identity");
   }
 }
 
@@ -407,6 +522,7 @@ function commandContext(values) {
     refType: process.env.GITHUB_REF_TYPE,
     refName: process.env.GITHUB_REF_NAME,
     sha: process.env.GITHUB_SHA,
+    eventName: process.env.GITHUB_EVENT_NAME,
     tagObjectSha: git(repositoryRoot, [
       "rev-parse",
       `refs/tags/${releaseTag}^{object}`,
@@ -495,28 +611,47 @@ async function commandBuild(values) {
       fail("built package identity differs from the frozen context");
     }
     validatePackInventory(built.inspected.inventory);
+    const exactTarballInstall = installExactArtifact({
+      tarball: built.tarball,
+      ignoreScripts: true,
+      toolchain: built.toolchain,
+    });
+    same(exactTarballInstall, {
+      package: context.package.name,
+      version: context.package.version,
+      ignoredScripts: true,
+      cliHelpVerified: true,
+    }, "fresh exact-tarball install");
+    const sourcePins = {
+      mcp: context.hosted,
+      api: context.privateSources.api,
+      facilitator: context.privateSources.facilitator,
+    };
     const receipt = {
       schemaVersion: 2,
       kind: "opendexter-npm-release/v2",
       context,
       sourceContract: {
-        digest: canonicalJsonDigest(hosted.contract),
-        mcp: { commit: hosted.commit, tree: hosted.tree },
-        api: {
-          commit: context.privateSources.api.commit,
-          tree: context.privateSources.api.tree,
-        },
-        facilitator: {
-          commit: context.privateSources.facilitator.commit,
-          tree: context.privateSources.facilitator.tree,
-        },
+        schemaVersion: 1,
+        kind: "opendexter-source-pins/v1",
+        pinsDigest: canonicalJsonDigest(sourcePins),
+        hostedContractDigest: canonicalJsonDigest(hosted.contract),
+        ...sourcePins,
       },
       build: {
         recipe: RELEASE_BUILD_RECIPE,
         sourceArchiveSha256: built.sourceArchiveSha256,
         rootLockSha256: built.lock.sha256,
         runtime: built.runtime,
-        validation: ["test", "typecheck", "build", "pack-inventory"],
+        validation: [
+          "test",
+          "typecheck",
+          "build",
+          "pack-inventory",
+          "fresh-install-exact-tarball",
+          "opendexter-help",
+        ],
+        exactTarballInstall,
       },
       artifact: built.inspected.artifact,
       inventory: built.inspected.inventory,
@@ -560,6 +695,136 @@ function exactBundle(root) {
   };
 }
 
+export function validateReleaseReceipt(receipt, config = loadConfig()) {
+  if (
+    receipt?.schemaVersion !== 2
+    || receipt?.kind !== "opendexter-npm-release/v2"
+  ) {
+    fail("release receipt schema is unsupported");
+  }
+  exactKeys(receipt, [
+    "schemaVersion",
+    "kind",
+    "context",
+    "sourceContract",
+    "build",
+    "artifact",
+    "inventory",
+    "inventoryDigest",
+    "provenance",
+  ], "release receipt");
+  const context = validateContext(receipt.context, config);
+
+  exactKeys(receipt.sourceContract, [
+    "schemaVersion",
+    "kind",
+    "pinsDigest",
+    "hostedContractDigest",
+    "mcp",
+    "api",
+    "facilitator",
+  ], "source contract receipt");
+  if (
+    receipt.sourceContract.schemaVersion !== 1
+    || receipt.sourceContract.kind !== "opendexter-source-pins/v1"
+  ) {
+    fail("source contract receipt schema is unsupported");
+  }
+  const pins = {
+    mcp: validatePinnedSource(
+      receipt.sourceContract.mcp,
+      EXPECTED_HOSTED_SOURCE_REPOSITORY,
+      "receipt MCP source",
+    ),
+    api: validatePinnedSource(
+      receipt.sourceContract.api,
+      "https://github.com/Dexter-DAO/dexter-api",
+      "receipt API source",
+    ),
+    facilitator: validatePinnedSource(
+      receipt.sourceContract.facilitator,
+      "https://github.com/Dexter-DAO/dexter-facilitator",
+      "receipt facilitator source",
+    ),
+  };
+  same(pins, {
+    mcp: context.hosted,
+    api: context.privateSources.api,
+    facilitator: context.privateSources.facilitator,
+  }, "receipt source pins and context");
+  requireSha(
+    receipt.sourceContract.hostedContractDigest,
+    64,
+    "hosted contract digest",
+  );
+  requireSha(receipt.sourceContract.pinsDigest, 64, "source pins digest");
+  if (canonicalJsonDigest(pins) !== receipt.sourceContract.pinsDigest) {
+    fail("source contract pins digest is not canonical");
+  }
+
+  exactKeys(receipt.build, [
+    "recipe",
+    "sourceArchiveSha256",
+    "rootLockSha256",
+    "runtime",
+    "validation",
+    "exactTarballInstall",
+  ], "release build receipt");
+  if (receipt.build.recipe !== RELEASE_BUILD_RECIPE) {
+    fail("release build recipe differs");
+  }
+  requireSha(receipt.build.sourceArchiveSha256, 64, "source archive digest");
+  requireSha(receipt.build.rootLockSha256, 64, "root lock digest");
+  validateReviewedToolchainRuntime(receipt.build.runtime);
+  same(receipt.build.runtime, loadReviewedToolchainPin(), "release build runtime");
+  same(receipt.build.validation, [
+    "test",
+    "typecheck",
+    "build",
+    "pack-inventory",
+    "fresh-install-exact-tarball",
+    "opendexter-help",
+  ], "release validations");
+  same(receipt.build.exactTarballInstall, {
+    package: context.package.name,
+    version: context.package.version,
+    ignoredScripts: true,
+    cliHelpVerified: true,
+  }, "exact-tarball install receipt");
+
+  exactKeys(receipt.artifact, [
+    "fileName",
+    "size",
+    "sha256",
+    "shasum",
+    "integrity",
+  ], "release artifact");
+  requireSha(receipt.artifact.sha256, 64, "release artifact SHA-256");
+  requireSha(receipt.artifact.shasum, 40, "release artifact shasum");
+  requireString(receipt.artifact.integrity, "release artifact integrity");
+  if (!Number.isSafeInteger(receipt.artifact.size) || receipt.artifact.size <= 0) {
+    fail("release artifact size is invalid");
+  }
+  if (!Array.isArray(receipt.inventory) || receipt.inventory.length === 0) {
+    fail("release artifact inventory is empty");
+  }
+  requireSha(receipt.inventoryDigest, 64, "release inventory digest");
+
+  exactKeys(receipt.provenance, [
+    "repository",
+    "workflowPath",
+    "ref",
+    "predicateType",
+  ], "release provenance");
+  same(receipt.provenance, {
+    repository: `https://github.com/${config.repository}`,
+    workflowPath: config.publisher.workflowPath,
+    ref: context.tag.ref,
+    predicateType: config.publisher.provenancePredicate,
+  }, "canonical release provenance");
+  return receipt;
+}
+
 export function validatePublishBundle({
   root,
   expectedTarballSha256,
@@ -568,14 +833,8 @@ export function validatePublishBundle({
   environment = process.env,
 }) {
   const files = exactBundle(root);
-  const receipt = readJson(files.receipt);
-  const context = validateContext(receipt.context, config);
-  if (
-    receipt?.schemaVersion !== 2
-    || receipt?.kind !== "opendexter-npm-release/v2"
-  ) {
-    fail("release receipt schema is unsupported");
-  }
+  const receipt = validateReleaseReceipt(readJson(files.receipt), config);
+  const context = receipt.context;
   requireSha(expectedTarballSha256, 64, "expected tarball SHA-256");
   requireSha(expectedReleaseSha256, 64, "expected release receipt SHA-256");
   if (
@@ -596,9 +855,11 @@ export function validatePublishBundle({
   validatePackInventory(receipt.inventory);
   if (
     environment.GITHUB_REPOSITORY !== config.repository
+    || environment.GITHUB_REF !== context.tag.ref
     || environment.GITHUB_REF_TYPE !== "tag"
-    || environment.GITHUB_REF_NAME !== context.releaseTag
-    || environment.GITHUB_SHA !== context.workflowSha
+    || environment.GITHUB_REF_NAME !== context.tag.name
+    || environment.GITHUB_EVENT_NAME !== context.workflow.eventName
+    || environment.GITHUB_SHA !== context.workflow.sha
     || environment.OPENDXTER_RELEASE_CONTAINER_IMAGE
       !== config.runner.containerImage
   ) {
@@ -616,6 +877,7 @@ function commandPublishInput(values) {
     expectedReleaseSha256: values["release-sha256"],
     config,
   });
+  validatePublishCheckout(result.receipt.context);
   githubOutput(values, {
     tarball: result.files.tarball,
     version: result.receipt.context.package.version,

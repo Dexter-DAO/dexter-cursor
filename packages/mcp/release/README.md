@@ -41,8 +41,10 @@ be removed after this workflow lands.
 
 The build job verifies the version/tag/main ancestry and all pinned MCP, API,
 and facilitator contracts. From one clean committed archive it runs tests,
-typechecking, one build, and one `npm pack`. It uploads that tarball plus a
-release receipt under a deterministic artifact name.
+typechecking, one build, and one `npm pack`. Before upload it fresh-installs
+that exact tarball once with lifecycle scripts disabled and runs the installed
+`opendexter --help`. It uploads that tarball plus a release receipt under a
+deterministic artifact name.
 
 The production job downloads that artifact, verifies both SHA-256 hashes,
 checks npm for an existing version, and publishes the exact tarball through
