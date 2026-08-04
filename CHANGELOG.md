@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-04 — stable 1.23.1 release recovery
+
+- Advanced the unchanged OpenDexter product and reconciled dependency train to
+  `@dexterai/opendexter@1.23.1` after the protected `opendexter-v1.23.0`
+  workflow stopped before artifact creation, upload, or npm publication.
+- Preserved the signed `opendexter-v1.23.0` tag as the immutable failed-release
+  receipt. Version `1.23.0` remains absent from npm and is not being rewritten.
+- Made the reviewed Node/npm toolchain inventory invariant to disposable Python
+  bytecode caches while continuing to reject symlinks, hard links, and special
+  files. The package behavior, dependency pins, and accepted hosted MCP receipt
+  remain unchanged.
+- OpenDexter `1.23.1` remains an unpublished source candidate until its new
+  signed tag passes the protected OIDC workflow and environment review.
+
 ## 2026-08-04 — stable 1.23.0 source candidate
 
 - Reconciled the immutable public dependency train:

@@ -47,7 +47,7 @@ evidence-gated step. Never replace the exact version below with a floating tag
 in client configuration.
 
 ```bash
-npx @dexterai/opendexter@1.23.0 setup
+npx @dexterai/opendexter@1.23.1 setup
 ```
 
 `setup` creates or loads the local wallet, detects supported AI clients,
@@ -55,7 +55,7 @@ configures the clients it can edit safely, and prints any remaining manual step
 plus the shortest path to a first search. To target one client:
 
 ```bash
-npx @dexterai/opendexter@1.23.0 install --client cursor
+npx @dexterai/opendexter@1.23.1 install --client cursor
 ```
 
 Use `claude-code`, `codex`, `vscode`, `windsurf`, or `gemini-cli` in place of
@@ -63,7 +63,7 @@ Use `claude-code`, `codex`, `vscode`, `windsurf`, or `gemini-cli` in place of
 connection directly:
 
 ```bash
-claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.0
+claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.1
 ```
 
 This local installer never adds the repository's hosted Claude Code plugin.
@@ -74,7 +74,7 @@ For a manual stdio MCP configuration in another client:
   "mcpServers": {
     "opendexter": {
       "command": "npx",
-      "args": ["-y", "@dexterai/opendexter@1.23.0"]
+      "args": ["-y", "@dexterai/opendexter@1.23.1"]
     }
   }
 }
@@ -140,7 +140,7 @@ namespacing has been separately proven. `--registration-name` chooses the name
 of that one registration; it does not bypass an existing hosted or local
 OpenDexter registration. The installer never silently renames or overwrites one.
 
-Run `npx @dexterai/opendexter@1.23.0 doctor` for a read-only report. Doctor
+Run `npx @dexterai/opendexter@1.23.1 doctor` for a read-only report. Doctor
 does not create a wallet, read balances, edit client configuration, or pay.
 
 ## From request to result
@@ -214,7 +214,7 @@ a paid call.
 
 ### Local `connect`
 
-`npx @dexterai/opendexter@1.23.0 connect` creates a read-only account link for
+`npx @dexterai/opendexter@1.23.1 connect` creates a read-only account link for
 hosted wallet and portfolio views. It labels that account separately from local
 payment authority.
 
@@ -232,8 +232,8 @@ budget counts only x402 spending witnessed by this installation on this
 machine; it is not a complete view of the wallet's on-chain activity.
 
 ```bash
-npx @dexterai/opendexter@1.23.0 settings
-npx @dexterai/opendexter@1.23.0 settings --max-amount 2.50 --daily-budget 20
+npx @dexterai/opendexter@1.23.1 settings
+npx @dexterai/opendexter@1.23.1 settings --max-amount 2.50 --daily-budget 20
 ```
 
 ## Build or sell
@@ -241,7 +241,7 @@ npx @dexterai/opendexter@1.23.0 settings --max-amount 2.50 --daily-budget 20
 - **Build an x402 client or server:** use
   [`@dexterai/x402`](https://www.npmjs.com/package/@dexterai/x402).
 - **Prepare a compatible service for discovery:** run
-  `npx @dexterai/opendexter@1.23.0 audition https://your-service.example`.
+  `npx @dexterai/opendexter@1.23.1 audition https://your-service.example`.
   Audition performs real paid test calls, so use a testable endpoint and fund
   only the amount you intend those tests to spend.
 - **Inspect the protocol:** read the [x402 specification](https://x402.org).
