@@ -2,6 +2,10 @@
 
 ## 2026-08-04 — stable 1.23.0 source candidate
 
+- Prepared truthful dual-format package inventory and release validation for
+  `@dexterai/mcp-instructions@2.4.1`. The still-unpublished
+  `@dexterai/opendexter@1.23.0` source candidate remains intentionally pinned
+  to `@dexterai/mcp-instructions@2.4.0` until its next dependency-train update.
 - Prepared `@dexterai/x402-core@1.5.1`,
   `@dexterai/x402-mcp-tools@0.8.1`, and
   `@dexterai/opendexter@1.23.0` as one ordered source release train. Registry

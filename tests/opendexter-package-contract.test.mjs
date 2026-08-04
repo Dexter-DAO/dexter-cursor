@@ -835,6 +835,9 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   const toolsPkg = await readJson(
     resolve(repoRoot, "packages/x402-mcp-tools/package.json"),
   );
+  const instructionsPkg = await readJson(
+    resolve(repoRoot, "packages/mcp-instructions/package.json"),
+  );
   const mcp = await readJson(resolve(repoRoot, "mcp.json"));
   assert.equal(workspace.packageManager, "npm@10.9.3");
   assert.equal(workspace.engines.node, ">=20");
@@ -847,6 +850,7 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.0");
   assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.0");
   assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.8.1");
+  assert.equal(instructionsPkg.version, "2.4.1");
   assert.equal(toolsPkg.version, "0.8.2");
   assert.equal(toolsPkg.dependencies["@dexterai/x402-core"], "1.5.2");
   assert.deepEqual(mcp, {
@@ -864,6 +868,7 @@ test("release changelog carries stable hosted and candidate local identities", a
   assert.match(changelog, /Codex `0\.5\.0`/);
   assert.match(changelog, /Claude Code `2\.1\.0`/);
   assert.match(changelog, /`@dexterai\/opendexter@1\.23\.0`/);
+  assert.match(changelog, /`@dexterai\/mcp-instructions@2\.4\.1`/);
   assert.match(changelog, /`@dexterai\/mcp-instructions@2\.4\.0`/);
   assert.match(changelog, /`@dexterai\/x402-mcp-tools@0\.8\.1`/);
 });
