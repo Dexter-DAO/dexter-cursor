@@ -1,11 +1,17 @@
 # OpenDexter release acceptance map
 
-Status: stable `@dexterai/opendexter@1.23.0` source candidate with its public
+Status: stable `@dexterai/opendexter@1.23.1` source candidate with its public
 dependency train reconciled. OpenDexter itself remains unpublished. This
 document records inclusion and integration boundaries; it is not deployment,
-registry-install, or live-host proof. The checked-in hosted receipt still names
-the prior accepted MCP release; its refresh is intentionally pending current
-MCP deployment and acceptance.
+registry-install, or live-host proof. The checked-in hosted receipt names the
+accepted public MCP release at `583e0272a020390516fdb1342d962fce44bfd4f7`;
+that hosted receipt is independent of local npm publication.
+
+The protected `opendexter-v1.23.0` tag is an immutable failed-release receipt.
+Its workflow stopped before artifact creation, upload, or npm publication, and
+version `1.23.0` remains absent from npm. The `1.23.1` candidate preserves the
+same product and dependency train with the corrected cache-invariant release
+toolchain review.
 
 ## Frozen release-candidate surfaces
 
@@ -33,21 +39,21 @@ portable Codex/Claude app registration. A current `plugin_asdk_app_...`
 registration, if required by the target host, is a publisher proof rather than
 something this source candidate may fabricate.
 
-The local package candidate is `@dexterai/opendexter@1.23.0` on Node.js
+The local package candidate is `@dexterai/opendexter@1.23.1` on Node.js
 20 or newer. Its coordinated publication train is:
 
 - `@dexterai/mcp-instructions@2.4.1` — published and reconciled;
 - `@dexterai/x402-core@1.5.2` — published and reconciled;
 - `@dexterai/x402-mcp-tools@0.8.2` — published and reconciled;
-- `@dexterai/opendexter@1.23.0` — source candidate, not yet published.
+- `@dexterai/opendexter@1.23.1` — source candidate, not yet published.
 
 The clean source graph resolves MCP SDK `1.30.0`, MCP Apps extension `1.7.5`,
 and Zod `3.25.76`. The canonical root lock matches the stable source and the
 three immutable dependency artifacts. This is local release evidence, not
-proof that OpenDexter `1.23.0` exists in npm or is deployed in a user client.
+proof that OpenDexter `1.23.1` exists in npm or is deployed in a user client.
 
 Earlier release candidates remain immutable historical registry bytes. Stable
-`1.23.0` requires the committed canonical root lock, clean-archive `npm ci`,
+`1.23.1` requires the committed canonical root lock, clean-archive `npm ci`,
 one exact packed artifact, full inventory/hash attestation, normal and
 scripts-disabled installs of that artifact, protected GitHub OIDC publication
 to `latest`, and post-publication registry-integrity proof. This source lane
