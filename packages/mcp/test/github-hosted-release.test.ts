@@ -13,6 +13,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  registryRequestHeaders,
   validateHostedReleaseConfig,
   registryPublishDecision,
   validateProvenanceStatement,
@@ -378,5 +379,17 @@ describe("repeatable GitHub npm release", () => {
       packument,
       requireDistTag: false,
     })).toThrow(/different immutable bytes/);
+  });
+
+  it("requests full JSON for version metadata and compact JSON for the packument", () => {
+    expect(registryRequestHeaders("version")).toEqual({
+      accept: "application/json",
+    });
+    expect(registryRequestHeaders("packument")).toEqual({
+      accept: "application/vnd.npm.install-v1+json",
+    });
+    expect(() => registryRequestHeaders("other")).toThrow(
+      /unsupported registry request kind/,
+    );
   });
 });
