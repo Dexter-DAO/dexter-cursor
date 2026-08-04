@@ -72,6 +72,48 @@ describe("local package distribution", () => {
     }
   });
 
+  it("prepares MCP instructions through one truthful dual-format release path", () => {
+    const manifest = JSON.parse(
+      readFileSync(join(sharedInstructionsRoot, "package.json"), "utf8"),
+    );
+    const checker = readFileSync(
+      join(sharedInstructionsRoot, "scripts/check-module-formats.mjs"),
+      "utf8",
+    );
+
+    expect(manifest.version).toBe("2.4.1");
+    expect(manifest.type).toBe("module");
+    expect(manifest.main).toBe("dist/index.cjs");
+    expect(manifest.module).toBe("dist/index.js");
+    expect(manifest.types).toBe("dist/index.d.ts");
+    expect(manifest.exports["."]).toEqual({
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+      require: "./dist/index.cjs",
+    });
+    expect(manifest.files).toEqual(["dist", "README.md", "LICENSE"]);
+    expect(manifest.scripts.build).toContain("--format esm,cjs");
+    expect(manifest.scripts.build).toContain("--no-sourcemap");
+    expect(manifest.scripts["release:prepare"]).toBe(
+      "npm run typecheck && npm test && npm run build && node ./scripts/check-module-formats.mjs",
+    );
+    expect(manifest.scripts.prepublishOnly).toBe("npm run release:prepare");
+    expect(manifest.scripts.release).toBe(
+      "npm publish --access public --tag latest",
+    );
+    expect(manifest.scripts.release).not.toContain("npm version");
+    expect(manifest.publishConfig).toEqual({ access: "public", tag: "latest" });
+
+    expect(checker).toContain("EXPECTED_RUNTIME_EXPORTS");
+    expect(checker).toContain("createRequire");
+    expect(checker).toContain("await import(manifest.name)");
+    expect(checker).toContain("entry.isFile()");
+    expect(checker).toContain('file.endsWith(".map")');
+    expect(checker).toContain('"buildServerInstructions"');
+    expect(checker).toContain('"assertInstructionRosterParity"');
+    expect(checker).toContain("SERVER_INSTRUCTIONS_VERSION !== manifest.version");
+  });
+
   it("prepares x402 MCP tools through one truthful dual-format release path", () => {
     const manifest = JSON.parse(
       readFileSync(join(sharedToolsRoot, "package.json"), "utf8"),
