@@ -4,6 +4,9 @@ const prompts = vi.hoisted(() => ({
   outro: vi.fn(),
   stop: vi.fn(),
 }));
+const wallet = vi.hoisted(() => ({
+  loadOrCreateWallet: vi.fn(),
+}));
 
 vi.mock("@clack/prompts", () => ({
   intro: vi.fn(),
@@ -19,19 +22,15 @@ vi.mock("@clack/prompts", () => ({
 }));
 
 vi.mock("../src/wallet/index.js", () => ({
-  loadOrCreateWallet: vi.fn(async () => ({
-    status: "existing",
-    info: {
-      solanaAddress: "11111111111111111111111111111111",
-      evmAddress: "0x0000000000000000000000000000000000000000",
-    },
-  })),
+  loadOrCreateWallet: wallet.loadOrCreateWallet,
 }));
 
 vi.mock("../src/cli/install/collision.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/cli/install/collision.js")>()),
   inspectExistingMcp: vi.fn(async () => ({
     state: "present" as const,
+    kind: "remote_http" as const,
+    disposition: "replace_existing" as const,
     detail: "hosted OpenDexter is already registered",
   })),
 }));
@@ -61,5 +60,6 @@ describe("installer completion contract", () => {
     expect(prompts.outro).not.toHaveBeenCalledWith(
       expect.stringMatching(/wired in/i),
     );
+    expect(wallet.loadOrCreateWallet).not.toHaveBeenCalled();
   });
 });

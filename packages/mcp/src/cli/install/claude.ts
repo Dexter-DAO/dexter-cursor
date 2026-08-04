@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { VERSION } from "../../config.js";
+import { requireRegistrationName } from "./collision.js";
 
 export interface ClaudeMcpCommand {
   command: "claude";
@@ -16,13 +17,15 @@ export interface ClaudeMcpCommand {
 export function buildClaudeCodeMcpCommand(
   dev: boolean,
   cwd = process.cwd(),
+  registrationName = "opendexter",
 ): ClaudeMcpCommand {
+  const name = requireRegistrationName(registrationName);
   const server = dev
     ? ["node", resolve(cwd, "dist/index.js"), "--dev"]
     : ["npx", "-y", `@dexterai/opendexter@${VERSION}`];
 
   return {
     command: "claude",
-    args: ["mcp", "add", "--scope", "user", "opendexter", "--", ...server],
+    args: ["mcp", "add", "--scope", "user", name, "--", ...server],
   };
 }

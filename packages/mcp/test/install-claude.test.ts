@@ -41,4 +41,24 @@ describe("Claude Code local MCP installer", () => {
       "--dev",
     ]);
   });
+
+  it("uses the one explicitly selected registration name without changing the package command", () => {
+    expect(
+      buildClaudeCodeMcpCommand(
+        false,
+        "/tmp/opendexter-source",
+        "opendexter-local",
+      ).args,
+    ).toEqual([
+      "mcp",
+      "add",
+      "--scope",
+      "user",
+      "opendexter-local",
+      "--",
+      "npx",
+      "-y",
+      `@dexterai/opendexter@${VERSION}`,
+    ]);
+  });
 });
