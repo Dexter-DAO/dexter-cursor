@@ -2,14 +2,16 @@
 
 ## 2026-08-04 — stable 1.23.0 source candidate
 
-- Prepared truthful dual-format package inventory and release validation for
-  `@dexterai/mcp-instructions@2.4.1`. The still-unpublished
-  `@dexterai/opendexter@1.23.0` source candidate remains intentionally pinned
-  to `@dexterai/mcp-instructions@2.4.0` until its next dependency-train update.
-- Prepared `@dexterai/x402-core@1.5.1`,
-  `@dexterai/x402-mcp-tools@0.8.1`, and
-  `@dexterai/opendexter@1.23.0` as one ordered source release train. Registry
-  publication and lockfile integrity remain separate gates.
+- Reconciled the immutable public dependency train:
+  `@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`, and
+  `@dexterai/x402-mcp-tools@0.8.2`, including truthful dual ESM/CommonJS
+  package contracts and exact registry integrity.
+- Pinned `@dexterai/opendexter@1.23.0` to that train and regenerated its one
+  canonical root lock. OpenDexter remains unpublished; its protected
+  latest-channel publication and fresh registry install are still outstanding.
+- Preserved the prior accepted hosted MCP receipt without rewriting it. The
+  hosted refresh remains pending deployment and acceptance of current MCP
+  source, after which the exact live receipt will be finalized separately.
 - Preserved canonical strong/related search tiers and surfaced degraded-ranking
   truth instead of rebuilding or truncating the shared search response.
 - Added a provider-neutral Gateway readiness/execution seam while preserving

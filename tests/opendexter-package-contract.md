@@ -14,15 +14,25 @@ OPENDXTER_HOSTED_SOURCE_ROOT=../dexter-mcp \
   node --test tests/opendexter-package-contract.test.mjs
 ```
 
-An actual RC.3 release may not rely on the optional historical check. The final
+The stable `@dexterai/opendexter@1.23.0` candidate pins the reconciled public
+train `@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`, and
+`@dexterai/x402-mcp-tools@0.8.2` through one canonical root lock. OpenDexter is
+not yet published. The checked-in public hosted receipt intentionally remains
+on the prior accepted MCP release while the current MCP source is deployed and
+proved; this source lane does not regenerate it.
+
+The stable release may not rely on the optional historical check. The final
 clean `dexter-mcp` source must commit
 `release/open-tool-descriptors.json` with every tool's title, description,
 input schema, output schema, security, annotations, visibility, and widget
 access. The single `publish-opendexter.yml` workflow makes that source root
 mandatory, verifies it, and requires this repository's materialized hosted
-contract to pin the same exact commit/tree. Until that file and final source
-exist, its one build-and-pack job fails closed. Publication then waits for the
-single `opendexter-npm-production` environment approval.
+contract to pin the same exact commit/tree. R2a source/lock build-and-pack proof
+accepts the prior hosted receipt explicitly as pending. The current hosted
+receipt is refreshed only after the MCP release is accepted; the later hosted
+publication gate then fails closed unless that refreshed receipt and source
+agree. Publication also waits for the single `opendexter-npm-production`
+environment approval.
 
 It checks:
 

@@ -1,7 +1,11 @@
 # OpenDexter release acceptance map
 
-Status: coordinated local RC.3 source candidate. This document records inclusion and integration
-boundaries; it is not deployment or live-host proof.
+Status: stable `@dexterai/opendexter@1.23.0` source candidate with its public
+dependency train reconciled. OpenDexter itself remains unpublished. This
+document records inclusion and integration boundaries; it is not deployment,
+registry-install, or live-host proof. The checked-in hosted receipt still names
+the prior accepted MCP release; its refresh is intentionally pending current
+MCP deployment and acceptance.
 
 ## Frozen release-candidate surfaces
 
@@ -29,25 +33,25 @@ portable Codex/Claude app registration. A current `plugin_asdk_app_...`
 registration, if required by the target host, is a publisher proof rather than
 something this source candidate may fabricate.
 
-The local package candidate is `@dexterai/opendexter@1.23.0-rc.3` on Node.js
+The local package candidate is `@dexterai/opendexter@1.23.0` on Node.js
 20 or newer. Its coordinated publication train is:
 
-- `@dexterai/x402-core@1.5.0`;
-- `@dexterai/mcp-instructions@2.4.0`;
-- `@dexterai/x402-mcp-tools@0.8.0`;
-- `@dexterai/opendexter@1.23.0-rc.3`.
+- `@dexterai/mcp-instructions@2.4.1` — published and reconciled;
+- `@dexterai/x402-core@1.5.2` — published and reconciled;
+- `@dexterai/x402-mcp-tools@0.8.2` — published and reconciled;
+- `@dexterai/opendexter@1.23.0` — source candidate, not yet published.
 
-The B3 disposable installed-graph proof resolved MCP SDK `1.30.0`, MCP Apps
-extension `1.7.5`, and Zod `3.25.76`. This is local test evidence, not proof of
-registry availability or a deployed graph; the hosted registry lock must
-reproduce those exact runtime versions before deployment.
+The clean source graph resolves MCP SDK `1.30.0`, MCP Apps extension `1.7.5`,
+and Zod `3.25.76`. The canonical root lock matches the stable source and the
+three immutable dependency artifacts. This is local release evidence, not
+proof that OpenDexter `1.23.0` exists in npm or is deployed in a user client.
 
-RC.2 already exists as immutable registry bytes and cannot be overwritten by
-different local candidate bytes. RC.3 requires the committed canonical root
-lock, clean-archive `npm ci`, one exact packed artifact, full inventory/hash
-attestation, normal and scripts-disabled installs of that artifact, explicit
-`next` publication authorization, and post-publication registry-integrity
-proof. Local source builds do not claim publication.
+Earlier release candidates remain immutable historical registry bytes. Stable
+`1.23.0` requires the committed canonical root lock, clean-archive `npm ci`,
+one exact packed artifact, full inventory/hash attestation, normal and
+scripts-disabled installs of that artifact, protected GitHub OIDC publication
+to `latest`, and post-publication registry-integrity proof. This source lane
+does not tag or publish OpenDexter, and local builds do not claim publication.
 
 The local tarball carries the four current widget HTML entrypoints. They load
 hashed assets from Dexter's hosted app-asset origin, so successful tarball
@@ -57,9 +61,10 @@ proofs after the hosted candidate is deployed.
 
 ## Local source receipt
 
-The prior `1.22.2-rc.1` evidence is superseded for publication purposes by the
-six-tool candidate. The required current proof is tracked in
-[OPENDEXTER-LOCAL-RELEASE-SMOKE-2026-07-28.md](./OPENDEXTER-LOCAL-RELEASE-SMOKE-2026-07-28.md).
+The dated `1.22.2-rc.1` smoke document remains historical evidence. The stable
+six-tool candidate requires a fresh clean-source install, exact tarball
+inventory, both normal and scripts-disabled tarball installs, non-paying local
+smoke, and later post-publication registry proof.
 
 No source/workspace test may be represented as npm-registry publication, a
 clean registry dependency resolution, a user-client install, or live

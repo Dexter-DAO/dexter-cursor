@@ -846,10 +846,10 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "1.30.0");
   assert.equal(pkg.dependencies["@modelcontextprotocol/ext-apps"], "1.7.5");
   assert.equal(pkg.dependencies.zod, "3.25.76");
-  assert.equal(pkg.dependencies["@dexterai/x402-core"], "1.5.1");
+  assert.equal(pkg.dependencies["@dexterai/x402-core"], "1.5.2");
   assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.0");
-  assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.0");
-  assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.8.1");
+  assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.1");
+  assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.8.2");
   assert.equal(instructionsPkg.version, "2.4.1");
   assert.equal(toolsPkg.version, "0.8.2");
   assert.equal(toolsPkg.dependencies["@dexterai/x402-core"], "1.5.2");
@@ -865,12 +865,15 @@ test("local package candidate pins its runtime and stdio discovery identity", as
 
 test("release changelog carries stable hosted and candidate local identities", async () => {
   const changelog = await readFile(resolve(repoRoot, "CHANGELOG.md"), "utf8");
+  const currentRelease = changelog.slice(0, changelog.indexOf("## 2026-08-01"));
   assert.match(changelog, /Codex `0\.5\.0`/);
   assert.match(changelog, /Claude Code `2\.1\.0`/);
-  assert.match(changelog, /`@dexterai\/opendexter@1\.23\.0`/);
-  assert.match(changelog, /`@dexterai\/mcp-instructions@2\.4\.1`/);
-  assert.match(changelog, /`@dexterai\/mcp-instructions@2\.4\.0`/);
-  assert.match(changelog, /`@dexterai\/x402-mcp-tools@0\.8\.1`/);
+  assert.match(currentRelease, /`@dexterai\/opendexter@1\.23\.0`/);
+  assert.match(currentRelease, /`@dexterai\/mcp-instructions@2\.4\.1`/);
+  assert.match(currentRelease, /`@dexterai\/x402-core@1\.5\.2`/);
+  assert.match(currentRelease, /`@dexterai\/x402-mcp-tools@0\.8\.2`/);
+  assert.match(currentRelease, /OpenDexter remains unpublished/);
+  assert.match(currentRelease, /hosted refresh remains pending/);
 });
 
 test("release train freezes full descriptors and a post-deploy novice suite", async () => {

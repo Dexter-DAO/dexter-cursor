@@ -172,10 +172,10 @@ describe("local package distribution", () => {
     expect(manifest.version).toBe(pkg.version);
     expect(manifest.logo).toBe("assets/dexter-wordmark.svg");
     expect(existsSync(join(packageRoot, manifest.logo))).toBe(true);
-    expect(pkg.dependencies["@dexterai/mcp-instructions"]).toBe("2.4.0");
-    expect(pkg.dependencies["@dexterai/x402-mcp-tools"]).toBe("0.8.1");
+    expect(pkg.dependencies["@dexterai/mcp-instructions"]).toBe("2.4.1");
+    expect(pkg.dependencies["@dexterai/x402-mcp-tools"]).toBe("0.8.2");
     expect(pkg.dependencies["@dexterai/vault"]).toBe("0.43.0");
-    expect(pkg.dependencies["@dexterai/x402-core"]).toBe("1.5.1");
+    expect(pkg.dependencies["@dexterai/x402-core"]).toBe("1.5.2");
     expect(pkg.dependencies["@modelcontextprotocol/sdk"]).toBe("1.30.0");
     expect(pkg.dependencies.zod).toBe("3.25.76");
     expect(pkg.engines.node).toBe(">=20");
