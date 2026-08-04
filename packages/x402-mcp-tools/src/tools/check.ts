@@ -5,6 +5,7 @@ import type { CheckToolOpts } from "../types.js";
 import {
   PURCHASE_CONTRACT_VERSION,
   buildPurchaseOptions,
+  type PurchaseAvailability,
   type PreparedPurchaseOptionV1,
 } from "../purchase-contract.js";
 
@@ -25,6 +26,32 @@ const LOCAL_DIRECT_EVM_NETWORKS = new Set([
   "eip155:1187947933",
 ]);
 const MAX_DURABLE_PREPARATIONS_PER_CHECK = 16;
+const PUBLIC_GATEWAY_REASON_RE = /^[a-z][a-z0-9_]{0,63}$/;
+const NON_READY_GATEWAY_STATES = new Set([
+  "integration_required",
+  "request_required",
+  "unavailable",
+]);
+
+function validGatewayAvailability(value: unknown): PurchaseAvailability | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.state === "ready" && candidate.reason === null) {
+    return { state: "ready", reason: null };
+  }
+  if (
+    typeof candidate.state === "string"
+    && NON_READY_GATEWAY_STATES.has(candidate.state)
+    && typeof candidate.reason === "string"
+    && PUBLIC_GATEWAY_REASON_RE.test(candidate.reason)
+  ) {
+    return {
+      state: candidate.state as Exclude<PurchaseAvailability["state"], "ready">,
+      reason: candidate.reason,
+    };
+  }
+  return null;
+}
 
 function directNetworkFamily(
   network: string,
@@ -60,7 +87,10 @@ export function preparePurchaseOptionsForCapabilities(
   options: PreparedPurchaseOptionV1[],
   capabilities: Pick<
     CheckToolOpts,
-    "wallet" | "getTabLane" | "getPurchaseAttemptStore"
+    | "wallet"
+    | "getTabLane"
+    | "getGatewayPurchaseAdapter"
+    | "getPurchaseAttemptStore"
   >,
 ): PreparedPurchaseOptionV1[] {
   let store:
@@ -95,15 +125,49 @@ export function preparePurchaseOptionsForCapabilities(
 
   let durablePreparationCount = 0;
   return options.map((option) => {
-    if (option.availability.state !== "ready") return option;
+    let candidate = option;
+    if (
+      option.mode === "gateway_cash"
+      || option.mode === "gateway_credit"
+    ) {
+      // `request_required` is load-bearing: an adapter cannot make an
+      // unpriced request executable. It may only replace the contract's
+      // default integration_required state with fresh capability truth.
+      if (option.availability.state !== "integration_required") return option;
+      let availability: PurchaseAvailability = option.availability;
+      try {
+        const adapter = capabilities.getGatewayPurchaseAdapter?.(option.mode);
+        if (
+          adapter
+          && adapter.mode === option.mode
+          && typeof adapter.readiness === "function"
+          && typeof adapter.execute === "function"
+        ) {
+          availability = validGatewayAvailability(
+            adapter.readiness(option.preparedPurchase),
+          ) ?? {
+            state: "integration_required",
+            reason: "gateway_adapter_readiness_invalid",
+          };
+        }
+      } catch {
+        availability = {
+          state: "integration_required",
+          reason: "gateway_adapter_readiness_failed",
+        };
+      }
+      candidate = { ...option, availability };
+    }
 
-    if (option.mode === "direct_exact") {
+    if (candidate.availability.state !== "ready") return candidate;
+
+    if (candidate.mode === "direct_exact") {
       const family = directNetworkFamily(
-        option.preparedPurchase.route.sellerOffer.network,
+        candidate.preparedPurchase.route.sellerOffer.network,
       );
       if (family === "unsupported") {
         return downgraded(
-          option,
+          candidate,
           "unavailable",
           "local_direct_network_not_supported",
         );
@@ -114,7 +178,7 @@ export function preparePurchaseOptionsForCapabilities(
           : Boolean(paymentSigners?.evmPrivateKey);
       if (!signerPresent) {
         return downgraded(
-          option,
+          candidate,
           "unavailable",
           family === "solana"
             ? "local_direct_solana_wallet_required"
@@ -123,9 +187,9 @@ export function preparePurchaseOptionsForCapabilities(
       }
     }
 
-    if (option.mode === "native_tab" && !tabLaneAvailable) {
+    if (candidate.mode === "native_tab" && !tabLaneAvailable) {
       return downgraded(
-        option,
+        candidate,
         "integration_required",
         "local_native_tab_adapter_required",
       );
@@ -133,25 +197,25 @@ export function preparePurchaseOptionsForCapabilities(
 
     if (!store) {
       return downgraded(
-        option,
+        candidate,
         "integration_required",
         "durable_purchase_preparation_store_required",
       );
     }
     if (durablePreparationCount >= MAX_DURABLE_PREPARATIONS_PER_CHECK) {
       return downgraded(
-        option,
+        candidate,
         "unavailable",
         "prepared_purchase_option_limit_exceeded",
       );
     }
     durablePreparationCount += 1;
     try {
-      store.prepare(option.preparedPurchase);
-      return option;
+      store.prepare(candidate.preparedPurchase);
+      return candidate;
     } catch {
       return downgraded(
-        option,
+        candidate,
         "integration_required",
         "durable_purchase_preparation_failed",
       );

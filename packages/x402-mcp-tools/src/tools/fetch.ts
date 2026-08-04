@@ -7,7 +7,13 @@ import {
   parsePaymentRequiredHeader,
   UnsafeExternalUrlError,
 } from "@dexterai/x402-core";
-import type { FetchToolOpts, TabLaneHook, TabOfferMaterials } from "../types.js";
+import type {
+  FetchToolOpts,
+  GatewayPurchaseAdapterV1,
+  GatewayPurchaseModeV1,
+  TabLaneHook,
+  TabOfferMaterials,
+} from "../types.js";
 import type { WalletAdapter } from "../wallet-adapter.js";
 import {
   PURCHASE_MODES,
@@ -16,6 +22,7 @@ import {
   buildPurchaseIntegrationRequired,
   sellerOfferMatches,
   validatePurchaseExecution,
+  type PurchaseAvailability,
   type PreparedPurchaseV1,
   type PurchaseAttemptStateV1,
   type PurchaseAttemptStoreV1,
@@ -24,6 +31,140 @@ import {
 } from "../purchase-contract.js";
 
 const MULTIPART_MAX_BYTES = 200 * 1024 * 1024;
+const PUBLIC_GATEWAY_REASON_RE = /^[a-z][a-z0-9_]{0,63}$/;
+const PUBLIC_GATEWAY_IDENTIFIER_RE = /^[A-Za-z0-9._:@+-]{1,256}$/;
+const gatewayIdentifierSchema = z
+  .string()
+  .regex(PUBLIC_GATEWAY_IDENTIFIER_RE)
+  .nullable()
+  .optional();
+const gatewaySellerSettlementSchema = z.object({
+  state: z.enum(["not_dispatched", "settled", "unconfirmed"]),
+  transaction: gatewayIdentifierSchema,
+}).strict();
+const gatewayCashResultSchema = z.object({
+  status: z.number().int().min(100).max(599),
+  data: z.unknown().optional(),
+  payment: z.object({
+    dispatched: z.union([z.boolean(), z.literal("unknown")]),
+    correlationId: gatewayIdentifierSchema,
+    buyerCash: z.object({
+      state: z.enum([
+        "not_committed",
+        "reserved",
+        "charged",
+        "charge_unconfirmed",
+        "refund_pending",
+        "refunded",
+      ]),
+    }).strict(),
+    sellerSettlement: gatewaySellerSettlementSchema,
+  }).strict(),
+}).strict();
+const gatewayCreditResultSchema = z.object({
+  status: z.number().int().min(100).max(599),
+  data: z.unknown().optional(),
+  payment: z.object({
+    dispatched: z.union([z.boolean(), z.literal("unknown")]),
+    correlationId: gatewayIdentifierSchema,
+    exposure: z.object({
+      state: z.enum(["not_reserved", "reserved", "released", "unconfirmed"]),
+    }).strict(),
+    buyerObligation: z.object({
+      state: z.enum(["not_finalized", "finalized", "reversed", "unconfirmed"]),
+      claimId: gatewayIdentifierSchema,
+    }).strict(),
+    sellerSettlement: gatewaySellerSettlementSchema,
+  }).strict(),
+}).strict();
+
+function normalizeGatewayReadiness(value: unknown): PurchaseAvailability | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.state === "ready" && candidate.reason === null) {
+    return { state: "ready", reason: null };
+  }
+  if (
+    ["integration_required", "request_required", "unavailable"].includes(
+      String(candidate.state),
+    )
+    && typeof candidate.reason === "string"
+    && PUBLIC_GATEWAY_REASON_RE.test(candidate.reason)
+  ) {
+    return {
+      state: candidate.state as Exclude<PurchaseAvailability["state"], "ready">,
+      reason: candidate.reason,
+    };
+  }
+  return null;
+}
+
+function projectGatewayExecutionResult(
+  value: unknown,
+  mode: GatewayPurchaseModeV1,
+): Record<string, unknown> {
+  const parsed = mode === "gateway_cash"
+    ? gatewayCashResultSchema.safeParse(value)
+    : gatewayCreditResultSchema.safeParse(value);
+  if (!parsed.success) {
+    return {
+      status: 502,
+      mode: "gateway_execution_invalid",
+      phase: "dispatch_unknown",
+      retryable: false,
+      error: "gateway_adapter_result_invalid",
+      message:
+        "The Gateway adapter returned an invalid public result after the durable dispatch mark. Reconcile this prepared purchase; do not retry it.",
+      payment: { dispatched: "unknown", settled: "unknown" },
+    };
+  }
+  const result = parsed.data;
+  const terminalFacts = mode === "gateway_cash"
+    ? "buyerCash" in result.payment
+      && result.payment.buyerCash.state === "charged"
+      && result.payment.sellerSettlement.state === "settled"
+    : "buyerObligation" in result.payment
+      && result.payment.buyerObligation.state === "finalized"
+      && result.payment.sellerSettlement.state === "settled";
+  const completed =
+    result.status >= 200
+    && result.status < 300
+    && result.payment.dispatched === true
+    && terminalFacts;
+  if (completed) {
+    return {
+      status: result.status,
+      mode,
+      phase: "completed",
+      retryable: false,
+      ...(Object.prototype.hasOwnProperty.call(result, "data")
+        ? { data: result.data }
+        : {}),
+      payment: result.payment,
+    };
+  }
+  const untouchedFacts = mode === "gateway_cash"
+    ? "buyerCash" in result.payment
+      && result.payment.buyerCash.state === "not_committed"
+      && result.payment.sellerSettlement.state === "not_dispatched"
+    : "buyerObligation" in result.payment
+      && result.payment.exposure.state === "not_reserved"
+      && result.payment.buyerObligation.state === "not_finalized"
+      && result.payment.sellerSettlement.state === "not_dispatched";
+  const definitelyPreDispatch =
+    result.payment.dispatched === false && untouchedFacts;
+  return {
+    status: result.status >= 400 ? result.status : 502,
+    mode: "gateway_execution_incomplete",
+    phase: definitelyPreDispatch ? "pre_dispatch" : "dispatch_unknown",
+    retryable: false,
+    error: "gateway_execution_not_completed",
+    message: definitelyPreDispatch
+      ? "The Gateway adapter reported that no payment was dispatched. Prepare again before another attempt."
+      : "The Gateway outcome is not safely complete. Reconcile this prepared purchase; do not retry it.",
+    payment: result.payment,
+  };
+}
 
 interface MultipartInput {
   fields?: Record<string, string>;
@@ -169,7 +310,7 @@ async function parseResponse(res: Response): Promise<unknown> {
   if (contentType.includes("json")) {
     try {
       return await res.json();
-    } catch {
+    } catch (error) {
       return await res.text();
     }
   }
@@ -330,6 +471,8 @@ interface RuntimeFetchOpts {
   maxAmountAtomic?: string;
   /** Durable prepared-identity claim store for explicit purchase modes. */
   purchaseAttempts?: PurchaseAttemptStoreV1 | null;
+  /** Fresh provider-neutral cash/credit adapter lookup. */
+  getGatewayPurchaseAdapter?: FetchToolOpts["getGatewayPurchaseAdapter"];
   /**
    * Test seam only. Production callers leave this absent so explicit probes
    * use x402-core's DNS-pinned public-HTTPS transport with redirects disabled.
@@ -643,6 +786,7 @@ function completedAttemptState(
   receipt: PurchaseReceiptV1,
 ): Exclude<PurchaseAttemptStateV1, "claimed" | "dispatching"> {
   if (receipt.retry === "same_prepared_only") return "awaiting_action";
+  if (receipt.retry === "reconcile_only") return "reconciliation_required";
   if (receipt.dispatch === "not_dispatched") return "failed_pre_dispatch";
   if (receipt.retry === "none") return "completed";
   return "reconciliation_required";
@@ -662,6 +806,7 @@ export async function x402Fetch(
 ): Promise<Record<string, unknown>> {
   const isMultipart = Boolean(params.multipart && typeof params.multipart === "object");
   let validatedPurchase: ValidatedPurchaseV1 | null = null;
+  let gatewayAdapter: GatewayPurchaseAdapterV1 | null = null;
   let attemptStore: PurchaseAttemptStoreV1 | null = null;
   let attemptClaimed = false;
   let attemptCompleted = false;
@@ -714,13 +859,34 @@ export async function x402Fetch(
     }
     validatedPurchase = validation.value;
     if (
-      validatedPurchase.mode === "gateway_cash" ||
-      validatedPurchase.mode === "gateway_credit"
+      validatedPurchase.mode === "gateway_cash"
+      || validatedPurchase.mode === "gateway_credit"
     ) {
-      return buildPurchaseIntegrationRequired(
-        validatedPurchase,
-        `${validatedPurchase.mode}_adapter_required`,
-      );
+      try {
+        const adapter = runtime.getGatewayPurchaseAdapter?.(
+          validatedPurchase.mode,
+        );
+        const readiness = adapter?.mode === validatedPurchase.mode
+          && typeof adapter.readiness === "function"
+          && typeof adapter.execute === "function"
+          ? normalizeGatewayReadiness(adapter.readiness(params.purchase))
+          : null;
+        if (!adapter || !readiness || readiness.state !== "ready") {
+          return buildPurchaseIntegrationRequired(
+            validatedPurchase,
+            readiness?.reason
+              || (adapter
+                ? "gateway_adapter_readiness_invalid"
+                : `${validatedPurchase.mode}_adapter_required`),
+          );
+        }
+        gatewayAdapter = adapter;
+      } catch {
+        return buildPurchaseIntegrationRequired(
+          validatedPurchase,
+          `${validatedPurchase.mode}_adapter_readiness_failed`,
+        );
+      }
     }
     attemptStore = runtime.purchaseAttempts ?? null;
     if (!attemptStore) {
@@ -969,6 +1135,59 @@ export async function x402Fetch(
       ...(requirements || {}),
       accepts: [selectedAccept],
     };
+  }
+
+  // ── Provider-neutral Gateway lane ───────────────────────────────────
+  // Readiness was checked before the attempt claim; execution happens only
+  // after a fresh seller probe proves the exact prepared offer still exists.
+  // The adapter receives the validated purchase, including the exact approved
+  // atomic ceiling. A crash after the dispatch mark is reconciliation-only.
+  if (validatedPurchase && gatewayAdapter) {
+    if (!markAttemptDispatching()) {
+      return withPurchase({
+        status: 503,
+        mode: "purchase_attempt_store_error",
+        phase: "pre_dispatch",
+        retryable: false,
+        error: "purchase_attempt_dispatch_mark_failed",
+        message:
+          "OpenDexter could not durably mark this Gateway attempt before dispatch. Nothing was sent.",
+        payment: { dispatched: false, settled: false },
+        requirements: selectedRequirements,
+      });
+    }
+    try {
+      const result = await gatewayAdapter.execute({
+        purchase: validatedPurchase,
+        request: {
+          url: validatedPurchase.route.resolvedUrl,
+          method: validatedPurchase.route.method,
+          ...(params.body === undefined ? {} : { body: params.body }),
+          ...(params.headers === undefined ? {} : { headers: params.headers }),
+        },
+        seller: {
+          x402Version: validatedPurchase.route.sellerOffer.x402Version,
+          accept: structuredClone(selectedAccept!),
+          requirements: structuredClone(selectedRequirements ?? {}),
+        },
+      });
+      return withPurchase({
+        ...projectGatewayExecutionResult(result, gatewayAdapter.mode),
+        requirements: selectedRequirements,
+      });
+    } catch {
+      return withPurchase({
+        status: 502,
+        mode: "gateway_execution_unknown",
+        phase: "dispatch_unknown",
+        retryable: false,
+        error: "gateway_adapter_failed_after_dispatch_mark",
+        message:
+          "The selected Gateway adapter failed after the durable dispatch mark. Reconcile this prepared purchase; do not retry it.",
+        payment: { dispatched: "unknown", settled: "unknown" },
+        requirements: selectedRequirements,
+      });
+    }
   }
 
   // ── Tab lane (before any exact payment) ─────────────────────────────
@@ -1472,7 +1691,7 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
 
   const description = hasWallet
     ? "Call an x402 API after x402_check and explicit approval. Preserve the prepared purchase, selected seller offer, route, mode, request digest, and atomic ceiling. " +
-      "direct_exact and native_tab use distinct adapters; gateway_cash and gateway_credit fail before dispatch until their adapters are connected. OpenDexter never silently changes modes."
+      "direct_exact, native_tab, gateway_cash, and gateway_credit use distinct adapters; a mode fails before dispatch unless its adapter reports ready. OpenDexter never silently changes modes."
     : "Call any x402-protected API. Returns payment requirements when settlement is needed. " +
       (opts.walletlessHint ?? "Provision a wallet for this MCP session to enable automatic payment.");
 
@@ -1592,6 +1811,7 @@ export function registerFetchTool(server: McpServer, opts: FetchToolOpts): void 
           maxAmountUsdc: effectiveMax,
           maxAmountAtomic: args.maxAmountAtomic,
           purchaseAttempts: opts.getPurchaseAttemptStore?.() ?? null,
+          getGatewayPurchaseAdapter: opts.getGatewayPurchaseAdapter,
           ...(budget
             ? {
                 dailyBudgetUsdc: budget.dailyBudgetUsdc,

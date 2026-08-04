@@ -33,6 +33,9 @@ describe("x402_search direct MCP contract", () => {
     expect(description).toContain("provider-mutating check requires explicit confirmation first");
     expect(description).toContain("confirmation never approves a later payment");
     expect(description).toContain("only then use `x402_fetch`");
+    expect(description).toContain("`rankingMode`");
+    expect(description).toContain("`degradedMessage`");
+    expect(description).toContain("not an empty search");
   });
 
   it("uses returned execution truth to reject or prepare the next step", () => {

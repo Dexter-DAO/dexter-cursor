@@ -28,6 +28,8 @@ export function registerSearchTool(server: McpServer, opts: SearchToolOpts): voi
       "or pay a service. " +
       "Returns two tiers: strong matches (high-confidence capability hits) and related matches " +
       "(adjacent services that cleared the similarity floor but not the strong threshold). " +
+      "Always surface `rankingMode` and `degradedMessage`: degraded ranking is a live fallback " +
+      "result, not an empty search or proof that the best service was found. " +
       "Handles synonyms and alternate phrasings internally — pass the user's natural-language " +
       "intent directly. Preserve each result's current `pricing`, `networkLabel`, `trustBasis`, " +
       "`trustLabel`, `execution`, `inputSchema`, `pathParams`, and `schemaSource`; that returned " +
