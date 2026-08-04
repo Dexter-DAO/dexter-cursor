@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "../..");
+const sharedInstructionsRoot = resolve(packageRoot, "../mcp-instructions");
 const sharedToolsRoot = resolve(packageRoot, "../x402-mcp-tools");
 
 function read(relative: string): string {
@@ -52,6 +53,25 @@ function expectExactExecutableReferences(
 }
 
 describe("local package distribution", () => {
+  it("ships the promised canonical license in shared packages", () => {
+    const canonicalLicense = readFileSync(join(packageRoot, "LICENSE"));
+    for (const [name, root] of [
+      ["@dexterai/mcp-instructions", sharedInstructionsRoot],
+      ["@dexterai/x402-mcp-tools", sharedToolsRoot],
+    ] as const) {
+      const manifest = JSON.parse(
+        readFileSync(join(root, "package.json"), "utf8"),
+      );
+      const licensePath = join(root, "LICENSE");
+
+      expect(manifest.files, `${name} package files`).toContain("LICENSE");
+      expect(existsSync(licensePath), `${name} LICENSE`).toBe(true);
+      expect(readFileSync(licensePath), `${name} LICENSE bytes`).toEqual(
+        canonicalLicense,
+      );
+    }
+  });
+
   it("ships one valid Cursor identity with a release-pinned stdio command", () => {
     const pkg = JSON.parse(read("package.json"));
     const manifest = JSON.parse(read(".cursor-plugin/plugin.json"));
