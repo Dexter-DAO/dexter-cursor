@@ -798,6 +798,8 @@ test("Codex package uses one portable remote MCP and mixed-auth marketplace poli
     opendexter: {
       type: "http",
       url: "https://open.dexter.cash/mcp",
+      scopes: ["vault"],
+      oauth_resource: "https://open.dexter.cash/mcp",
     },
   });
   await assert.rejects(access(resolve(codexRoot, ".mcp.json")));
