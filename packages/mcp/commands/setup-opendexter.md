@@ -13,13 +13,13 @@ services, inspect current terms, and execute one explicitly selected purchase.
 1. Run the guided setup:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 setup
+npx @dexterai/opendexter@1.23.0 setup
 ```
 
 To target one client, use:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 install --client cursor
+npx @dexterai/opendexter@1.23.0 install --client cursor
 ```
 
 Supported client names are `cursor`, `claude-code`, `codex`, `vscode`,

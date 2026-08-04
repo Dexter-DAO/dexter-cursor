@@ -28,14 +28,14 @@ start at the [repository guide](../../README.md).
 
 ## Start
 
-This guide belongs to `@dexterai/opendexter@1.23.0-rc.3`. Its commands are
-pinned to that immutable release so evaluating the RC cannot silently launch
-an older `@latest` package.
+This guide belongs to `@dexterai/opendexter@1.23.0`. Its commands are pinned
+to that exact stable source candidate so client setup cannot silently launch
+different package bytes through a floating tag.
 
 Run the guided setup:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 setup
+npx @dexterai/opendexter@1.23.0 setup
 ```
 
 Setup creates or loads a local Solana and EVM wallet, detects supported AI
@@ -43,15 +43,27 @@ clients, configures the clients it can edit safely, and prints any remaining
 manual step. Codex uses TOML, so OpenDexter prints the exact block instead of
 editing that file automatically.
 
-Setup refuses to replace an existing `opendexter` MCP registration. The hosted
+Setup checks every target registration before creating or migrating a wallet,
+and refuses to replace an existing `opendexter` MCP registration. The hosted
 connector uses the user's Dexter Wallet; this package uses a separate local
 signer. If a client already has either surface under that name, setup leaves it
-unchanged and asks the user to remove or rename it intentionally first.
+unchanged. Keep one OpenDexter registration in that client, or remove/upgrade
+the existing one intentionally. `--registration-name` chooses the name for one
+installation; aliasing does not make simultaneous hosted and local OpenDexter
+registrations safe unless the client has proven duplicate-tool namespacing.
+
+For diagnosis without side effects:
+
+```bash
+npx @dexterai/opendexter@1.23.0 doctor --client codex
+```
+
+Doctor does not create a wallet, check a balance, edit configuration, or pay.
 
 Then try a search that describes the result you need:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 search "extract tables from a PDF"
+npx @dexterai/opendexter@1.23.0 search "extract tables from a PDF"
 ```
 
 Search does not spend money. Checking the selected endpoint also makes no
@@ -59,7 +71,7 @@ payment, although the local check durably records the exact prepared purchase
 identity that a later approved call must reuse:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 check "https://service.example/x402/route"
+npx @dexterai/opendexter@1.23.0 check "https://service.example/x402/route"
 ```
 
 `check` returns explicit `purchaseOptions`. A mode is ready only when its local
@@ -68,7 +80,7 @@ Select one ready option, approve its atomic ceiling, and pass that exact object
 back unchanged:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 check \
+npx @dexterai/opendexter@1.23.0 check \
   "https://service.example/x402/route" \
   --method POST \
   --body '{"document_url":"https://example.com/report.pdf"}' \
@@ -80,7 +92,7 @@ selected_purchase="$(jq -c \
 
 approved_ceiling="$(printf '%s\n' "$selected_purchase" | jq -r '.route.sellerOffer.amountAtomic')"
 
-npx @dexterai/opendexter@1.23.0-rc.3 fetch \
+npx @dexterai/opendexter@1.23.0 fetch \
   "https://service.example/x402/route" \
   --method POST \
   --body '{"document_url":"https://example.com/report.pdf"}' \
@@ -97,7 +109,7 @@ option is not permission to choose a different mode automatically.
 Target one supported client:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 install --client cursor
+npx @dexterai/opendexter@1.23.0 install --client cursor
 ```
 
 Valid client names are `cursor`, `claude-code`, `codex`, `vscode`, `windsurf`,
@@ -108,7 +120,7 @@ For Claude Code, `setup` and `install --client claude-code` add this local stdio
 MCP through Claude's supported CLI. To add the same connection directly, use:
 
 ```bash
-claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.0-rc.3
+claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.0
 ```
 
 The stable repository plugin is hosted-only. These local-package commands never
@@ -124,7 +136,7 @@ JSON-based clients can use:
   "mcpServers": {
     "opendexter": {
       "command": "npx",
-      "args": ["-y", "@dexterai/opendexter@1.23.0-rc.3"]
+      "args": ["-y", "@dexterai/opendexter@1.23.0"]
     }
   }
 }
@@ -135,7 +147,7 @@ Codex uses TOML:
 ```toml
 [mcp_servers.opendexter]
 command = "npx"
-args = ["-y", "@dexterai/opendexter@1.23.0-rc.3"]
+args = ["-y", "@dexterai/opendexter@1.23.0"]
 ```
 
 Restart the client after adding or changing its MCP configuration.
@@ -155,10 +167,14 @@ first and related matches second. Results can include:
 - a triangulation warning when the top answer is marketing-only and an
   ambiguous query should be cross-checked.
 
+The response also carries `rankingMode` and `degradedMessage`. A degraded
+response is a live fallback ranking, not an empty result and not proof that the
+first service is the best semantic match.
+
 Do not treat a search result's cached or advertised price as approval to pay.
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 search "current ETH price"
+npx @dexterai/opendexter@1.23.0 search "current ETH price"
 ```
 
 ### 2. Check the exact route
@@ -187,10 +203,13 @@ uses only the selected mode:
 
 - `direct_exact` — the local wallet pays the selected Exact offer;
 - `native_tab` — the local Tab lane sends the selected Tab voucher;
-- `gateway_cash` — reserved contract name; unavailable until its common backend
-  adapter exists;
-- `gateway_credit` — reserved contract name; unavailable until its common
-  backend adapter exists.
+- `gateway_cash` — uses one injected provider-neutral cash adapter only when it
+  reports fresh readiness for the exact prepared purchase;
+- `gateway_credit` — uses one injected provider-neutral credit adapter under
+  the same exact continuation and ceiling contract.
+
+This local package does not inject a Gateway adapter by default, so those modes
+remain `integration_required` unless the embedding consumer supplies one.
 
 OpenDexter does not switch from Native Tab to Direct Exact, or from Direct to a
 Gateway, after selection. It returns a mode-specific receipt that keeps seller
@@ -251,7 +270,7 @@ one to a repository.
 Inspect verified balances and deposit addresses with:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 wallet
+npx @dexterai/opendexter@1.23.0 wallet
 ```
 
 A failed RPC read is reported as unavailable, not as a zero balance. A displayed
@@ -288,9 +307,9 @@ It supports:
 - `dailyBudgetUsdc` — an optional rolling 24-hour ceiling; `0` disables it.
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 settings
-npx @dexterai/opendexter@1.23.0-rc.3 settings --max-amount 2.50
-npx @dexterai/opendexter@1.23.0-rc.3 settings --daily-budget 20
+npx @dexterai/opendexter@1.23.0 settings
+npx @dexterai/opendexter@1.23.0 settings --max-amount 2.50
+npx @dexterai/opendexter@1.23.0 settings --daily-budget 20
 ```
 
 A caller can provide a different maximum for one call, so the stored
@@ -302,13 +321,13 @@ application.
 ## What `connect` does
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 connect
+npx @dexterai/opendexter@1.23.0 connect
 ```
 
 This optional device flow creates a connector session. The local package uses
 it for two view-only reads of the hosted Dexter Wallet:
 
-- `npx @dexterai/opendexter@1.23.0-rc.3 wallet` shows its Solana deposit address and
+- `npx @dexterai/opendexter@1.23.0 wallet` shows its Solana deposit address and
   balance;
 - the local MCP's `dexter_portfolio` tool returns its governed asset inventory.
 
@@ -318,8 +337,8 @@ paid calls still use the local wallet in `wallet.json` or the configured
 environment keys.
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 connect status
-npx @dexterai/opendexter@1.23.0-rc.3 connect disconnect
+npx @dexterai/opendexter@1.23.0 connect status
+npx @dexterai/opendexter@1.23.0 connect disconnect
 ```
 
 Read the [connection walkthrough](../../docs/connect-your-wallet.md) for the
@@ -351,7 +370,7 @@ dextercard              Manage a local Dextercard account session
 
 `dextercard` is a CLI-only account-session command. It does not add card tools
 to the MCP server. `audition` makes real paid calls. Run
-`npx @dexterai/opendexter@1.23.0-rc.3 --help` for current flags and subcommands.
+`npx @dexterai/opendexter@1.23.0 --help` for current flags and subcommands.
 
 ## For API sellers
 
@@ -359,7 +378,7 @@ to the MCP server. `audition` makes real paid calls. Run
 quality, and produces agent-call guidance:
 
 ```bash
-npx @dexterai/opendexter@1.23.0-rc.3 audition \
+npx @dexterai/opendexter@1.23.0 audition \
   "https://your-service.example" \
   --json
 ```

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-04 — stable 1.23.0 source candidate
+
+- Prepared `@dexterai/x402-core@1.5.1`,
+  `@dexterai/x402-mcp-tools@0.8.1`, and
+  `@dexterai/opendexter@1.23.0` as one ordered source release train. Registry
+  publication and lockfile integrity remain separate gates.
+- Preserved canonical strong/related search tiers and surfaced degraded-ranking
+  truth instead of rebuilding or truncating the shared search response.
+- Added a provider-neutral Gateway readiness/execution seam while preserving
+  `opendexter.purchase.v1`, the unchanged prepared purchase, exact seller
+  offer, approved atomic ceiling, durable claim, and mode-specific receipt.
+- Made client collision checks complete before setup can create a wallet or
+  edit client configuration. Added an explicit single-registration name and a
+  read-only doctor that never creates a wallet, checks a balance, or pays.
+- Clarified that search and live price checks require no wallet or funding. A
+  configured signer or ready adapter is capability, never payment approval.
+
 ## 2026-08-01 — immutable RC.3 release-control successor
 
 - Advanced the local candidate to `@dexterai/opendexter@1.23.0-rc.3` because

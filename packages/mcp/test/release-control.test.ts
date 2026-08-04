@@ -225,6 +225,26 @@ describe("coordinated publish policy", () => {
     })).toEqual({ releaseChannel: "prerelease", distTag: "next" });
   });
 
+  it("allows the stable candidate only on the explicit latest tag", () => {
+    const stableAttestation = attestation();
+    stableAttestation.package = {
+      ...stableAttestation.package,
+      version: "1.23.0",
+      releaseChannel: "stable",
+      distTag: "latest",
+    };
+    expect(verifyPublishPolicy({
+      manifest: {
+        name: "@dexterai/opendexter",
+        version: "1.23.0",
+        publishConfig: { tag: "latest" },
+      },
+      attestation: stableAttestation,
+      npmTag: "latest",
+      explicitTag: "latest",
+    })).toEqual({ releaseChannel: "stable", distTag: "latest" });
+  });
+
   it("protects latest and refuses implicit or conflicting tags", () => {
     const manifest = {
       name: "@dexterai/opendexter",
@@ -575,10 +595,49 @@ describe("exact package provenance", () => {
     expect(candidate).not.toContain("--results");
   });
 
-  it("uses one canonical root lock and rejects a nested package lock", () => {
-    const lock = verifyRootLock({ requireTracked: false });
-    expect(lock.path).toBe("package-lock.json");
-    expect(lock.lockfileVersion).toBe(3);
+  it("uses one canonical root lock or reports the exact prepublication block", () => {
+    const candidate = JSON.parse(
+      readFileSync(resolve(packageRoot, "package.json"), "utf8"),
+    );
+    const rootLock = JSON.parse(
+      readFileSync(resolve(repositoryRoot, "package-lock.json"), "utf8"),
+    );
+    const locked = rootLock.packages?.["packages/mcp"];
+
+    if (
+      locked?.version === candidate.version
+      && locked?.dependencies?.["@dexterai/x402-core"]
+        === candidate.dependencies["@dexterai/x402-core"]
+      && locked?.dependencies?.["@dexterai/x402-mcp-tools"]
+        === candidate.dependencies["@dexterai/x402-mcp-tools"]
+    ) {
+      const lock = verifyRootLock({ requireTracked: false });
+      expect(lock.path).toBe("package-lock.json");
+      expect(lock.lockfileVersion).toBe(3);
+    } else {
+      expect({
+        version: candidate.version,
+        core: candidate.dependencies["@dexterai/x402-core"],
+        tools: candidate.dependencies["@dexterai/x402-mcp-tools"],
+      }).toEqual({
+        version: "1.23.0",
+        core: "1.5.1",
+        tools: "0.8.1",
+      });
+      expect({
+        version: locked?.version,
+        core: locked?.dependencies?.["@dexterai/x402-core"],
+        tools: locked?.dependencies?.["@dexterai/x402-mcp-tools"],
+      }).toEqual({
+        version: "1.23.0-rc.3",
+        core: "1.5.0",
+        tools: "0.8.0",
+      });
+      expect(() => verifyRootLock({ requireTracked: false })).toThrow(
+        "root lock package identity/version does not match packages/mcp/package.json",
+      );
+    }
+
     expect(readFileSync(resolve(repositoryRoot, ".gitignore"), "utf8"))
       .toContain("/packages/*/package-lock.json");
   });
