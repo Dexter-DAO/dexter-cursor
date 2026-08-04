@@ -6,7 +6,7 @@
     "nodeExecutableSha256": "596b5144ff242737f1c1be6a5f0ccb3907dbba2482344143cb1a6898633402a9",
     "npm": "10.9.3",
     "npmCliSha256": "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7",
-    "toolchainInventorySha256": "80fd796eb99d0a291c0efd24cf2978a990277ea808fc20b26fad8ed6134a820a",
+    "toolchainInventorySha256": "55341276d90b7de6ac93b0927381cd956f0102f36e59ebda6c8f1b6ebd1e0ab6",
     "toolchainInventory": [
       {
         "path": "bin/node",
@@ -8241,36 +8241,6 @@
         "executable": true
       },
       {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/__pycache__/__init__.cpython-312.pyc",
-        "size": 23473,
-        "sha256": "61e55e68fbc5ef94e506f0dc674676620e61593941fb5310ddcf1adcf3cda774",
-        "executable": false
-      },
-      {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/__pycache__/common.cpython-312.pyc",
-        "size": 26743,
-        "sha256": "9aff0b938f79df77781aefb9dd48be82fa9836b87ef8854ff8ecd9822baf751d",
-        "executable": false
-      },
-      {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/__pycache__/input.cpython-312.pyc",
-        "size": 85436,
-        "sha256": "10e680e62466a3e47faa83f45dd4a16bee073109df45e02ed501adaa9512997d",
-        "executable": false
-      },
-      {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/__pycache__/simple_copy.cpython-312.pyc",
-        "size": 2111,
-        "sha256": "7fddc74f1845bd73f32a7628fec86bbd33bd1a212141dafe25ec0233ae5eb561",
-        "executable": false
-      },
-      {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/__pycache__/xcode_emulation.cpython-312.pyc",
-        "size": 87833,
-        "sha256": "9837fa6221aaa67d4fbadc1d10b9e1680744225346d7fcbf4f49f2803696ce2c",
-        "executable": false
-      },
-      {
         "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/common.py",
         "size": 24582,
         "sha256": "40658ef9ed73046175405b382dbb1c065a5bae7ec667dcfda195696905588004",
@@ -8304,18 +8274,6 @@
         "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/__init__.py",
         "size": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "executable": false
-      },
-      {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/__pycache__/__init__.cpython-312.pyc",
-        "size": 223,
-        "sha256": "90d60d9769388ad1c60885bcaefb451e84b7f65526b48db5be1c1aa2deaa0ffb",
-        "executable": false
-      },
-      {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/__pycache__/make.cpython-312.pyc",
-        "size": 103769,
-        "sha256": "475f8e62ec69885466dd958c51e537759a38d0e2a57a81cce7350710e44df2f4",
         "executable": false
       },
       {
@@ -8502,24 +8460,6 @@
         "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/packaging/__init__.py",
         "size": 501,
         "sha256": "2a00427c7cfdbe084df43b72682531c9ec1f7b956b8d50ed89ab40d66e8287b4",
-        "executable": false
-      },
-      {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/packaging/__pycache__/__init__.cpython-312.pyc",
-        "size": 589,
-        "sha256": "e856a1ccd3a129cc4f7796a93fb5c0f458fd8d7f2698920a0732bc7888d8faae",
-        "executable": false
-      },
-      {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/packaging/__pycache__/_structures.cpython-312.pyc",
-        "size": 3267,
-        "sha256": "3bfcad079ebc89e0bbc8820e4ac57fe2f4c023e0b41fb1f4c9d8e1c4806c6c19",
-        "executable": false
-      },
-      {
-        "path": "lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/packaging/__pycache__/version.cpython-312.pyc",
-        "size": 20023,
-        "sha256": "8f3c84b2e912e44a64e1d468bc3da9d8ad24c4f90109e38857d6d2c95bd9287b",
         "executable": false
       },
       {

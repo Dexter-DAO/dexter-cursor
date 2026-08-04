@@ -527,6 +527,99 @@ describe("exact package provenance", () => {
     }
   });
 
+  it("ignores nondeterministic Python bytecode caches in reviewed npm source", () => {
+    const fixture = toolchainFixture();
+    const cacheRoot = resolve(
+      fixture.npmRoot,
+      "node_modules/node-gyp/gyp/pylib/gyp/__pycache__",
+    );
+    mkdirSync(cacheRoot, { recursive: true });
+    writeFileSync(resolve(cacheRoot, "input.cpython-312.pyc"), "cache bytes\n");
+    writeFileSync(
+      resolve(fixture.npmRoot, "standalone.cpython-312.pyc"),
+      "cache bytes\n",
+    );
+
+    const inspected = inspectReviewedToolchainSource({
+      nodePath: fixture.nodePath,
+      npmRoot: fixture.npmRoot,
+      nodeVersion: "v22.19.0",
+    });
+    expect(inspected).toEqual(fixture.runtime);
+    expect(inspected.toolchainInventory.some(
+      ({ path }) => path.includes("/__pycache__/") || path.endsWith(".pyc"),
+    )).toBe(false);
+
+    const staged = stageReviewedToolchain({
+      stageRoot: resolve(fixture.root, "cache-free-stage"),
+      sourceNode: fixture.nodePath,
+      sourceNpmRoot: fixture.npmRoot,
+      sourceNodeVersion: "v22.19.0",
+      expectedRuntime: fixture.runtime,
+    });
+    try {
+      expect(staged.runtime).toEqual(fixture.runtime);
+    } finally {
+      disposeReviewedToolchain(staged);
+    }
+
+    writeFileSync(
+      resolve(fixture.npmRoot, "lib/cli.js"),
+      "module.exports = { compromised: true }\n",
+    );
+    expect(() => stageReviewedToolchain({
+      stageRoot: resolve(fixture.root, "mutated-stage"),
+      sourceNode: fixture.nodePath,
+      sourceNpmRoot: fixture.npmRoot,
+      sourceNodeVersion: "v22.19.0",
+      expectedRuntime: fixture.runtime,
+    })).toThrow(/toolchain source differs from the reviewed source pin/);
+  });
+
+  it.each([
+    ["hard-linked .pyc", (fixture: ReturnType<typeof toolchainFixture>) => {
+      linkSync(
+        resolve(fixture.npmRoot, "lib/cli.js"),
+        resolve(fixture.npmRoot, "cache.pyc"),
+      );
+    }],
+    ["symlinked .pyc", (fixture: ReturnType<typeof toolchainFixture>) => {
+      symlinkSync("lib/cli.js", resolve(fixture.npmRoot, "cache.pyc"));
+    }],
+    ["special .pyc", (fixture: ReturnType<typeof toolchainFixture>) => {
+      execFileSync("mkfifo", [resolve(fixture.npmRoot, "cache.pyc")]);
+    }],
+    ["symlinked __pycache__", (fixture: ReturnType<typeof toolchainFixture>) => {
+      symlinkSync("lib", resolve(fixture.npmRoot, "__pycache__"));
+    }],
+    ["hard link inside __pycache__", (fixture: ReturnType<typeof toolchainFixture>) => {
+      const cacheRoot = resolve(fixture.npmRoot, "__pycache__");
+      mkdirSync(cacheRoot);
+      linkSync(
+        resolve(fixture.npmRoot, "lib/cli.js"),
+        resolve(cacheRoot, "cache.pyc"),
+      );
+    }],
+    ["symlink inside __pycache__", (fixture: ReturnType<typeof toolchainFixture>) => {
+      const cacheRoot = resolve(fixture.npmRoot, "__pycache__");
+      mkdirSync(cacheRoot);
+      symlinkSync("../lib/cli.js", resolve(cacheRoot, "cache.pyc"));
+    }],
+    ["special file inside __pycache__", (fixture: ReturnType<typeof toolchainFixture>) => {
+      const cacheRoot = resolve(fixture.npmRoot, "__pycache__");
+      mkdirSync(cacheRoot);
+      execFileSync("mkfifo", [resolve(cacheRoot, "cache.pyc")]);
+    }],
+  ])("rejects a %s cache lookalike", (_label, mutate) => {
+    const fixture = toolchainFixture();
+    mutate(fixture);
+    expect(() => inspectReviewedToolchainSource({
+      nodePath: fixture.nodePath,
+      npmRoot: fixture.npmRoot,
+      nodeVersion: "v22.19.0",
+    })).toThrow(/hard-linked file|link or special file/);
+  });
+
   it("refuses a source npm lib/cli.js mutation before candidate build staging", () => {
     const fixture = toolchainFixture();
     writeFileSync(

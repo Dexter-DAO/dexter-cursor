@@ -191,13 +191,42 @@ function regularFileRecord(path, inventoryPath, { immutable = false, allowHardli
 
 function npmInventory(root, { immutable = false } = {}) {
   const inventory = [];
+  function validateIgnoredCache(directory) {
+    requireSourceDirectory(directory, { immutable });
+    for (const name of readdirSync(directory).sort(comparePath)) {
+      const path = resolve(directory, name);
+      const info = lstatSync(path);
+      if (info.isDirectory() && !info.isSymbolicLink()) {
+        validateIgnoredCache(path);
+        continue;
+      }
+      const relativePath = relative(root, path).split(sep).join("/");
+      regularFileRecord(
+        path,
+        `lib/node_modules/npm/${relativePath}`,
+        { immutable },
+      );
+    }
+  }
   function walk(directory) {
     requireSourceDirectory(directory, { immutable });
     for (const name of readdirSync(directory).sort(comparePath)) {
       const path = resolve(directory, name);
       const info = lstatSync(path);
       if (info.isDirectory() && !info.isSymbolicLink()) {
+        if (name === "__pycache__") {
+          validateIgnoredCache(path);
+          continue;
+        }
         walk(path);
+        continue;
+      }
+      if (
+        info.isFile()
+        && !info.isSymbolicLink()
+        && info.nlink === 1
+        && name.endsWith(".pyc")
+      ) {
         continue;
       }
       const relativePath = relative(root, path).split(sep).join("/");
