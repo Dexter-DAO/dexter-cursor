@@ -53,6 +53,14 @@ const defaultConfigPath = resolve(
 const hostedContractPath = PUBLIC_HOSTED_CONTRACT_PATH;
 const releaseWorkflowPath = ".github/workflows/publish-opendexter.yml";
 
+export function registryRequestHeaders(kind) {
+  if (kind === "version") return { accept: "application/json" };
+  if (kind === "packument") {
+    return { accept: "application/vnd.npm.install-v1+json" };
+  }
+  fail(`unsupported registry request kind: ${kind}`);
+}
+
 function fail(message) {
   throw new Error(message);
 }
@@ -974,10 +982,10 @@ async function fetchRegistryState(receipt, { requireDistTag }) {
   const encodedVersion = encodeURIComponent(receipt.context.package.version);
   const [versionResponse, packumentResponse] = await Promise.all([
     fetch(`${config.publisher.registry}${encodedName}/${encodedVersion}`, {
-      headers: { accept: "application/vnd.npm.install-v1+json" },
+      headers: registryRequestHeaders("version"),
     }),
     fetch(`${config.publisher.registry}${encodedName}`, {
-      headers: { accept: "application/vnd.npm.install-v1+json" },
+      headers: registryRequestHeaders("packument"),
     }),
   ]);
   if (versionResponse.status === 404) return { state: "absent" };
