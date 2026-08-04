@@ -23,11 +23,24 @@ export function registerSearchTool(server: McpServer, opts: SearchToolOpts): voi
 
   server.tool(
     "x402_search",
-    "Search the Dexter x402 marketplace for paid API resources using semantic capability search. " +
+    "Search the Dexter x402 marketplace for API resources using semantic capability search. " +
+      "This is read-only discovery: a result is a candidate, never authorization to call, mutate, " +
+      "or pay a service. " +
       "Returns two tiers: strong matches (high-confidence capability hits) and related matches " +
       "(adjacent services that cleared the similarity floor but not the strong threshold). " +
       "Handles synonyms and alternate phrasings internally — pass the user's natural-language " +
-      "intent directly. Use x402_fetch to call any result. " +
+      "intent directly. Preserve each result's current `pricing`, `networkLabel`, `trustBasis`, " +
+      "`trustLabel`, `execution`, `inputSchema`, `pathParams`, and `schemaSource`; that returned " +
+      "truth determines whether and how the result can proceed. Catalog-only entries and entries " +
+      "whose execution is unsupported are discovery-only and are not callable; never send them to " +
+      "`x402_check` or `x402_fetch`. For a callable result, gather the exact request details before " +
+      "checking it. Input-dependent pricing, non-read methods such as POST/PUT/PATCH/DELETE, and " +
+      "URLs with path parameters require the exact method, resolved URL, and required body values " +
+      "from the user's request before `x402_check`. A provider-mutating check requires explicit " +
+      "confirmation first, and that confirmation never approves a later payment. Use `x402_check` " +
+      "to obtain live terms and a prepared request, surface the exact seller, price, network, and " +
+      "request, obtain explicit payment approval, and only then use `x402_fetch`; search itself " +
+      "never creates a quote or prepared purchase. " +
       "Each result carries `serviceProfile` (structured input semantics + good-response shape) " +
       "when the catalog has OpenAPI-derived behavioral truth for it; null otherwise. The response " +
       "also includes `confidence` (profileCoverage + topMatchProfileBacked) and, when actionable, " +
