@@ -1,9 +1,9 @@
 {
   "name": "@dexterai/x402-mcp-tools",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Shared MCP tool registrations for the Dexter x402 ecosystem. One register*Tool function per tool, plus widget metadata. Consumed by @dexterai/opendexter (npm CLI), the hosted public MCP server, and the hosted authenticated MCP server.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -24,8 +24,9 @@
     "build": "tsup src/index.ts --format esm,cjs --clean --no-sourcemap && tsc --emitDeclarationOnly --outDir dist",
     "dev": "tsup src/index.ts --format esm,cjs --watch --no-sourcemap",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build && node ./scripts/check-no-sourcemaps.cjs",
-    "release": "npm version patch && npm publish --access public"
+    "release:prepare": "npm run typecheck --workspace=@dexterai/dextercard && npm run build --workspace=@dexterai/dextercard && npm run typecheck && npm run build && node ./scripts/check-no-sourcemaps.cjs && node ./scripts/check-module-formats.mjs",
+    "prepublishOnly": "npm run release:prepare",
+    "release": "npm publish --access public"
   },
   "keywords": [
     "x402",
@@ -39,7 +40,7 @@
   "dependencies": {
     "@dexterai/dextercard": "^0.5.0",
     "@dexterai/x402": "^5.4.2",
-    "@dexterai/x402-core": "1.5.1",
+    "@dexterai/x402-core": "1.5.2",
     "@modelcontextprotocol/sdk": "^1.17.4",
     "@x402/core": "^2.6.0",
     "@x402/extensions": "^2.6.0",

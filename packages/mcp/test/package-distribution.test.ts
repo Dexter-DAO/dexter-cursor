@@ -72,6 +72,55 @@ describe("local package distribution", () => {
     }
   });
 
+  it("prepares x402 MCP tools through one truthful dual-format release path", () => {
+    const manifest = JSON.parse(
+      readFileSync(join(sharedToolsRoot, "package.json"), "utf8"),
+    );
+    const checker = readFileSync(
+      join(sharedToolsRoot, "scripts/check-module-formats.mjs"),
+      "utf8",
+    );
+    const prepareSteps = [
+      "npm run typecheck --workspace=@dexterai/dextercard",
+      "npm run build --workspace=@dexterai/dextercard",
+      "npm run typecheck",
+      "npm run build",
+      "node ./scripts/check-no-sourcemaps.cjs",
+      "node ./scripts/check-module-formats.mjs",
+    ];
+
+    expect(manifest.version).toBe("0.8.2");
+    expect(manifest.type).toBe("module");
+    expect(manifest.main).toBe("dist/index.cjs");
+    expect(manifest.module).toBe("dist/index.js");
+    expect(manifest.types).toBe("dist/index.d.ts");
+    expect(manifest.exports["."]).toEqual({
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+      require: "./dist/index.cjs",
+    });
+    expect(manifest.dependencies["@dexterai/x402-core"]).toBe("1.5.2");
+    expect(manifest.scripts.build).toContain("--format esm,cjs");
+    expect(manifest.scripts.build).toContain("--no-sourcemap");
+    expect(manifest.scripts.dev).toContain("--format esm,cjs");
+    expect(manifest.scripts.dev).toContain("--no-sourcemap");
+    expect(manifest.scripts["release:prepare"]).toBe(
+      prepareSteps.join(" && "),
+    );
+    expect(manifest.scripts.prepublishOnly).toBe("npm run release:prepare");
+    expect(manifest.scripts.release).toBe("npm publish --access public");
+    expect(manifest.scripts.release).not.toContain("npm version");
+
+    expect(checker).toContain('manifest.exports?.["."]');
+    expect(checker).toContain("createRequire");
+    expect(checker).toContain("EXPECTED_RUNTIME_EXPORTS");
+    expect(checker).toContain('file.endsWith(".map")');
+    expect(checker).toContain("await import(manifest.name)");
+    expect(checker).toContain("sellerAcceptSha256");
+    expect(checker).toContain('"composeAllTools"');
+    expect(checker).toContain('"PURCHASE_CONTRACT_VERSION"');
+  });
+
   it("ships one valid Cursor identity with a release-pinned stdio command", () => {
     const pkg = JSON.parse(read("package.json"));
     const manifest = JSON.parse(read(".cursor-plugin/plugin.json"));

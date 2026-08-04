@@ -847,8 +847,8 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.0");
   assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.0");
   assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.8.1");
-  assert.equal(toolsPkg.version, "0.8.1");
-  assert.equal(toolsPkg.dependencies["@dexterai/x402-core"], "1.5.1");
+  assert.equal(toolsPkg.version, "0.8.2");
+  assert.equal(toolsPkg.dependencies["@dexterai/x402-core"], "1.5.2");
   assert.deepEqual(mcp, {
     mcpServers: {
       opendexter: {
