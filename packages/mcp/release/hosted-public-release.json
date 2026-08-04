@@ -7,10 +7,10 @@
   },
   "release": {
     "repository": "https://github.com/Dexter-DAO/dexter-mcp",
-    "commit": "97df69756a215a68af990949a10419c2c8908047",
-    "tree": "7fea0159a9de5eaa67a6b6a3a302483084435507",
-    "artifactManifestSha256": "9a4a0cc11bc162b0457be0d37d0e36e5ad72ba02e4e3ca6a8217f27c3dd210dc",
-    "descriptorSha256": "e6f60f007e622f1e3f62237b4bd9abca5c3559cb9888da72d356bab4c5dac9a0",
+    "commit": "583e0272a020390516fdb1342d962fce44bfd4f7",
+    "tree": "8d9049a70be833ac2ea25cdbe8e3f27d7ce18579",
+    "artifactManifestSha256": "58f3ce9286782133be90b16816eb5d21826d5fa691f4741e63af314047351b14",
+    "descriptorSha256": "d85029b731e84a0d3f1927f932133c1abc5fbdb3d4dbe9c9a709559325f270a5",
     "packageVersion": "0.5.0"
   },
   "source": {
@@ -23,7 +23,7 @@
     "node": "v22.19.0",
     "npm": "10.9.3",
     "packageLockSha256": "f8d1c1af9c8247ee151241269b16a9f7b85145af45ab0eb705c68ca9d8923921",
-    "sourceArchiveSha256": "77fc5ea1a8c50f66490accc6a5262b853eb8e4c21e3f5d80b8f84ba796b3459f"
+    "sourceArchiveSha256": "52469d32cc59022ccadd5d9be848cd501b0a3f93a7d55de7b755e47ffedae5e4"
   },
   "publicDescriptor": {
     "schemaVersion": 2,
@@ -161,7 +161,7 @@
         ],
         "_meta": {
           "ui": {
-            "resourceUri": "ui://dexter/x402-marketplace-search-f219b145",
+            "resourceUri": "ui://dexter/x402-marketplace-search-dbaf2df1",
             "visibility": [
               "model",
               "app"
@@ -181,8 +181,8 @@
             "domain": "https://dexter.cash",
             "prefersBorder": true
           },
-          "ui/resourceUri": "ui://dexter/x402-marketplace-search-f219b145",
-          "openai/outputTemplate": "ui://dexter/x402-marketplace-search-f219b145",
+          "ui/resourceUri": "ui://dexter/x402-marketplace-search-dbaf2df1",
+          "openai/outputTemplate": "ui://dexter/x402-marketplace-search-dbaf2df1",
           "openai/resultCanProduceWidget": true,
           "openai/widgetAccessible": true,
           "openai/widgetDomain": "https://dexter.cash",
@@ -370,6 +370,15 @@
               "type": "string"
             },
             "inputSchema": {},
+            "inputSchemaSource": {
+              "type": "string"
+            },
+            "inputSchemaRejectedSources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "outputSchema": {},
             "error": {},
             "message": {
