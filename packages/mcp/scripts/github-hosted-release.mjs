@@ -168,7 +168,7 @@ export function validateHostedReleaseConfig(config) {
   same(config.package, {
     name: "@dexterai/opendexter",
     root: "packages/mcp",
-    distTag: "next",
+    distTag: "latest",
     tagPrefix: "opendexter-v",
   }, "package policy");
   same(config.runner, {

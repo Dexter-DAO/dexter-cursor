@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { x402Fetch } from "../../x402-mcp-tools/src/tools/fetch.js";
+import type {
+  GatewayPurchaseAdapterV1,
+  GatewayPurchaseModeV1,
+} from "../../x402-mcp-tools/src/types.js";
 import {
   buildPurchaseOptions,
   sellerAcceptSha256,
@@ -103,6 +107,348 @@ describe("explicit purchase routing", () => {
       });
     },
   );
+
+  it.each(["gateway_cash", "gateway_credit"] as const)(
+    "%s continues the same prepared purchase through one matching adapter and exact ceiling",
+    async (mode) => {
+      const sellerProbe = vi.fn(async () => responseFor([OFFER]));
+      vi.stubGlobal("fetch", sellerProbe);
+      const events: string[] = [];
+      const complete = vi.fn();
+      const store: PurchaseAttemptStoreV1 = {
+        begin: () => ({ acquired: true }),
+        markDispatching: () => { events.push("dispatch-marked"); },
+        complete,
+      };
+      const execute = vi.fn(async ({ purchase: validated }) => {
+        events.push("adapter-executed");
+        return mode === "gateway_cash"
+          ? {
+              status: 200,
+              data: { answer: "cash" },
+              payment: {
+                dispatched: true,
+                correlationId: "gateway-cash-1",
+                buyerCash: { state: "charged" },
+                sellerSettlement: {
+                  state: "settled",
+                  transaction: "CASH_SETTLEMENT",
+                },
+              },
+            }
+          : {
+              status: 200,
+              data: { answer: "credit" },
+              payment: {
+                dispatched: true,
+                correlationId: "gateway-credit-1",
+                exposure: { state: "reserved" },
+                buyerObligation: {
+                  state: "finalized",
+                  claimId: "CLAIM_1",
+                },
+                sellerSettlement: {
+                  state: "settled",
+                  transaction: "CREDIT_SETTLEMENT",
+                },
+              },
+            };
+      });
+      const adapter: GatewayPurchaseAdapterV1 = {
+        mode,
+        readiness: () => ({ state: "ready", reason: null }),
+        execute,
+      };
+
+      const result = await x402Fetch(
+        { url: URL, method: "GET", purchase: purchase(mode) },
+        null,
+        {
+          maxAmountUsdc: 5,
+          maxAmountAtomic: "10000",
+          purchaseAttempts: store,
+          getGatewayPurchaseAdapter: (
+            requested: GatewayPurchaseModeV1,
+          ) => requested === mode ? adapter : null,
+          explicitExternalFetch: testExternalFetch,
+        },
+      );
+
+      expect(sellerProbe).toHaveBeenCalledTimes(1);
+      expect(events).toEqual(["dispatch-marked", "adapter-executed"]);
+      expect(execute).toHaveBeenCalledOnce();
+      expect(execute.mock.calls[0]?.[0]).toMatchObject({
+        purchase: {
+          mode,
+          approvedAmountCeilingAtomic: "10000",
+          route: {
+            resourceUrl: URL,
+            resolvedUrl: URL,
+            method: "GET",
+          },
+        },
+        request: { url: URL, method: "GET" },
+        seller: {
+          x402Version: 2,
+          accept: rawAccept(OFFER),
+          requirements: {
+            x402Version: 2,
+            accepts: [rawAccept(OFFER)],
+          },
+        },
+      });
+      expect(result).toMatchObject({
+        status: 200,
+        purchaseReceipt: {
+          mode,
+          dispatch: "dispatched",
+          retry: "none",
+          approvedAmountCeilingAtomic: "10000",
+        },
+      });
+      expect(complete).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("rejects a Gateway ceiling mismatch before seller probe, claim, or adapter dispatch", async () => {
+    const sellerProbe = vi.fn();
+    vi.stubGlobal("fetch", sellerProbe);
+    const execute = vi.fn();
+    const begin = vi.fn();
+    const adapter: GatewayPurchaseAdapterV1 = {
+      mode: "gateway_credit",
+      readiness: () => ({ state: "ready", reason: null }),
+      execute,
+    };
+
+    const result = await x402Fetch(
+      {
+        url: URL,
+        method: "GET",
+        purchase: purchase("gateway_credit"),
+      },
+      null,
+      {
+        maxAmountUsdc: 5,
+        maxAmountAtomic: "9999",
+        purchaseAttempts: {
+          begin,
+          markDispatching: vi.fn(),
+          complete: vi.fn(),
+        },
+        getGatewayPurchaseAdapter: () => adapter,
+      },
+    );
+
+    expect(result).toMatchObject({
+      mode: "purchase_contract_error",
+      error: "purchase_ceiling_exceeded",
+      payment: { dispatched: false },
+    });
+    expect(sellerProbe).not.toHaveBeenCalled();
+    expect(begin).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("keeps Gateway adapter failures provider-neutral and reconciliation-only", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => responseFor([OFFER])));
+    const adapter: GatewayPurchaseAdapterV1 = {
+      mode: "gateway_credit",
+      readiness: () => ({ state: "ready", reason: null }),
+      execute: async () => {
+        throw new Error("provider secret route /internal/credit/123");
+      },
+    };
+
+    const result = await x402Fetch(
+      {
+        url: URL,
+        method: "GET",
+        purchase: purchase("gateway_credit"),
+      },
+      null,
+      {
+        maxAmountUsdc: 5,
+        maxAmountAtomic: "10000",
+        purchaseAttempts: attemptStore(),
+        getGatewayPurchaseAdapter: () => adapter,
+        explicitExternalFetch: testExternalFetch,
+      },
+    );
+
+    expect(result).toMatchObject({
+      mode: "gateway_execution_unknown",
+      error: "gateway_adapter_failed_after_dispatch_mark",
+      retryable: false,
+      purchaseReceipt: {
+        mode: "gateway_credit",
+        dispatch: "unknown",
+        retry: "reconcile_only",
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("provider secret route");
+    expect(JSON.stringify(result)).not.toContain("/internal/credit/123");
+  });
+
+  it("rejects and redacts a non-throwing Gateway result with private fields", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => responseFor([OFFER])));
+    const adapter: GatewayPurchaseAdapterV1 = {
+      mode: "gateway_cash",
+      readiness: () => ({ state: "ready", reason: null }),
+      execute: async () => ({
+        status: 500,
+        errorDetail: "provider secret /internal/cash/123",
+        payment: {
+          dispatched: true,
+          buyerCash: { state: "charge_unconfirmed" },
+          sellerSettlement: { state: "unconfirmed" },
+        },
+      } as never),
+    };
+    const result = await x402Fetch(
+      { url: URL, method: "GET", purchase: purchase("gateway_cash") },
+      null,
+      {
+        maxAmountAtomic: "10000",
+        purchaseAttempts: attemptStore(),
+        getGatewayPurchaseAdapter: () => adapter,
+        explicitExternalFetch: testExternalFetch,
+      },
+    );
+    expect(result).toMatchObject({
+      mode: "gateway_execution_invalid",
+      error: "gateway_adapter_result_invalid",
+      purchaseReceipt: { retry: "reconcile_only", dispatch: "unknown" },
+    });
+    expect(JSON.stringify(result)).not.toContain("provider secret");
+    expect(JSON.stringify(result)).not.toContain("errorDetail");
+  });
+
+  it.each([false, undefined] as const)(
+    "keeps terminal Gateway facts reconciliation-only when dispatched is %s",
+    async (dispatched) => {
+      vi.stubGlobal("fetch", vi.fn(async () => responseFor([OFFER])));
+      const complete = vi.fn();
+      const adapter: GatewayPurchaseAdapterV1 = {
+        mode: "gateway_credit",
+        readiness: () => ({ state: "ready", reason: null }),
+        execute: async () => ({
+          status: 200,
+          payment: {
+            ...(dispatched === undefined ? {} : { dispatched }),
+            exposure: { state: "reserved" },
+            buyerObligation: { state: "finalized", claimId: "CLAIM_1" },
+            sellerSettlement: { state: "settled", transaction: "TX_1" },
+          },
+        } as never),
+      };
+      const result = await x402Fetch(
+        { url: URL, method: "GET", purchase: purchase("gateway_credit") },
+        null,
+        {
+          maxAmountAtomic: "10000",
+          purchaseAttempts: {
+            begin: () => ({ acquired: true }),
+            markDispatching: () => {},
+            complete,
+          },
+          getGatewayPurchaseAdapter: () => adapter,
+          explicitExternalFetch: testExternalFetch,
+        },
+      );
+      expect(result).toMatchObject({
+        retryable: false,
+        purchaseReceipt: { retry: "reconcile_only" },
+      });
+      expect(complete).toHaveBeenCalledWith(
+        expect.anything(),
+        "reconciliation_required",
+        expect.objectContaining({ retry: "reconcile_only" }),
+      );
+    },
+  );
+
+  it.each([
+    [
+      "gateway_cash",
+      {
+        dispatched: false,
+        buyerCash: { state: "charged" },
+        sellerSettlement: { state: "unconfirmed" },
+      },
+    ],
+    [
+      "gateway_credit",
+      {
+        dispatched: false,
+        exposure: { state: "reserved" },
+        buyerObligation: { state: "not_finalized" },
+        sellerSettlement: { state: "not_dispatched" },
+      },
+    ],
+  ] as const)(
+    "keeps partial %s economic facts reconciliation-only",
+    async (mode, payment) => {
+      vi.stubGlobal("fetch", vi.fn(async () => responseFor([OFFER])));
+      const complete = vi.fn();
+      const adapter: GatewayPurchaseAdapterV1 = {
+        mode,
+        readiness: () => ({ state: "ready", reason: null }),
+        execute: async () => ({ status: 409, payment } as never),
+      };
+      const result = await x402Fetch(
+        { url: URL, method: "GET", purchase: purchase(mode) },
+        null,
+        {
+          maxAmountAtomic: "10000",
+          purchaseAttempts: {
+            begin: () => ({ acquired: true }),
+            markDispatching: () => {},
+            complete,
+          },
+          getGatewayPurchaseAdapter: () => adapter,
+          explicitExternalFetch: testExternalFetch,
+        },
+      );
+      expect(result).toMatchObject({
+        phase: "dispatch_unknown",
+        purchaseReceipt: { retry: "reconcile_only" },
+      });
+      expect(complete).toHaveBeenCalledWith(
+        expect.anything(),
+        "reconciliation_required",
+        expect.objectContaining({ retry: "reconcile_only" }),
+      );
+    },
+  );
+
+  it("does not expose an arbitrary Gateway readiness reason", async () => {
+    const sellerProbe = vi.fn();
+    vi.stubGlobal("fetch", sellerProbe);
+    const adapter: GatewayPurchaseAdapterV1 = {
+      mode: "gateway_cash",
+      readiness: () => ({
+        state: "unavailable",
+        reason: "private route /internal/cash",
+      } as never),
+      execute: vi.fn(),
+    };
+    const result = await x402Fetch(
+      { url: URL, method: "GET", purchase: purchase("gateway_cash") },
+      null,
+      {
+        maxAmountAtomic: "10000",
+        purchaseAttempts: attemptStore(),
+        getGatewayPurchaseAdapter: () => adapter,
+      },
+    );
+    expect(result).toMatchObject({
+      error: "gateway_adapter_readiness_invalid",
+      payment: { dispatched: false },
+    });
+    expect(JSON.stringify(result)).not.toContain("private route");
+    expect(sellerProbe).not.toHaveBeenCalled();
+  });
 
   it("Direct Exact never invokes the Tab adapter", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => responseFor([OFFER])));

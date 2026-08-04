@@ -2,15 +2,21 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { checkStaleness } from "./staleness.js";
 
+const cliArgs = hideBin(process.argv);
+const invokedCommand = cliArgs.find((argument) => !argument.startsWith("-"));
+const doctorInvocation = invokedCommand === "doctor";
+
 async function main() {
   // Startup staleness probe: throttled to once/day and fire-and-forget — never
   // awaited, so it can never delay a command. `background: true` unrefs the
   // socket: the long-lived `server` command stays alive to print the notice on
   // stderr, while a one-shot CLI abandons the probe on exit instead of hanging.
   // Offline/uninstalled config dir → silent.
-  void checkStaleness({ throttle: true, context: "startup", background: true }).catch(() => {});
+  if (!doctorInvocation) {
+    void checkStaleness({ throttle: true, context: "startup", background: true }).catch(() => {});
+  }
 
-  await yargs(hideBin(process.argv))
+  await yargs(cliArgs)
     .scriptName("opendexter")
     .usage("$0 [command] [options]")
     .option("dev", {
@@ -37,7 +43,7 @@ async function main() {
     )
     .command(
       "install",
-      "Install Dexter MCP into an AI client (Cursor, Claude, Codex, etc.)",
+      "Register the local OpenDexter MCP in an AI client without paying",
       (y) =>
         y
           .option("client", {
@@ -54,6 +60,12 @@ async function main() {
             type: "boolean",
             description: "Install into all auto-detected supported clients",
             default: false,
+          })
+          .option("registration-name", {
+            type: "string",
+            default: "opendexter",
+            description:
+              "Name for the one OpenDexter MCP registration. An alias cannot bypass an existing OpenDexter registration.",
           }),
       async (args) => {
         const { runInstall } = await import("./cli/install/index.js");
@@ -61,24 +73,64 @@ async function main() {
           client: args.client,
           yes: args.yes,
           all: args.all,
+          registrationName: args["registration-name"],
           dev: args.dev,
         });
         if (!result.complete) process.exitCode = 1;
       },
     )
     .command(
+      "doctor",
+      "Read-only install, registration, and payment-readiness diagnosis",
+      (y) =>
+        y
+          .option("client", {
+            type: "string",
+            description: "Inspect one client instead of all detected clients",
+          })
+          .option("registration-name", {
+            type: "string",
+            default: "opendexter",
+            description: "MCP registration name to inspect",
+          })
+          .option("json", {
+            type: "boolean",
+            default: false,
+            description: "Print the read-only report as JSON",
+          }),
+      async (args) => {
+        const { runDoctor } = await import("./cli/doctor.js");
+        await runDoctor({
+          client: args.client,
+          registrationName: args["registration-name"],
+          json: args.json,
+        });
+      },
+    )
+    .command(
       "setup",
       "Set up wallet, install into detected clients, and show the fastest path to first use",
       (y) =>
-        y.option("yes", {
-          alias: "y",
-          type: "boolean",
-          description: "Skip prompts where possible",
-          default: false,
-        }),
+        y
+          .option("yes", {
+            alias: "y",
+            type: "boolean",
+            description: "Skip prompts where possible",
+            default: false,
+          })
+          .option("registration-name", {
+            type: "string",
+            default: "opendexter",
+            description:
+              "Name for the one OpenDexter MCP registration. An alias cannot bypass an existing OpenDexter registration.",
+          }),
       async (args) => {
         const { runSetup } = await import("./cli/onboard.js");
-        const result = await runSetup({ yes: args.yes, dev: args.dev });
+        const result = await runSetup({
+          yes: args.yes,
+          dev: args.dev,
+          registrationName: args["registration-name"],
+        });
         if (!result.complete) process.exitCode = 1;
       },
     )
@@ -462,7 +514,9 @@ main().catch(async (err) => {
   if (/Unknown (command|argument)/i.test(message)) {
     process.stderr.write(message + "\n");
     process.stderr.write("Run `opendexter --help` for the current command list.\n");
-    await checkStaleness({ throttle: false, context: "unknown-command" }).catch(() => {});
+    if (!doctorInvocation) {
+      await checkStaleness({ throttle: false, context: "unknown-command" }).catch(() => {});
+    }
   } else {
     console.error(err);
   }

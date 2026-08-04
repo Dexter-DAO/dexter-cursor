@@ -59,7 +59,7 @@ export function detectInstalledClients(): ClientId[] {
   return checks.filter(([, present]) => present).map(([id]) => id);
 }
 
-interface ClientConfig {
+export interface ClientConfig {
   configPath: string;
   sectionKey: string;
   entry: Record<string, unknown>;

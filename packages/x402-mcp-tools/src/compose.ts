@@ -29,6 +29,8 @@ export interface ComposeAllToolsOpts {
   getBudgetRuntime?: FetchToolOpts["getBudgetRuntime"];
   /** Tab-lane hook for fetch's tab-first payment path (see types.ts). */
   getTabLane?: FetchToolOpts["getTabLane"];
+  /** Provider-neutral cash/credit readiness and execution seam. */
+  getGatewayPurchaseAdapter?: FetchToolOpts["getGatewayPurchaseAdapter"];
   /**
    * Durable preparation/attempt store shared by check and fetch so a caller
    * cannot synthesize an executable prepared identity.
@@ -78,6 +80,7 @@ export function composeAllTools(server: McpServer, opts: ComposeAllToolsOpts): v
       capabilityPath: opts.capabilityPath,
       wallet: opts.wallet,
       getTabLane: opts.getTabLane,
+      getGatewayPurchaseAdapter: opts.getGatewayPurchaseAdapter,
       getPurchaseAttemptStore: opts.getPurchaseAttemptStore,
     });
   }
@@ -89,6 +92,7 @@ export function composeAllTools(server: McpServer, opts: ComposeAllToolsOpts): v
       getMaxAmountUsdc: opts.getMaxAmountUsdc,
       getBudgetRuntime: opts.getBudgetRuntime,
       getTabLane: opts.getTabLane,
+      getGatewayPurchaseAdapter: opts.getGatewayPurchaseAdapter,
       getPurchaseAttemptStore: opts.getPurchaseAttemptStore,
       walletlessHint: opts.walletlessHint,
       registerPayAlias: opts.registerPayAlias,

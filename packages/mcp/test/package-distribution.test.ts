@@ -62,9 +62,9 @@ describe("local package distribution", () => {
     expect(manifest.logo).toBe("assets/dexter-wordmark.svg");
     expect(existsSync(join(packageRoot, manifest.logo))).toBe(true);
     expect(pkg.dependencies["@dexterai/mcp-instructions"]).toBe("2.4.0");
-    expect(pkg.dependencies["@dexterai/x402-mcp-tools"]).toBe("0.8.0");
+    expect(pkg.dependencies["@dexterai/x402-mcp-tools"]).toBe("0.8.1");
     expect(pkg.dependencies["@dexterai/vault"]).toBe("0.43.0");
-    expect(pkg.dependencies["@dexterai/x402-core"]).toBe("1.5.0");
+    expect(pkg.dependencies["@dexterai/x402-core"]).toBe("1.5.1");
     expect(pkg.dependencies["@modelcontextprotocol/sdk"]).toBe("1.30.0");
     expect(pkg.dependencies.zod).toBe("3.25.76");
     expect(pkg.engines.node).toBe(">=20");
@@ -285,6 +285,19 @@ describe("local package distribution", () => {
     expect(settings).not.toContain("registerSettingsTool");
     expect(settings).not.toContain("x402_settings");
     expect(settings).not.toContain("server.tool");
+  });
+
+  it("ships a read-only doctor command and explicit registration-name control", () => {
+    const cli = read("src/index.ts");
+    const doctor = read("src/cli/doctor.ts");
+    expect(cli).toContain('"doctor"');
+    expect(cli).toContain('"registration-name"');
+    expect(doctor).toContain("Doctor is read-only");
+    expect(doctor).toContain("configurationIsApproval: false");
+    expect(doctor).not.toContain("getAllBalances");
+    expect(doctor).not.toContain("loadOrCreateWallet");
+    expect(cli).toContain('const doctorInvocation = invokedCommand === "doctor"');
+    expect(cli.match(/if \(!doctorInvocation\)/g)).toHaveLength(2);
   });
 
   it("keeps card operations but removes internal card registrar sources", () => {

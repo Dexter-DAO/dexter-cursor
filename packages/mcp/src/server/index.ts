@@ -39,7 +39,7 @@ export async function startServer(opts: ServerOptions): Promise<void> {
   } catch (err: any) {
     console.error(`[dexter-mcp] Wallet initialization failed: ${err.message}`);
     console.error(
-      "[dexter-mcp] Starting in search-only mode. Set DEXTER_PRIVATE_KEY or fix ~/.dexterai-mcp/wallet.json to enable payments.",
+      "[dexter-mcp] Starting in search/check mode. No funding is required for discovery or pricing. Configure payment authority only before the user's instruction or delegated policy authorizes a paid call.",
     );
     wallet = null;
   }
@@ -100,9 +100,9 @@ export async function startServer(opts: ServerOptions): Promise<void> {
     getPurchaseAttemptStore: () => purchaseAttempts,
     registerPayAlias: false,
     walletlessHint:
-      "Configure DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (Base/Polygon/etc) for automatic settlement.",
+      "Search and check need no wallet or funding. For an approved Direct Exact settlement, configure DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (EVM).",
     noWalletTip:
-      `Set DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (EVM) env var, or run \`npx @dexterai/opendexter@${VERSION} wallet\` to create one.`,
+      `Search and check need no wallet or funding. Before an authorized Direct Exact call, set DEXTER_PRIVATE_KEY or EVM_PRIVATE_KEY, or run \`npx @dexterai/opendexter@${VERSION} wallet\`. A configured signer is not payment authorization.`,
   });
 
   // Dextercard TOOLS: REMOVED (owner ruling Jul 23; docs/CARD-REMOVAL-

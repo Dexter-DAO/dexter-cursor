@@ -13,8 +13,8 @@ const expectedRuntime = {
   "@dexterai/mcp-instructions": "2.4.0",
   "@dexterai/vault": "0.43.0",
   "@dexterai/x402": "5.4.2",
-  "@dexterai/x402-core": "1.5.0",
-  "@dexterai/x402-mcp-tools": "0.8.0",
+  "@dexterai/x402-core": "1.5.1",
+  "@dexterai/x402-mcp-tools": "0.8.1",
   "@modelcontextprotocol/ext-apps": "1.7.5",
   "@modelcontextprotocol/sdk": "1.30.0",
   "@solana/spl-token": "0.4.15",
@@ -74,7 +74,7 @@ describe("published OpenDexter dependency graph", () => {
     expect(publishRefusal).toContain("publish-opendexter.yml");
     expect(pkg.publishConfig).toEqual({
       access: "public",
-      tag: "next",
+      tag: "latest",
       provenance: true,
     });
   });

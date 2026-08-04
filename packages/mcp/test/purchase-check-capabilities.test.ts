@@ -21,6 +21,10 @@ vi.mock("@dexterai/x402-core", async (importOriginal) => ({
 }));
 
 import type { WalletAdapter } from "../../x402-mcp-tools/src/wallet-adapter.js";
+import type {
+  GatewayPurchaseAdapterV1,
+  GatewayPurchaseModeV1,
+} from "../../x402-mcp-tools/src/types.js";
 import {
   buildPurchaseOptions,
   sellerAcceptSha256,
@@ -111,6 +115,16 @@ function byMode(result: PreparedPurchaseOptionV1[]) {
   ) as Record<string, PreparedPurchaseOptionV1>;
 }
 
+function gatewayAdapter(
+  mode: GatewayPurchaseModeV1,
+): GatewayPurchaseAdapterV1 {
+  return {
+    mode,
+    readiness: () => ({ state: "ready", reason: null }),
+    execute: vi.fn(),
+  };
+}
+
 describe("x402_check executable capability truth", () => {
   it("persists ready identities in the registered x402_check path", async () => {
     coreMocks.checkEndpointPricing.mockResolvedValue({
@@ -192,6 +206,86 @@ describe("x402_check executable capability truth", () => {
     expect(result.gateway_credit.availability.state).toBe(
       "integration_required",
     );
+  });
+
+  it("advertises a Gateway mode only from its matching fresh adapter and durable identity", () => {
+    const prepare = vi.fn();
+    const result = byMode(preparePurchaseOptionsForCapabilities(options(), {
+      wallet: wallet({ solanaPrivateKey: "solana-secret" }),
+      getTabLane: () => vi.fn(),
+      getGatewayPurchaseAdapter: (mode) => gatewayAdapter(mode),
+      getPurchaseAttemptStore: () => preparationStore(prepare),
+    }));
+
+    expect(result.gateway_cash.availability).toEqual({
+      state: "ready",
+      reason: null,
+    });
+    expect(result.gateway_credit.availability).toEqual({
+      state: "ready",
+      reason: null,
+    });
+    expect(prepare.mock.calls.map(([purchase]) => purchase.mode)).toEqual([
+      "direct_exact",
+      "gateway_cash",
+      "gateway_credit",
+      "native_tab",
+    ]);
+  });
+
+  it("fails closed on a missing, cross-mode, or broken Gateway adapter", () => {
+    const store = preparationStore(() => {});
+    const wrongMode = byMode(preparePurchaseOptionsForCapabilities(options(), {
+      wallet: wallet({ solanaPrivateKey: "solana-secret" }),
+      getTabLane: () => vi.fn(),
+      getGatewayPurchaseAdapter: () => gatewayAdapter("gateway_credit"),
+      getPurchaseAttemptStore: () => store,
+    }));
+    expect(wrongMode.gateway_cash.availability).toEqual({
+      state: "integration_required",
+      reason: "gateway_cash_adapter_required",
+    });
+
+    const broken = byMode(preparePurchaseOptionsForCapabilities(options(), {
+      wallet: wallet({ solanaPrivateKey: "solana-secret" }),
+      getTabLane: () => vi.fn(),
+      getGatewayPurchaseAdapter: (mode) => ({
+        ...gatewayAdapter(mode),
+        readiness: () => {
+          throw new Error("backend unavailable");
+        },
+      }),
+      getPurchaseAttemptStore: () => store,
+    }));
+    expect(broken.gateway_cash.availability).toEqual({
+      state: "integration_required",
+      reason: "gateway_adapter_readiness_failed",
+    });
+    expect(broken.gateway_credit.availability).toEqual({
+      state: "integration_required",
+      reason: "gateway_adapter_readiness_failed",
+    });
+
+    const malformed = byMode(preparePurchaseOptionsForCapabilities(options(), {
+      wallet: wallet({ solanaPrivateKey: "solana-secret" }),
+      getTabLane: () => vi.fn(),
+      getGatewayPurchaseAdapter: (mode) => ({
+        ...gatewayAdapter(mode),
+        readiness: () => ({
+          state: "ready",
+          reason: "not-a-valid-ready-result",
+        } as unknown as ReturnType<GatewayPurchaseAdapterV1["readiness"]>),
+      }),
+      getPurchaseAttemptStore: () => store,
+    }));
+    expect(malformed.gateway_cash.availability).toEqual({
+      state: "integration_required",
+      reason: "gateway_adapter_readiness_invalid",
+    });
+    expect(malformed.gateway_credit.availability).toEqual({
+      state: "integration_required",
+      reason: "gateway_adapter_readiness_invalid",
+    });
   });
 
   it("downgrades ready modes when durable preparation is absent or fails", () => {

@@ -8,6 +8,7 @@ import { SUPPORTED_CHAIN_LABELS, VERSION } from "../config.js";
 interface SetupOpts {
   dev: boolean;
   yes: boolean;
+  registrationName?: string;
 }
 
 export interface SetupResult {
@@ -18,7 +19,7 @@ function fundingAdvice(totalUsdc: number, wallet: { solanaAddress?: string; evmA
   if (totalUsdc > 0) {
     return [
       `Treasury online with ${totalUsdc.toFixed(2)} USDC available across active rails.`,
-      "You are ready to search, inspect, and settle paid API calls.",
+      "Search and check remain read-only. A paid call still needs one exact prepared purchase and ceiling authorized by the user's instruction or delegated policy.",
     ];
   }
 
@@ -29,7 +30,10 @@ function fundingAdvice(totalUsdc: number, wallet: { solanaAddress?: string; evmA
   if (wallet.evmAddress) {
     lines.push(`- EVM funding rail:    ${wallet.evmAddress}`);
   }
-  lines.push("Once funded, your agent can settle x402 API calls automatically.");
+  lines.push("Search and check work now without funding.");
+  lines.push(
+    "Fund only before the user's instruction or delegated policy authorizes a paid settlement.",
+  );
   return lines;
 }
 
@@ -37,7 +41,29 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   const cli = `npx @dexterai/opendexter@${VERSION}`;
 
   intro(chalk.bold("OpenDexter setup"));
-  log.message("Activating your agent wallet, wiring your clients, and bringing multichain settlement online.");
+  log.message(
+    "Checking client registrations first, then preparing optional local payment authority.",
+  );
+
+  const detected = detectInstalledClients();
+  if (detected.length > 0) {
+    const install = await runInstall({
+      dev: opts.dev,
+      yes: opts.yes,
+      all: true,
+      registrationName: opts.registrationName,
+      skipWalletSetup: true,
+    });
+    if (!install.complete) {
+      outro(
+        "OpenDexter left colliding or uncertain client registrations unchanged. Keep one OpenDexter registration, or remove the existing one intentionally before rerunning setup; no wallet was created by this setup run.",
+      );
+      return { complete: false };
+    }
+  } else {
+    log.warn("No supported clients were auto-detected.");
+    log.message("You can still run `opendexter install --client <name>` manually later.");
+  }
 
   const wallet = await loadOrCreateWallet({ quiet: true });
   if (!wallet) {
@@ -57,21 +83,6 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   if (wallet.info.solanaAddress) log.info(`Solana rail: ${wallet.info.solanaAddress}`);
   if (wallet.info.evmAddress) log.info(`EVM rail:    ${wallet.info.evmAddress}`);
 
-  const detected = detectInstalledClients();
-  let clientsComplete = true;
-  if (detected.length > 0) {
-    const install = await runInstall({
-      dev: opts.dev,
-      yes: opts.yes,
-      all: true,
-      skipWalletSetup: true,
-    });
-    clientsComplete = install.complete;
-  } else {
-    log.warn("No supported clients were auto-detected.");
-    log.message("You can still run `opendexter install --client <name>` manually later.");
-  }
-
   const { totalUsdc } = await getAllBalances(wallet.info);
 
   note(`Settlement live across: ${SUPPORTED_CHAIN_LABELS.join(" · ")}`, "Rails");
@@ -80,10 +91,10 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
 
   note(
     [
-      `1. Run \`${cli} wallet\` to confirm your addresses and balances.`,
-      `2. Run \`${cli} search <what-you-need>\` to browse the marketplace.`,
-      `3. Run \`${cli} check <url>\` on any result before your first paid call.`,
-      `4. Run \`${cli} fetch <url>\` once your wallet is funded.`,
+      `1. Run \`${cli} search <what-you-need>\` now; search needs no funding.`,
+      `2. Run \`${cli} check <url>\` to read live terms without paying.`,
+      `3. Before a paid call, run \`${cli} wallet\` and fund the chosen rail if needed.`,
+      `4. After the user's instruction or delegated policy authorizes it, pass the unchanged prepared purchase and exact atomic ceiling to \`${cli} fetch <url>\`.`,
     ].join("\n"),
     "First-use path",
   );
@@ -92,16 +103,9 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   if (totalUsdc > 0) {
     nextMove = "Treasury funded. Start with a real marketplace search for the task you actually want to complete.";
   } else {
-    nextMove = `Fund a rail, then start with \`${cli} search <what-you-need>\`.`;
+    nextMove = `Start with \`${cli} search <what-you-need>\` now. Fund a rail only when the user's instruction or delegated policy authorizes a paid call.`;
   }
-  if (clientsComplete) {
-    outro(nextMove);
-  } else {
-    outro(
-      "Wallet setup completed, but OpenDexter is not wired into every detected client. "
-      + "Resolve the registration issue above, then rerun setup.",
-    );
-  }
+  outro(nextMove);
 
-  return { complete: clientsComplete };
+  return { complete: true };
 }

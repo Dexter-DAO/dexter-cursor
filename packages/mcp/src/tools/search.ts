@@ -1,4 +1,8 @@
-import { capabilitySearch } from "@dexterai/x402-core";
+import {
+  capabilitySearch,
+  buildSearchErrorResponse,
+  buildSearchResponse,
+} from "@dexterai/x402-core";
 import { getApiBase, CAPABILITY_PATH } from "../config.js";
 
 /**
@@ -13,25 +17,15 @@ export async function cliSearch(query: string, opts: { dev: boolean }): Promise<
   try {
     const endpoint = `${getApiBase(opts.dev)}${CAPABILITY_PATH}`;
     const result = await capabilitySearch({ query, endpoint });
-
+    console.log(JSON.stringify(buildSearchResponse(result), null, 2));
+  } catch (err: any) {
     console.log(
       JSON.stringify(
-        {
-          success: true,
-          count: result.strongResults.length + result.relatedResults.length,
-          strongCount: result.strongCount,
-          relatedCount: result.relatedCount,
-          topSimilarity: result.topSimilarity,
-          noMatchReason: result.noMatchReason,
-          rerank: result.rerank,
-          resources: [...result.strongResults, ...result.relatedResults],
-        },
+        buildSearchErrorResponse(err.message || String(err)),
         null,
         2,
       ),
     );
-  } catch (err: any) {
-    console.log(JSON.stringify({ error: err.message || String(err) }, null, 2));
     process.exit(1);
   }
 }

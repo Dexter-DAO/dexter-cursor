@@ -13,8 +13,89 @@ import type { ToolMetas } from "./widget-meta.js";
 import type { WalletAdapter, GetMaxAmountUsdc } from "./wallet-adapter.js";
 import type {
   PreparedPurchaseV1,
+  PurchaseAvailability,
   PurchaseAttemptStoreV1,
+  ValidatedPurchaseV1,
 } from "./purchase-contract.js";
+
+export type GatewayPurchaseModeV1 = "gateway_cash" | "gateway_credit";
+
+type GatewayDispatchV1 = boolean | "unknown";
+type GatewaySellerSettlementV1 = {
+  state: "not_dispatched" | "settled" | "unconfirmed";
+  transaction?: string | null;
+};
+
+export type GatewayPurchaseExecutionResultV1 =
+  | {
+      status: number;
+      data?: unknown;
+      payment: {
+        dispatched: GatewayDispatchV1;
+        correlationId?: string | null;
+        buyerCash: {
+          state:
+            | "not_committed"
+            | "reserved"
+            | "charged"
+            | "charge_unconfirmed"
+            | "refund_pending"
+            | "refunded";
+        };
+        sellerSettlement: GatewaySellerSettlementV1;
+      };
+    }
+  | {
+      status: number;
+      data?: unknown;
+      payment: {
+        dispatched: GatewayDispatchV1;
+        correlationId?: string | null;
+        exposure: {
+          state: "not_reserved" | "reserved" | "released" | "unconfirmed";
+        };
+        buyerObligation: {
+          state: "not_finalized" | "finalized" | "reversed" | "unconfirmed";
+          claimId?: string | null;
+        };
+        sellerSettlement: GatewaySellerSettlementV1;
+      };
+    };
+
+/**
+ * Provider-neutral gateway seam. A consumer owns the actual cash or credit
+ * integration; x402-mcp-tools owns request binding, the exact atomic ceiling,
+ * durable attempt identity, and the canonical receipt wrapper.
+ */
+export interface GatewayPurchaseAdapterV1 {
+  /** The one mode this adapter can execute. Cross-mode fallback is forbidden. */
+  readonly mode: GatewayPurchaseModeV1;
+  /** Fresh readiness for the exact check-produced purchase. Must not spend. */
+  readiness(purchase: PreparedPurchaseV1): PurchaseAvailability;
+  /**
+   * Execute only after x402-mcp-tools validates and durably claims the exact
+   * prepared purchase. The approved ceiling is carried on `purchase`.
+   */
+  execute(input: {
+    purchase: ValidatedPurchaseV1;
+    request: {
+      url: string;
+      method: "GET" | "POST" | "PUT" | "DELETE";
+      body?: string;
+      headers?: Record<string, string>;
+    };
+    /** Fresh hash-verified seller material. The adapter must not reselect. */
+    seller: {
+      x402Version: 1 | 2;
+      accept: Readonly<Record<string, unknown>>;
+      requirements: Readonly<Record<string, unknown>>;
+    };
+  }): Promise<GatewayPurchaseExecutionResultV1>;
+}
+
+export type GetGatewayPurchaseAdapterV1 = (
+  mode: GatewayPurchaseModeV1,
+) => GatewayPurchaseAdapterV1 | null | undefined;
 
 export interface PurchasePreparationStoreV1
   extends PurchaseAttemptStoreV1 {
@@ -45,9 +126,11 @@ export interface CheckToolOpts extends ToolBaseOpts {
   wallet?: WalletAdapter | null;
   /** Native Tab executor capability, resolved fresh for each pricing result. */
   getTabLane?: () => TabLaneHook | null | undefined;
+  /** Fresh provider-neutral cash/credit capability lookup. */
+  getGatewayPurchaseAdapter?: GetGatewayPurchaseAdapterV1;
   /**
-   * Durable preparation/attempt store. Direct Exact and Native Tab are not
-   * advertised as ready unless their exact prepared identity is recorded.
+   * Durable preparation/attempt store. No explicit purchase mode is
+   * advertised as ready unless its exact prepared identity is recorded.
    */
   getPurchaseAttemptStore?: () =>
     | PurchasePreparationStoreV1
@@ -90,10 +173,11 @@ export interface FetchToolOpts extends ToolBaseOpts {
    * exact path — the lane decides whether a stored tab covers the seller.
    */
   getTabLane?: () => TabLaneHook | null | undefined;
+  /** Fresh provider-neutral cash/credit executor lookup. */
+  getGatewayPurchaseAdapter?: GetGatewayPurchaseAdapterV1;
   /**
-   * Durable prepared-identity store. Required for every explicit
-   * direct_exact or native_tab execution; there is intentionally no
-   * in-memory fallback.
+   * Durable prepared-identity store. Required for every explicit purchase
+   * execution; there is intentionally no in-memory fallback.
    */
   getPurchaseAttemptStore?: () => PurchaseAttemptStoreV1 | null | undefined;
   /**

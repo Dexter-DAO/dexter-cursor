@@ -24,17 +24,18 @@ Atomic amounts stay decimal strings. A non-GET purchase is execution-ready only
 when the exact request body was priced.
 
 An explicit execution passes the chosen `preparedPurchase` as `purchase` and
-the user-approved atomic ceiling as `maxAmountAtomic`. The implementation
+the atomic ceiling authorized by the user's instruction or delegated policy as
+`maxAmountAtomic`. The implementation
 rejects changes to the URL, method, body digest, route, seller offer, mode, or
 ceiling before dispatch. It dispatches only the selected adapter:
 
 - Direct Exact never invokes Native Tab.
 - Native Tab never falls through to Exact when setup, approval, policy,
   signing, or lane execution is unavailable.
-- Gateway modes fail before probing or dispatch while their adapters are not
-  installed.
+- Gateway modes use only a matching provider-neutral adapter that reports
+  fresh readiness. Without one, they fail before probing or dispatch.
 
-Every explicit Direct Exact or Native Tab attempt must first claim the
+Every explicit purchase attempt must first claim the
 `preparedId` in a durable attempt store. All aliases share that identity. A
 completed receipt is replayed without dispatch; an in-flight, interrupted, or
 uncertain attempt is reconciliation-only. A Native Tab approval can resume
@@ -49,6 +50,14 @@ by network. The paid seller request is dispatched once.
 
 Calls that omit `purchase` keep the prior local compatibility behavior. New
 integrations must use the explicit contract.
+
+Gateway adapters receive the validated purchase, its exact request, and the
+fresh hash-verified seller accept/requirements; they must not reselect an
+offer. The validated purchase carries the authorized atomic ceiling. The
+shared layer rechecks the seller's exact offer, claims and marks the durable
+attempt, strictly projects the adapter's public result, and produces the
+canonical mode-specific receipt. Arbitrary provider errors and fields are not
+returned. Adapter names and providers are deliberately outside this contract.
 
 Every explicit result includes a mode-specific `purchaseReceipt`:
 

@@ -634,11 +634,139 @@ function text(value: unknown): string | null {
   return nonEmptyString(value);
 }
 
+function record(value: unknown): UnknownRecord {
+  return isRecord(value) ? value : {};
+}
+
+function oneOf<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return typeof value === "string" && allowed.includes(value as T)
+    ? (value as T)
+    : fallback;
+}
+
+function gatewayDispatch(payment: UnknownRecord): ReceiptBaseV1["dispatch"] {
+  if (payment.dispatched === false) return "not_dispatched";
+  if (payment.dispatched === true) return "dispatched";
+  return "unknown";
+}
+
 export function attachPurchaseReceipt(
   result: Record<string, unknown>,
   purchase: ValidatedPurchaseV1,
 ): Record<string, unknown> {
   const payment = isRecord(result.payment) ? result.payment : {};
+  if (purchase.mode === "gateway_cash") {
+    const dispatch = gatewayDispatch(payment);
+    const cash = record(payment.buyerCash);
+    const settlement = record(payment.sellerSettlement);
+    const buyerCashState = oneOf(
+      cash.state,
+      [
+        "not_committed",
+        "reserved",
+        "charged",
+        "charge_unconfirmed",
+        "refund_pending",
+        "refunded",
+      ] as const,
+      dispatch === "not_dispatched" ? "not_committed" : "charge_unconfirmed",
+    );
+    const settlementState = oneOf(
+      settlement.state,
+      ["not_dispatched", "settled", "unconfirmed"] as const,
+      dispatch === "not_dispatched" ? "not_dispatched" : "unconfirmed",
+    );
+    const terminalFacts =
+      buyerCashState === "charged" && settlementState === "settled";
+    const untouchedFacts =
+      buyerCashState === "not_committed"
+      && settlementState === "not_dispatched";
+    const completed = dispatch === "dispatched" && terminalFacts;
+    const receipt: PurchaseReceiptV1 = {
+      ...receiptBase(purchase, {
+        dispatch,
+        retry: completed
+          ? "none"
+          : dispatch === "not_dispatched" && untouchedFacts
+            ? "new_prepare_required"
+            : "reconcile_only",
+        correlationId: text(payment.correlationId),
+      }),
+      mode: "gateway_cash",
+      buyerCash: { state: buyerCashState },
+      sellerSettlement: sellerSettlement(
+        purchase,
+        settlementState,
+        text(settlement.transaction),
+      ),
+    };
+    return {
+      ...result,
+      ...(dispatch === "not_dispatched" ? {} : { retryable: false }),
+      purchaseReceipt: receipt,
+    };
+  }
+
+  if (purchase.mode === "gateway_credit") {
+    const dispatch = gatewayDispatch(payment);
+    const exposure = record(payment.exposure);
+    const obligation = record(payment.buyerObligation);
+    const settlement = record(payment.sellerSettlement);
+    const exposureState = oneOf(
+      exposure.state,
+      ["not_reserved", "reserved", "released", "unconfirmed"] as const,
+      dispatch === "not_dispatched" ? "not_reserved" : "unconfirmed",
+    );
+    const obligationState = oneOf(
+      obligation.state,
+      ["not_finalized", "finalized", "reversed", "unconfirmed"] as const,
+      dispatch === "not_dispatched" ? "not_finalized" : "unconfirmed",
+    );
+    const settlementState = oneOf(
+      settlement.state,
+      ["not_dispatched", "settled", "unconfirmed"] as const,
+      dispatch === "not_dispatched" ? "not_dispatched" : "unconfirmed",
+    );
+    const terminalFacts =
+      obligationState === "finalized" && settlementState === "settled";
+    const untouchedFacts =
+      exposureState === "not_reserved"
+      && obligationState === "not_finalized"
+      && settlementState === "not_dispatched";
+    const completed = dispatch === "dispatched" && terminalFacts;
+    const receipt: PurchaseReceiptV1 = {
+      ...receiptBase(purchase, {
+        dispatch,
+        retry: completed
+          ? "none"
+          : dispatch === "not_dispatched" && untouchedFacts
+            ? "new_prepare_required"
+            : "reconcile_only",
+        correlationId: text(payment.correlationId),
+      }),
+      mode: "gateway_credit",
+      exposure: { state: exposureState },
+      buyerObligation: {
+        state: obligationState,
+        claimId: text(obligation.claimId),
+      },
+      sellerSettlement: sellerSettlement(
+        purchase,
+        settlementState,
+        text(settlement.transaction),
+      ),
+    };
+    return {
+      ...result,
+      ...(dispatch === "not_dispatched" ? {} : { retryable: false }),
+      purchaseReceipt: receipt,
+    };
+  }
+
   if (purchase.mode === "native_tab") {
     const tab = isRecord(result.tab) ? result.tab : {};
     const refused = tab.refused === true;
