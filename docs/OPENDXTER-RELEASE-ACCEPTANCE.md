@@ -5,8 +5,12 @@ dependency train reconciled. Public `1.23.1` remains immutable; `1.23.2` is not
 yet published. This document records inclusion and integration boundaries; it
 is not deployment, registry-install, or live-host proof. The checked-in hosted
 receipt names the accepted public MCP release at
-`583e0272a020390516fdb1342d962fce44bfd4f7`; that hosted receipt is independent
-of local npm publication.
+`405b87300f8e4babd65b271895cbf960de25facb`, tree
+`33e8ce727c591a3fac35f75ecf6ed38f4290e7a9`, artifact-manifest SHA-256
+`a039e348612d6f86c0922a068911ba60f731fb1000c61ba1070b84503dd5350a`, and
+descriptor SHA-256
+`4e094576110306689de83aa901a876e31c9c0decda76c8076263027222a4c038`; that
+hosted receipt is independent of local npm publication.
 
 The protected `opendexter-v1.23.0` tag is an immutable failed-release receipt.
 Its workflow stopped before artifact creation, upload, or npm publication, and
