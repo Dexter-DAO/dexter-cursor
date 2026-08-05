@@ -96,7 +96,22 @@ describe("local MCP tool registration", () => {
     expect(HOSTED_PROXY_INSTRUCTIONS).toContain("x402_status");
     expect(HOSTED_PROXY_INSTRUCTIONS).toContain("never be retried blindly");
     expect(HOSTED_PROXY_INSTRUCTIONS).toContain("OAuth bearer");
+    expect(HOSTED_PROXY_INSTRUCTIONS).toContain(
+      "A non-GET x402_check can still cause seller-side effects",
+    );
+    expect(HOSTED_PROXY_INSTRUCTIONS).toContain(
+      "that probe authorization is not payment approval",
+    );
+    expect(HOSTED_PROXY_INSTRUCTIONS).toContain(
+      "A non-GET x402_access can cause seller-side effects",
+    );
     expect(HOSTED_PROXY_INSTRUCTIONS).not.toContain("preparedPurchase");
+    expect(
+      result.tools.find(({ name }) => name === "x402_check")!.annotations,
+    ).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    expect(
+      result.tools.find(({ name }) => name === "x402_access")!.annotations,
+    ).toMatchObject({ readOnlyHint: false, destructiveHint: true });
     expect(loadOrCreateWallet).not.toHaveBeenCalled();
 
     const disconnectedFetch = await client!.callTool({

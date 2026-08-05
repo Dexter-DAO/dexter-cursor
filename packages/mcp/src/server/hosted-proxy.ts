@@ -26,13 +26,13 @@ export const HOSTED_PROXY_INSTRUCTIONS = `You are connected to OpenDexter's host
 
 # Tool routing
 
-x402_search discovers live resources. x402_check reads exact terms without paying. Those two tools can use the anonymous hosted surface. x402_fetch, x402_status, x402_access, x402_wallet, and dexter_portfolio require the connected OAuth bearer. For a connected paid route, x402_check returns one opaque server-owned intentId; never parse, reconstruct, or replace it.
+x402_search discovers live resources. x402_check probes exact terms without paying. A non-GET x402_check can still cause seller-side effects, so obtain separate explicit authorization for the exact probe before calling it; that probe authorization is not payment approval. Those two tools can use the anonymous hosted surface. x402_fetch, x402_status, x402_access, x402_wallet, and dexter_portfolio require the connected OAuth bearer. For a connected paid route, x402_check returns one opaque server-owned intentId; never parse, reconstruct, or replace it.
 
 x402_fetch accepts only that intentId and a separately approved maxAmountAtomic ceiling. Those two values do not authorize a different URL, body, seller, route, amount, or payment mode. A failed or ambiguous fetch must never be retried blindly.
 
 x402_status accepts the same intentId and is the read-only recovery path after an ambiguous or completed x402_fetch. Reconcile status before deciding whether any retry is appropriate.
 
-x402_access calls SIWX-protected resources through the hosted wallet-bound principal. x402_wallet reads the hosted wallet and runtimeAuthority evidence. dexter_portfolio reads the session-bound governed asset inventory; portfolio value is not spendable cash.
+x402_access calls SIWX-protected resources through the hosted wallet-bound principal. A non-GET x402_access can cause seller-side effects and requires separate explicit authorization for that exact request before it is sent. x402_wallet reads the hosted wallet and runtimeAuthority evidence. dexter_portfolio reads the session-bound governed asset inventory; portfolio value is not spendable cash.
 
 # Authority truth
 
@@ -117,13 +117,13 @@ export function registerHostedProxyTools(
     "x402_check",
     {
       description:
-        "Probe exact x402 terms without paying; connected checks return a server-owned purchase intent.",
+        "Probe exact x402 terms without paying. Non-GET probes can cause seller-side effects and require separate explicit probe authorization; connected checks return a server-owned purchase intent.",
       inputSchema: z.object({
         url: z.string().url(),
         method: httpMethod.optional(),
         body: z.string().optional(),
       }).strict(),
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true },
     },
     (args) => call("x402_check", args),
   );
@@ -160,7 +160,8 @@ export function registerHostedProxyTools(
   server.registerTool(
     "x402_access",
     {
-      description: "Use the hosted wallet-bound proof path for an SIWX-protected resource.",
+      description:
+        "Use the hosted wallet-bound proof path for an SIWX-protected resource. Non-GET requests can cause seller-side effects and require separate explicit request authorization.",
       inputSchema: z.object({
         url: z.string().url(),
         method: httpMethod.optional(),
@@ -169,7 +170,7 @@ export function registerHostedProxyTools(
         sessionKey: z.string().optional(),
         network: z.string().optional(),
       }).strict(),
-      annotations: { readOnlyHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true },
     },
     (args) => call("x402_access", args),
   );
