@@ -2,11 +2,10 @@
  * Vault session custody — `~/.dexterai-mcp/vault.json`.
  *
  * Holds the token pair `opendexter connect` receives from the OAuth device
- * grant so `opendexter wallet` can read the user's hosted wallet without
- * re-authenticating every call. The local MCP and paid CLI paths do not read
- * this file. This is a bearer credential (accessToken/refreshToken) — use the
- * same custody discipline as `../tabs/store.ts`'s session-secret file, not the
- * plain writeFileSync used by wallet.json.
+ * grant so `opendexter wallet`, the local MCP proxy, and hosted CLI tool calls
+ * can share the same governed bearer without re-authenticating every call.
+ * This is a bearer credential (accessToken/refreshToken), so it receives
+ * strict atomic 0600 custody and is never copied into tool arguments.
  *
  * Storage: 0700 dir, 0600 file, atomic write (temp file + rename) so a torn
  * write (crash / disk-full mid-write) can never leave truncated JSON —

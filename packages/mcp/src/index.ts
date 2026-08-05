@@ -109,7 +109,7 @@ async function main() {
     )
     .command(
       "setup",
-      "Set up wallet, install into detected clients, and show the fastest path to first use",
+      "Install into detected clients and show the hosted connection path",
       (y) =>
         y
           .option("yes", {
@@ -125,12 +125,18 @@ async function main() {
               "Name for the one OpenDexter MCP registration. An alias cannot bypass an existing OpenDexter registration.",
           }),
       async (args) => {
-        const { runSetup } = await import("./cli/onboard.js");
-        const result = await runSetup({
+        const { runInstall } = await import("./cli/install/index.js");
+        const result = await runInstall({
           yes: args.yes,
+          all: true,
           dev: args.dev,
           registrationName: args["registration-name"],
         });
+        if (result.complete) {
+          console.log(
+            "OpenDexter installed. Run `opendexter connect` to approve the hosted governed x402 runtime; local wallet.json/env signers are not payment executors.",
+          );
+        }
         if (!result.complete) process.exitCode = 1;
       },
     )
@@ -223,48 +229,21 @@ async function main() {
     )
     .command(
       "wallet",
-      "Show wallet address and balances",
+      "Show hosted wallet authority, or explicitly inspect a legacy wallet read-only",
       (y) =>
         y
-          .option("vanity", {
+          .option("legacy-recovery", {
             type: "boolean",
-            description: "Generate a vanity wallet address",
-            default: false,
-          })
-          .option("solana-prefix", {
-            type: "string",
-            description: "Desired Solana prefix (example: Dex)",
-          })
-          .option("evm-prefix", {
-            type: "string",
-            description: "Desired EVM prefix after 0x (example: 402dd)",
-          })
-          .option("case-sensitive", {
-            type: "boolean",
-            description: "Treat vanity prefixes as case-sensitive",
-            default: false,
-          })
-          .option("yes", {
-            alias: "y",
-            type: "boolean",
-            description: "Skip prompts where possible",
+            description:
+              "Read public addresses and balances from an existing wallet.json without loading or enabling its signer",
             default: false,
           }),
       async (args) => {
-        if (args.vanity) {
-          const { runVanityFlow } = await import("./wallet/vanity-flow.js");
-          await runVanityFlow({
-            dev: args.dev,
-            solanaPrefix: args["solana-prefix"],
-            evmPrefix: args["evm-prefix"],
-            caseSensitive: args["case-sensitive"],
-            yes: args.yes,
-          });
-          return;
-        }
-
         const { showWalletInfo } = await import("./wallet/index.js");
-        await showWalletInfo({ dev: args.dev });
+        await showWalletInfo({
+          dev: args.dev,
+          legacyRecovery: args["legacy-recovery"],
+        });
       },
     )
     .command(
@@ -278,122 +257,37 @@ async function main() {
       },
     )
     .command(
-      "fetch <url>",
-      "Fetch an x402 resource using an explicit prepared purchase mode",
+      "fetch",
+      "Execute one connected hosted governed intent",
       (y) =>
         y
-          .positional("url", { type: "string", demandOption: true })
-          .option("method", {
-            choices: ["GET", "POST", "PUT", "DELETE"] as const,
-            default: "GET" as const,
-          })
-          .option("max-amount", {
-            type: "number",
-            description: "Legacy local settings override in display USDC",
-          })
           .option("max-amount-atomic", {
             type: "string",
-            description: "User-approved atomic ceiling; required with --purchase",
+            description: "User-approved atomic ceiling; required for every hosted intent",
           })
-          .option("purchase", {
+          .option("intent-id", {
             type: "string",
-            description:
-              "Prepared purchase JSON returned by `opendexter check` (direct_exact, native_tab, gateway_cash, or gateway_credit)",
-          })
-          .option("body", { type: "string", description: "JSON request body" })
-          .option("tab", {
-            type: "boolean",
-            default: true,
-            description:
-              "Legacy compatibility only when --purchase is omitted",
+            description: "Opaque intentId returned by connected `opendexter check`",
           }),
       async (args) => {
         const { cliFetch } = await import("./tools/fetch.js");
-        await cliFetch(args.url!, {
-          method: args.method,
-          body: args.body,
-          maxAmountUsdc: args["max-amount"],
+        await cliFetch({
           maxAmountAtomic: args["max-amount-atomic"],
-          purchase: args.purchase,
-          noTab: args.tab === false,
+          intentId: args["intent-id"],
           dev: args.dev,
         });
       },
     )
     .command(
-      "tab <subcommand> [target]",
-      "Open, inspect, settle, or remove spend-tabs with x402 sellers",
-      (y) =>
-        y
-          .positional("subcommand", {
-            type: "string",
-            choices: ["connect", "list", "close", "remove"] as const,
-            demandOption: true,
-          })
-          .positional("target", {
-            type: "string",
-            description: "Seller URL (connect/close/remove) or counterparty pubkey (close/remove)",
-          })
-          .option("wait", {
-            type: "boolean",
-            default: true,
-            description:
-              "connect: poll the chain for the passkey approval (--no-wait prints the link and exits)",
-          })
-          .option("timeout", {
-            type: "number",
-            default: 10,
-            description: "connect: minutes to poll for the passkey approval",
-          })
-          .option("rekey", {
-            type: "boolean",
-            default: false,
-            description:
-              "connect: force a fresh session key over an existing tab (recovery for cumulative_exceeds_cap)",
-          }),
-      async (args) => {
-        switch (args.subcommand) {
-          case "connect": {
-            if (!args.target) throw new Error("tab connect requires a seller URL");
-            const { cliTabConnect } = await import("./tabs/connect.js");
-            await cliTabConnect(args.target, {
-              wait: args.wait,
-              timeoutMs: args.timeout * 60 * 1000,
-              rekey: args.rekey,
-              dev: args.dev,
-            });
-            break;
-          }
-          case "list": {
-            const { cliTabList } = await import("./tabs/cli.js");
-            await cliTabList();
-            break;
-          }
-          case "close": {
-            if (!args.target) throw new Error("tab close requires a seller URL or counterparty");
-            const { cliTabClose } = await import("./tabs/cli.js");
-            await cliTabClose(args.target);
-            break;
-          }
-          case "remove": {
-            if (!args.target) throw new Error("tab remove requires a seller URL or counterparty");
-            const { cliTabRemove } = await import("./tabs/cli.js");
-            await cliTabRemove(args.target);
-            break;
-          }
-        }
-      },
-    )
-    .command(
       "connect [subcommand]",
-      "Link this CLI to your Dexter Wallet for read-only account views, or check/clear the link",
+      "Connect this CLI to the hosted governed x402 runtime, or check/clear the connection",
       (y) =>
         y
           .positional("subcommand", {
             type: "string",
             choices: ["status", "disconnect"] as const,
             description:
-              "Omit to link; `status` shows the read-only account link; `disconnect` clears it",
+              "Omit to connect; `status` reads live governed authority; `disconnect` clears it",
           })
           .option("browser", {
             type: "boolean",
@@ -405,7 +299,7 @@ async function main() {
         const mod = await import("./connect/connect.js");
         switch (args.subcommand) {
           case "status":
-            await mod.cliConnectStatus();
+            await mod.cliConnectStatus({ dev: args.dev });
             break;
           case "disconnect":
             await mod.cliConnectDisconnect();
@@ -455,44 +349,23 @@ async function main() {
       },
     )
     .command(
-      "pay <url>",
-      "Alias of fetch for clients that want an explicit payment verb",
+      "pay",
+      "Alias of fetch for one connected hosted governed intent",
       (y) =>
         y
-          .positional("url", { type: "string", demandOption: true })
-          .option("method", {
-            choices: ["GET", "POST", "PUT", "DELETE"] as const,
-            default: "GET" as const,
-          })
-          .option("max-amount", {
-            type: "number",
-            description: "Legacy local settings override in display USDC",
-          })
           .option("max-amount-atomic", {
             type: "string",
-            description: "User-approved atomic ceiling; required with --purchase",
+            description: "User-approved atomic ceiling; required for every hosted intent",
           })
-          .option("purchase", {
+          .option("intent-id", {
             type: "string",
-            description:
-              "Prepared purchase JSON returned by `opendexter check` (direct_exact, native_tab, gateway_cash, or gateway_credit)",
-          })
-          .option("body", { type: "string", description: "JSON request body" })
-          .option("tab", {
-            type: "boolean",
-            default: true,
-            description:
-              "Legacy compatibility only when --purchase is omitted",
+            description: "Opaque intentId returned by connected `opendexter check`",
           }),
       async (args) => {
         const { cliFetch } = await import("./tools/fetch.js");
-        await cliFetch(args.url!, {
-          method: args.method,
-          body: args.body,
-          maxAmountUsdc: args["max-amount"],
+        await cliFetch({
           maxAmountAtomic: args["max-amount-atomic"],
-          purchase: args.purchase,
-          noTab: args.tab === false,
+          intentId: args["intent-id"],
           dev: args.dev,
         });
       },

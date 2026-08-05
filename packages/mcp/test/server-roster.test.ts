@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -6,10 +6,26 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 vi.mock("../src/wallet/index.js", () => ({
   loadOrCreateWallet: vi.fn(async () => null),
 }));
+vi.mock("../src/connect/store.js", () => ({
+  loadSession: vi.fn(() => null),
+  saveSession: vi.fn(),
+}));
 
-import { LOCAL_TOOL_ROSTER, startServer } from "../src/server/index.js";
+import { HOSTED_RUNTIME_TOOL_ROSTER, startServer } from "../src/server/index.js";
+import {
+  HOSTED_PROXY_INSTRUCTIONS,
+  registerHostedProxyTools,
+} from "../src/server/hosted-proxy.js";
+import { loadOrCreateWallet } from "../src/wallet/index.js";
+import { loadSession } from "../src/connect/store.js";
+
+beforeEach(() => {
+  vi.mocked(loadSession).mockReturnValue(null);
+  vi.mocked(loadOrCreateWallet).mockResolvedValue(null);
+});
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -44,8 +60,107 @@ describe("local MCP tool registration", () => {
 
     expect(client).toBeDefined();
     const result = await client!.listTools();
-    expect(result.tools.map(({ name }) => name)).toEqual(LOCAL_TOOL_ROSTER);
+    expect(result.tools.map(({ name }) => name)).toEqual(HOSTED_RUNTIME_TOOL_ROSTER);
+    expect(result.tools.find(({ name }) => name === "x402_fetch")?.inputSchema)
+      .toMatchObject({ required: ["intentId", "maxAmountAtomic"] });
+    expect(result.tools.find(({ name }) => name === "x402_status")?.inputSchema)
+      .toMatchObject({ required: ["intentId"] });
+    expect(HOSTED_PROXY_INSTRUCTIONS).toContain("x402_status");
+    expect(HOSTED_PROXY_INSTRUCTIONS).toContain("never be retried blindly");
+    expect(HOSTED_PROXY_INSTRUCTIONS).not.toContain("preparedPurchase");
+    expect(loadOrCreateWallet).not.toHaveBeenCalled();
+
+    const disconnectedFetch = await client!.callTool({
+      name: "x402_fetch",
+      arguments: { intentId: "intent_exact", maxAmountAtomic: "1" },
+    });
+    expect(disconnectedFetch.isError).toBe(true);
+    expect(disconnectedFetch.structuredContent).toMatchObject({
+      error: "hosted_runtime_call_failed",
+      message: "connect_required_for_hosted_x402_fetch",
+      automaticLocalFallback: false,
+    });
+    expect(loadOrCreateWallet).not.toHaveBeenCalled();
 
     await client!.close();
+  });
+
+  it("never mounts the legacy local executor when an environment signer exists", async () => {
+    vi.stubEnv("DEXTER_PRIVATE_KEY", "ignored-local-signer");
+    vi.spyOn(McpServer.prototype, "connect").mockResolvedValue();
+    vi.spyOn(process, "on").mockImplementation((() => process) as typeof process.on);
+
+    await startServer({
+      transport: "stdio",
+      dev: true,
+    });
+
+    expect(loadOrCreateWallet).not.toHaveBeenCalled();
+  });
+
+  it("forwards exact hosted intents and exposes status without retrying fetch", async () => {
+    const server = new McpServer({ name: "proxy-test", version: "1.0.0" });
+    const callTool = vi.fn(async (toolName: string, args: Record<string, unknown>) => ({
+      content: [{ type: "text" as const, text: JSON.stringify({ ok: true, toolName, args }) }],
+      structuredContent: { ok: true, toolName, args },
+    }));
+    registerHostedProxyTools(server, {
+      callTool,
+      readAuthorityStatus: async () => ({
+        namespace: "opendexter-runtime-authority/v1",
+        runtimeSource: "hosted_governed_x402",
+        status: "unavailable",
+        active: null,
+        authoritySource: null,
+        grantId: null,
+        grantRevision: null,
+        logicalGrantActive: null,
+        principal: null,
+        limits: null,
+        remaining: null,
+        expiresAt: null,
+        scopes: null,
+        activeRole: null,
+        revocation: { revoked: null, manageUrl: "https://dexter.cash/wallet" },
+        fallback: {
+          available: false,
+          enabled: false,
+          active: false,
+          automatic: false,
+        },
+        evidenceNamespace: null,
+        reason: "governed_authority_status_unavailable",
+      }),
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "proxy-client", version: "1.0.0" });
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+
+    await client.callTool({
+      name: "x402_fetch",
+      arguments: { intentId: "intent_exact", maxAmountAtomic: "250000" },
+    });
+    await client.callTool({
+      name: "x402_status",
+      arguments: { intentId: "intent_exact" },
+    });
+
+    expect(callTool).toHaveBeenNthCalledWith(
+      1,
+      "x402_fetch",
+      { intentId: "intent_exact", maxAmountAtomic: "250000" },
+      false,
+    );
+    expect(callTool).toHaveBeenNthCalledWith(
+      2,
+      "x402_status",
+      { intentId: "intent_exact" },
+      true,
+    );
+
+    await Promise.all([client.close(), server.close()]);
   });
 });

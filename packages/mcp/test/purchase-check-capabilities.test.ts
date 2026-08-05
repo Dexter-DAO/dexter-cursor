@@ -1,14 +1,3 @@
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Keypair } from "@solana/web3.js";
-import bs58 from "bs58";
-import { generatePrivateKey } from "viem/accounts";
 import { describe, expect, it, vi } from "vitest";
 
 const coreMocks = vi.hoisted(() => ({
@@ -35,7 +24,6 @@ import {
   preparePurchaseOptionsForCapabilities,
   registerCheckTool,
 } from "../../x402-mcp-tools/src/tools/check.js";
-import { readConfiguredPaymentSigners } from "../src/tools/check.js";
 
 const URL = "https://merchant.example/data";
 
@@ -381,33 +369,4 @@ describe("x402_check executable capability truth", () => {
     expect(prepare).toHaveBeenCalledTimes(16);
   });
 
-  it("detects configured CLI signers without creating or migrating a wallet", () => {
-    const directory = mkdtempSync(join(tmpdir(), "opendexter-check-wallet-"));
-    try {
-      const walletFile = join(directory, "wallet.json");
-      const solanaPrivateKey = bs58.encode(Keypair.generate().secretKey);
-      const original = JSON.stringify({
-        solanaPrivateKey,
-        createdAt: "2026-01-01T00:00:00.000Z",
-      });
-      writeFileSync(walletFile, original, { mode: 0o600 });
-
-      expect(readConfiguredPaymentSigners(walletFile, {})).toEqual({
-        solanaPrivateKey,
-        evmPrivateKey: undefined,
-      });
-      expect(readFileSync(walletFile, "utf8")).toBe(original);
-
-      const evmPrivateKey = generatePrivateKey();
-      expect(readConfiguredPaymentSigners(
-        join(directory, "missing-wallet.json"),
-        { EVM_PRIVATE_KEY: evmPrivateKey },
-      )).toEqual({
-        solanaPrivateKey: undefined,
-        evmPrivateKey,
-      });
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
 });

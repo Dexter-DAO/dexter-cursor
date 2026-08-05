@@ -1,6 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 
 import { VERSION, WALLET_FILE } from "../config.js";
+import { loadSession } from "../connect/store.js";
+import { readLegacyWalletPublicInfo } from "../wallet/index.js";
 import {
   CLIENTS,
   detectInstalledClients,
@@ -12,11 +14,11 @@ import {
   type ExistingMcpProbe,
 } from "./install/collision.js";
 
-export type SignerConfigurationState =
-  | "environment"
-  | "local_file"
-  | "not_configured"
-  | "invalid_local_file";
+export type LegacyRecoveryMaterialState =
+  | "environment_material_present"
+  | "wallet_file_public_recovery"
+  | "not_present"
+  | "wallet_file_unavailable";
 
 export interface DoctorReport {
   readOnly: true;
@@ -34,9 +36,19 @@ export interface DoctorReport {
     searchAndCheckNeedWallet: false;
     searchAndCheckNeedFunding: false;
   };
+  legacyRecovery: {
+    material: LegacyRecoveryMaterialState;
+    readOnly: true;
+    paymentEnabled: false;
+    signerLoaded: false;
+    privateKeysReturned: false;
+  };
   payment: {
-    signerConfiguration: SignerConfigurationState;
+    source: "hosted_governed_x402";
+    connection: "connected" | "disconnected";
+    authorityStatus: "not_checked";
     balanceChecked: false;
+    localSignerExecutor: false;
     configurationIsApproval: false;
   };
   nextActions: string[];
@@ -56,35 +68,24 @@ interface DoctorDependencies {
   ) => Promise<ExistingMcpProbe>;
   walletFile?: string;
   env?: NodeJS.ProcessEnv;
+  connectedSession?: boolean;
 }
 
-export function inspectSignerConfiguration(
+export function inspectLegacyRecoveryMaterial(
   walletFile = WALLET_FILE,
   env: NodeJS.ProcessEnv = process.env,
-): SignerConfigurationState {
-  if (
-    (typeof (env.DEXTER_PRIVATE_KEY ?? env.SOLANA_PRIVATE_KEY) === "string"
-      && Boolean((env.DEXTER_PRIVATE_KEY ?? env.SOLANA_PRIVATE_KEY)?.trim()))
-    || (typeof env.EVM_PRIVATE_KEY === "string"
-      && Boolean(env.EVM_PRIVATE_KEY.trim()))
-  ) {
-    return "environment";
+): LegacyRecoveryMaterialState {
+  const envNames = new Set(Object.keys(env));
+  if (["DEXTER_PRIVATE_KEY", "SOLANA_PRIVATE_KEY", "EVM_PRIVATE_KEY"].some(
+    (name) => envNames.has(name),
+  )) {
+    // Presence only: doctor never reads, parses, derives, or returns a key.
+    return "environment_material_present";
   }
-  if (!existsSync(walletFile)) return "not_configured";
-  try {
-    const parsed = JSON.parse(readFileSync(walletFile, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return "invalid_local_file";
-    }
-    const record = parsed as Record<string, unknown>;
-    return [record.solanaPrivateKey, record.evmPrivateKey].some(
-      (value) => typeof value === "string" && value.trim().length > 0,
-    )
-      ? "local_file"
-      : "invalid_local_file";
-  } catch {
-    return "invalid_local_file";
-  }
+  if (!existsSync(walletFile)) return "not_present";
+  return readLegacyWalletPublicInfo(walletFile)
+    ? "wallet_file_public_recovery"
+    : "wallet_file_unavailable";
 }
 
 export async function buildDoctorReport(
@@ -113,10 +114,12 @@ export async function buildDoctorReport(
       probe: await inspect(id, registrationName),
     })),
   );
-  const signerConfiguration = inspectSignerConfiguration(
+  const legacyRecoveryMaterial = inspectLegacyRecoveryMaterial(
     dependencies.walletFile ?? WALLET_FILE,
     dependencies.env ?? process.env,
   );
+  const connectedSession = dependencies.connectedSession
+    ?? loadSession() !== null;
   const nextActions: string[] = [];
   if (clients.length === 0) {
     nextActions.push(
@@ -142,17 +145,30 @@ export async function buildDoctorReport(
       );
     }
   }
-  if (signerConfiguration === "not_configured") {
+  if (legacyRecoveryMaterial === "wallet_file_public_recovery") {
     nextActions.push(
-      "No signer is configured. That does not block search or check; configure one only before Direct Exact payment.",
+      "Legacy wallet.json material is available only through `opendexter wallet --legacy-recovery`, a read-only public-address and balance view; it is not a payment executor.",
     );
-  } else if (signerConfiguration === "invalid_local_file") {
+  } else if (legacyRecoveryMaterial === "environment_material_present") {
     nextActions.push(
-      "The local signer file is unreadable or incomplete. Search and check still work; repair it before Direct Exact payment.",
+      "Legacy signer environment variable names are present, but doctor did not read their values and the runtime will not use them as payment authority.",
+    );
+  } else if (legacyRecoveryMaterial === "wallet_file_unavailable") {
+    nextActions.push(
+      "A legacy wallet file exists but has no safe public recovery view. Doctor left it unchanged; the runtime will not repair, load, or execute it.",
+    );
+  }
+  if (connectedSession) {
+    nextActions.push(
+      "Run `opendexter connect status` to verify the live hosted grant, limits, remaining capacity, expiry, scopes, active role, and revocation before relying on payment authority.",
+    );
+  } else {
+    nextActions.push(
+      "Run `opendexter connect` to approve the hosted governed x402 runtime. Local wallet.json and environment signers cannot execute payments.",
     );
   }
   nextActions.push(
-    "A configured signer or ready credit adapter is capability, not authorization. Every paid call still needs the exact prepared purchase and atomic ceiling authorized by the user's instruction or delegated policy.",
+    "Every paid call requires a connected hosted governed bearer, exact live bounded-authority evidence, an opaque checked intent, and the user-approved atomic ceiling.",
   );
 
   return {
@@ -167,9 +183,19 @@ export async function buildDoctorReport(
       searchAndCheckNeedWallet: false,
       searchAndCheckNeedFunding: false,
     },
+    legacyRecovery: {
+      material: legacyRecoveryMaterial,
+      readOnly: true,
+      paymentEnabled: false,
+      signerLoaded: false,
+      privateKeysReturned: false,
+    },
     payment: {
-      signerConfiguration,
+      source: "hosted_governed_x402",
+      connection: connectedSession ? "connected" : "disconnected",
+      authorityStatus: "not_checked",
       balanceChecked: false,
+      localSignerExecutor: false,
       configurationIsApproval: false,
     },
     nextActions,
@@ -194,7 +220,9 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<DoctorRepo
       );
     }
   }
-  console.log(`Signer configuration: ${report.payment.signerConfiguration}`);
+  console.log(`Payment source: ${report.payment.source}`);
+  console.log(`Hosted connection: ${report.payment.connection} (authority not checked)`);
+  console.log(`Legacy recovery material: ${report.legacyRecovery.material} (read-only; not a payment executor)`);
   console.log("Search/check: no wallet or funding required");
   for (const action of report.nextActions) console.log(`- ${action}`);
   return report;

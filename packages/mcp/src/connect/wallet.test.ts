@@ -1,10 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { showConnectedWallet, refreshVaultToken, type HostedWalletResult } from "./wallet.js";
-import { showWalletInfo } from "../wallet/index.js";
+import {
+  callHostedRuntimeTool,
+  projectRuntimeAuthorityStatus,
+  readGovernedAuthorityStatus,
+  refreshVaultToken,
+  showConnectedWallet,
+  type HostedWalletResult,
+} from "./wallet.js";
+import {
+  readLegacyWalletPublicInfo,
+  showWalletInfo,
+} from "../wallet/index.js";
 import { loadSession, saveSession, type VaultSession } from "./store.js";
 
 let dir: string;
@@ -12,6 +22,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "dexterai-cwallet-test-"));
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   try {
     rmSync(dir, { recursive: true, force: true });
   } catch {
@@ -105,8 +116,9 @@ describe("connect/wallet — showConnectedWallet", () => {
     expect(out).toContain(DEPOSIT_PDA);
     expect(out).not.toContain(VAULT_ADDRESS);
     expect(out).toContain("$12.34");
-    expect(out).toContain("link: read-only");
-    expect(out).toContain("separately configured local signer");
+    expect(out).toContain("x402 path: hosted governed runtime");
+    expect(out).toContain("status: unavailable");
+    expect(out).toContain("Automatic fallback: never");
   });
 
   it("refreshes the bearer on a 401 and retries once with the new token", async () => {
@@ -204,6 +216,200 @@ describe("connect/wallet — refreshVaultToken", () => {
   });
 });
 
+describe("connect/wallet — governed runtime authority", () => {
+  const exactEvidence = {
+    namespace: "dexter-governed-agent-surface-authority/v1",
+    mode: "bounded_payment_authority",
+    active: true,
+    inactiveReason: null,
+    logicalGrantActive: true,
+    principal: {
+      actor: "agent",
+      vaultPda: "vault-pda",
+      walletAddress: DEPOSIT_PDA,
+      agentId: "agent-1",
+    },
+    source: "mcp-link-token",
+    grantId: "grant-1",
+    grantRevision: 3,
+    expiresAt: "2026-08-06T00:00:00.000Z",
+    scopes: {
+      network: "solana-mainnet",
+      assetId: "usdc",
+      action: "send",
+      protocolId: "x402-exact-v2",
+      counterpartyScope: "any-valid-x402-seller",
+    },
+    capacity: {
+      maximumPerCallAmountAtomic: "1000000",
+      remainingPerCallAmountAtomic: "750000",
+      maximumDailyAmountAtomic: "5000000",
+      usedDailyAmountAtomic: "1250000",
+      remainingDailyAmountAtomic: "3750000",
+      maximumAggregateAmountAtomic: "10000000",
+      usedAggregateAmountAtomic: "2250000",
+      remainingAggregateAmountAtomic: "7750000",
+      evaluatedAt: "2026-08-05T00:00:00.000Z",
+      snapshotDigest: "a".repeat(64),
+    },
+    revoked: false,
+    activeRole: {
+      status: "active",
+      roleId: 7,
+      authoritySigner: "authority",
+      sessionExpirySlot: 99,
+      currentSlot: 50,
+      resolutionDigest: "b".repeat(64),
+    },
+    fallback: false,
+  };
+
+  it("projects the exact v1 evidence tuple without inferring from balances", () => {
+    const status = projectRuntimeAuthorityStatus({
+      balances: { usdc: 12.34 },
+      authority: exactEvidence,
+    });
+    expect(status).toMatchObject({
+      status: "active",
+      active: true,
+      authoritySource: "mcp-link-token",
+      grantId: "grant-1",
+      grantRevision: 3,
+      logicalGrantActive: true,
+      principal: { agentId: "agent-1" },
+      limits: {
+        maximumPerCallAmountAtomic: "1000000",
+        maximumDailyAmountAtomic: "5000000",
+        maximumAggregateAmountAtomic: "10000000",
+      },
+      remaining: {
+        perCallAmountAtomic: "750000",
+        dailyAmountAtomic: "3750000",
+        aggregateAmountAtomic: "7750000",
+      },
+      expiresAt: "2026-08-06T00:00:00.000Z",
+      scopes: { protocolId: "x402-exact-v2" },
+      activeRole: { status: "active", roleId: 7 },
+      revocation: { revoked: false },
+      fallback: { active: false, automatic: false },
+    });
+    expect(projectRuntimeAuthorityStatus({ balances: { usdc: 12.34 } }))
+      .toMatchObject({ status: "unavailable", active: null, grantId: null });
+    expect(projectRuntimeAuthorityStatus({
+      authority: {
+        namespace: "dexter-governed-agent-surface-authority/v1",
+        mode: "bounded_payment_authority",
+        active: true,
+      },
+    })).toMatchObject({
+      status: "unavailable",
+      active: null,
+      reason: "governed_authority_evidence_incomplete",
+    });
+    expect(projectRuntimeAuthorityStatus({
+      authority: {
+        ...exactEvidence,
+        capacity: {
+          ...exactEvidence.capacity,
+          remainingDailyAmountAtomic: "4000000",
+        },
+      },
+    })).toMatchObject({
+      status: "unavailable",
+      active: null,
+      reason: "governed_authority_evidence_incomplete",
+    });
+  });
+
+  it("reads exact status with only the stored bearer and no caller identity", async () => {
+    seedSession();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(exactEvidence), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    const status = await readGovernedAuthorityStatus({
+      dataDir: dir,
+      apiBase: "https://api.example",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(status.status).toBe("active");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [requestedUrl, requestInit] = fetchImpl.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(requestedUrl).toBe(
+      "https://api.example/api/connector/oauth/authority",
+    );
+    expect(requestInit).toMatchObject({
+      method: "GET",
+      headers: { Authorization: "Bearer at.original.sig" },
+    });
+  });
+
+  it("never auth-retries x402_fetch after a possibly dispatched call", async () => {
+    seedSession();
+    const callHosted = vi.fn(async () => {
+      throw authError();
+    });
+    await expect(callHostedRuntimeTool({
+      toolName: "x402_fetch",
+      arguments: { intentId: "intent-1", maxAmountAtomic: "1" },
+      dataDir: dir,
+      retryRejectedBearer: false,
+      callHosted,
+    })).rejects.toThrow(/no_automatic_retry/);
+    expect(callHosted).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects disconnected fetch before dispatch even when a legacy signer env name exists", async () => {
+    vi.stubEnv("DEXTER_PRIVATE_KEY", "legacy-material-must-not-be-read");
+    const callHosted = vi.fn();
+    await expect(callHostedRuntimeTool({
+      toolName: "x402_fetch",
+      arguments: { intentId: "intent-1", maxAmountAtomic: "1" },
+      dataDir: dir,
+      callHosted,
+    })).rejects.toThrow("connect_required_for_hosted_x402_fetch");
+    expect(callHosted).not.toHaveBeenCalled();
+  });
+
+  it("keeps every account-bound hosted tool behind the connected bearer", async () => {
+    const callHosted = vi.fn();
+    for (const toolName of [
+      "x402_status",
+      "x402_access",
+      "x402_wallet",
+      "dexter_portfolio",
+    ] as const) {
+      await expect(callHostedRuntimeTool({
+        toolName,
+        dataDir: dir,
+        callHosted,
+      })).rejects.toThrow(`connect_required_for_hosted_${toolName}`);
+    }
+    expect(callHosted).not.toHaveBeenCalled();
+  });
+
+  it("allows anonymous hosted checks without inspecting local signer material", async () => {
+    vi.stubEnv("DEXTER_PRIVATE_KEY", "legacy-material-must-not-be-read");
+    const callHosted = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: '{"ok":true}' }],
+    }));
+    await callHostedRuntimeTool({
+      toolName: "x402_check",
+      arguments: { url: "https://seller.example/price" },
+      dataDir: dir,
+      callHosted,
+    });
+    expect(callHosted).toHaveBeenCalledWith(
+      null,
+      "x402_check",
+      { url: "https://seller.example/price" },
+    );
+  });
+});
+
 describe("wallet/index — showWalletInfo routing", () => {
   it("routes to connected mode when a session exists", async () => {
     seedSession();
@@ -218,17 +424,15 @@ describe("wallet/index — showWalletInfo routing", () => {
     });
 
     expect(callHostedWallet).toHaveBeenCalledTimes(1);
-    expect(log.join("\n")).toContain("link: read-only");
+    expect(log.join("\n")).toContain("x402 path: hosted governed runtime");
     expect(log.join("\n")).toContain(DEPOSIT_PDA);
   });
 
-  it("shows the quickstart wallet plus a connect hint when there is no session", async () => {
+  it("does not read or create a local wallet when disconnected by default", async () => {
     const log: string[] = [];
     const hint: string[] = [];
-    // Stub the quickstart renderer so the test never touches the real home
-    // wallet file or live RPCs — we only assert routing + the added hint.
-    const renderQuickstart = vi.fn(async (out: (l: string) => void) => {
-      out("[[quickstart-wallet-json]]");
+    const renderLegacyRecovery = vi.fn(async (out: (l: string) => void) => {
+      out("[[legacy-recovery-json]]");
     });
 
     await showWalletInfo({
@@ -236,16 +440,75 @@ describe("wallet/index — showWalletInfo routing", () => {
       dataDir: dir,
       log: (l) => log.push(l),
       hint: (l) => hint.push(l),
-      renderQuickstart,
+      renderLegacyRecovery,
     });
 
-    expect(renderQuickstart).toHaveBeenCalledTimes(1);
-    expect(log.join("\n")).toContain("[[quickstart-wallet-json]]");
+    expect(renderLegacyRecovery).not.toHaveBeenCalled();
+    expect(log.join("\n")).toContain('"status": "disconnected"');
+    expect(log.join("\n")).toContain('"available": false');
     const copy = hint.join("\n");
     expect(copy).toContain("opendexter connect");
-    expect(copy).toMatch(/view/i);
-    expect(copy).toContain("does not change the payment signer");
-    expect(copy).toMatch(/local paid calls still use the local wallet/i);
-    expect(copy).not.toMatch(/pay from (?:your )?(?:vault|Dexter wallet)/i);
+    expect(copy).toContain("--legacy-recovery");
+    expect(copy).toContain("not payment executors");
+    expect(copy).not.toContain("OPENDEXTER_LOCAL_SIGNER_FALLBACK");
+  });
+
+  it("offers only an explicit read-only legacy recovery view", async () => {
+    const walletFile = join(dir, "wallet.json");
+    writeFileSync(walletFile, JSON.stringify({
+      solanaAddress: "11111111111111111111111111111111",
+      evmAddress: "0x1111111111111111111111111111111111111111",
+      solanaPrivateKey: "must-not-leave-file",
+      evmPrivateKey: "0xmust-not-leave-file",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    }));
+    expect(readLegacyWalletPublicInfo(walletFile)).toEqual({
+      solanaAddress: "11111111111111111111111111111111",
+      evmAddress: "0x1111111111111111111111111111111111111111",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const log: string[] = [];
+    const hint: string[] = [];
+    const readLegacyBalances = vi.fn(async (wallet) => {
+      expect(wallet).toEqual({
+        solanaAddress: "11111111111111111111111111111111",
+        evmAddress: "0x1111111111111111111111111111111111111111",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      return {
+        totalUsdc: 1.25,
+        chains: {
+          "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": {
+            name: "Solana",
+            usdc: 1.25,
+          },
+        },
+        degraded: false,
+        unavailableChains: [],
+      };
+    });
+    await showWalletInfo({
+      dev: false,
+      legacyRecovery: true,
+      legacyWalletFile: walletFile,
+      dataDir: dir,
+      log: (line) => log.push(line),
+      hint: (line) => hint.push(line),
+      readLegacyBalances,
+    });
+    expect(readLegacyBalances).toHaveBeenCalledTimes(1);
+    expect(log.join("\n")).toContain('"paymentEnabled": false');
+    expect(log.join("\n")).toContain('"privateKeysExported": false');
+    expect(log.join("\n")).toContain('"usdc": 1.25');
+    expect(log.join("\n")).not.toContain("must-not-leave-file");
+    expect(hint.join("\n")).toContain("read-only");
+    expect(hint.join("\n")).toContain("cannot execute payments");
+
+    writeFileSync(walletFile, JSON.stringify({
+      solanaAddress: "must-not-be-echoed-as-an-address",
+      solanaPrivateKey: "must-not-leave-file",
+    }));
+    expect(readLegacyWalletPublicInfo(walletFile)).toBeNull();
   });
 });
