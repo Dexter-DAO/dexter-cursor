@@ -14,14 +14,21 @@ OPENDXTER_HOSTED_SOURCE_ROOT=../dexter-mcp \
   node --test tests/opendexter-package-contract.test.mjs
 ```
 
-The stable `@dexterai/opendexter@1.23.1` candidate pins the reconciled public
+The stable `@dexterai/opendexter@1.23.2` candidate pins the reconciled public
 train `@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`, and
-`@dexterai/x402-mcp-tools@0.8.2` through one canonical root lock. OpenDexter is
-not yet published. The protected `opendexter-v1.23.0` tag records a workflow
-that stopped before artifact creation, upload, or npm publication; it is not a
-registry release. The checked-in public hosted receipt pins the accepted live
-MCP release at `583e0272a020390516fdb1342d962fce44bfd4f7` and is unchanged by
-this package-only recovery.
+`@dexterai/x402-mcp-tools@0.8.2` through one canonical root lock. Public
+`1.23.1` remains immutable; `1.23.2` is not yet published. The protected
+`opendexter-v1.23.0` tag records a workflow that stopped before artifact
+creation, upload, or npm publication; it is not a registry release. The
+checked-in public hosted receipt pins the accepted live MCP release at
+`583e0272a020390516fdb1342d962fce44bfd4f7` and is unchanged by this local
+package source lane.
+
+The local MCP exposes exactly seven hosted-runtime proxy tools. It never reads
+or creates a local signer for payment. Existing `wallet.json` files remain
+untouched and can be inspected only through the explicit read-only legacy
+recovery view. Non-GET checks and access requests are classified as potentially
+side-effectful and require separate request authorization.
 
 The stable release may not rely on the optional historical check. The final
 clean `dexter-mcp` source must commit
