@@ -1,6 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { checkStaleness } from "./staleness.js";
+import { VERSION } from "./config.js";
 
 const cliArgs = hideBin(process.argv);
 const invokedCommand = cliArgs.find((argument) => !argument.startsWith("-"));
@@ -370,6 +371,9 @@ async function main() {
         });
       },
     )
+    // Yargs otherwise discovers package.json from the caller's cwd, causing an
+    // installed OpenDexter binary to report the embedding app's version.
+    .version(VERSION)
     .strict()
     .help()
     // Throw parse failures (unknown command/argument) instead of letting yargs

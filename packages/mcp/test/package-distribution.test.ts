@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const require = createRequire(import.meta.url);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "../..");
 const sharedInstructionsRoot = resolve(packageRoot, "../mcp-instructions");
@@ -53,6 +65,38 @@ function expectExactExecutableReferences(
 }
 
 describe("local package distribution", () => {
+  it("reports its own version instead of the embedding application's version", () => {
+    const consumer = mkdtempSync(join(tmpdir(), "opendexter-version-consumer-"));
+    try {
+      writeFileSync(
+        join(consumer, "package.json"),
+        `${JSON.stringify({ name: "consumer", version: "1.0.0" })}\n`,
+      );
+      const packageManifest = JSON.parse(read("package.json"));
+      const result = spawnSync(
+        process.execPath,
+        [
+          require.resolve("tsx/cli"),
+          join(packageRoot, "src/index.ts"),
+          "--version",
+        ],
+        {
+          cwd: consumer,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            HOME: consumer,
+            CODEX_HOME: join(consumer, ".codex"),
+          },
+        },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe(packageManifest.version);
+    } finally {
+      rmSync(consumer, { recursive: true, force: true });
+    }
+  });
+
   it("ships the promised canonical license in shared packages", () => {
     const canonicalLicense = readFileSync(join(packageRoot, "LICENSE"));
     for (const [name, root] of [
