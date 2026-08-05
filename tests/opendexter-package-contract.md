@@ -21,8 +21,13 @@ train `@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`, and
 `opendexter-v1.23.0` tag records a workflow that stopped before artifact
 creation, upload, or npm publication; it is not a registry release. The
 checked-in public hosted receipt pins the accepted live MCP release at
-`583e0272a020390516fdb1342d962fce44bfd4f7` and is unchanged by this local
-package source lane.
+`405b87300f8e4babd65b271895cbf960de25facb`, tree
+`33e8ce727c591a3fac35f75ecf6ed38f4290e7a9`, artifact-manifest SHA-256
+`a039e348612d6f86c0922a068911ba60f731fb1000c61ba1070b84503dd5350a`, and
+descriptor SHA-256
+`4e094576110306689de83aa901a876e31c9c0decda76c8076263027222a4c038`.
+This receipt refresh is source evidence only; it does not tag or publish the
+local package.
 
 The local MCP exposes exactly seven hosted-runtime proxy tools. It never reads
 or creates a local signer for payment. Existing `wallet.json` files remain
