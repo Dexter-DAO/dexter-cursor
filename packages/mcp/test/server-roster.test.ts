@@ -9,6 +9,7 @@ vi.mock("../src/wallet/index.js", () => ({
 vi.mock("../src/connect/store.js", () => ({
   loadSession: vi.fn(() => null),
   saveSession: vi.fn(),
+  clearSession: vi.fn(),
 }));
 
 import { HOSTED_RUNTIME_TOOL_ROSTER, startServer } from "../src/server/index.js";
@@ -117,6 +118,15 @@ describe("local MCP tool registration", () => {
     );
     expect(HOSTED_PROXY_INSTRUCTIONS).toContain(
       "A non-GET x402_access can cause seller-side effects",
+    );
+    expect(HOSTED_PROXY_INSTRUCTIONS).toContain(
+      "separate anonymous legacy wallet-proof operation",
+    );
+    expect(HOSTED_PROXY_INSTRUCTIONS).toContain(
+      "does not preserve continuity across calls",
+    );
+    expect(HOSTED_PROXY_INSTRUCTIONS).not.toContain(
+      "x402_access calls SIWX-protected resources through the hosted wallet-bound principal",
     );
     expect(HOSTED_PROXY_INSTRUCTIONS).not.toContain("preparedPurchase");
     expect(
@@ -266,8 +276,141 @@ describe("local MCP tool registration", () => {
       6,
       "x402_access",
       { url: "https://seller.example/read", method: "GET" },
-      true,
+      false,
     );
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("never exposes a hosted legacy access credential to the MCP client", async () => {
+    const sessionToken = "legacy_access_token_secret";
+    const sessionKey = "legacy_access_key_secret";
+    const server = new McpServer({ name: "access-scrub-test", version: "1.0.0" });
+    const callTool = vi.fn(async () => ({
+      _meta: { sessionToken, preserved: "meta-safe" },
+      structuredContent: {
+        sessionKey,
+        result: { ok: true, preserved: "structured-safe" },
+      },
+      content: [{
+        type: "text" as const,
+        text: `sessionToken=${sessionToken}; sessionKey=${sessionKey}; visible`,
+      }],
+    }));
+    registerHostedProxyTools(server, { callTool });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "access-scrub-client", version: "1.0.0" });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+    const result = await client.callTool({
+      name: "x402_access",
+      arguments: { url: "https://seller.example/private", method: "GET" },
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(sessionToken);
+    expect(serialized).not.toContain(sessionKey);
+    expect(serialized).not.toMatch(/session[_-]?(?:token|key)/i);
+    expect(result).toMatchObject({
+      _meta: { preserved: "meta-safe" },
+      structuredContent: {
+        result: { ok: true, preserved: "structured-safe" },
+      },
+    });
+    expect(callTool).toHaveBeenCalledTimes(1);
+
+    await Promise.all([client.close(), server.close()]);
+  });
+
+  it("never projects stale embedded capacity as active authority", async () => {
+    const now = Date.parse("2026-08-05T12:00:00.000Z");
+    const server = new McpServer({ name: "stale-authority-test", version: "1.0.0" });
+    const callTool = vi.fn(async (toolName: string) => ({
+      content: [{ type: "text" as const, text: "{}" }],
+      structuredContent: toolName === "x402_wallet" ? {
+        authority: {
+          namespace: "dexter-governed-agent-surface-authority/v1",
+          mode: "bounded_payment_authority",
+          active: true,
+          inactiveReason: null,
+          logicalGrantActive: true,
+          principal: {
+            actor: "agent",
+            vaultPda: "vault",
+            walletAddress: "wallet",
+            agentId: "agent",
+          },
+          source: "mcp-link-token",
+          grantId: "grant",
+          grantRevision: 1,
+          expiresAt: new Date(now + 60_000).toISOString(),
+          scopes: {
+            network: "solana-mainnet",
+            assetId: "usdc",
+            action: "send",
+            protocolId: "x402-exact-v2",
+            counterpartyScope: "any-valid-x402-seller",
+          },
+          capacity: {
+            maximumPerCallAmountAtomic: "1",
+            remainingPerCallAmountAtomic: "1",
+            maximumDailyAmountAtomic: "1",
+            usedDailyAmountAtomic: "0",
+            remainingDailyAmountAtomic: "1",
+            maximumAggregateAmountAtomic: "1",
+            usedAggregateAmountAtomic: "0",
+            remainingAggregateAmountAtomic: "1",
+            evaluatedAt: new Date(now - 60_001).toISOString(),
+            snapshotDigest: "a".repeat(64),
+          },
+          revoked: false,
+          activeRole: {
+            status: "active",
+            roleId: 1,
+            authoritySigner: "signer",
+            sessionExpirySlot: 2,
+            currentSlot: 1,
+            resolutionDigest: "b".repeat(64),
+          },
+          fallback: false,
+        },
+      } : { ok: true },
+    }));
+    registerHostedProxyTools(server, {
+      callTool,
+      now: () => now,
+      readAuthorityStatus: async () => ({
+        namespace: "opendexter-runtime-authority/v1",
+        runtimeSource: "hosted_governed_x402",
+        status: "unavailable",
+        active: null,
+        authoritySource: null,
+        grantId: null,
+        grantRevision: null,
+        logicalGrantActive: null,
+        principal: null,
+        limits: null,
+        remaining: null,
+        expiresAt: null,
+        scopes: null,
+        activeRole: null,
+        revocation: { revoked: null, manageUrl: "https://dexter.cash/wallet" },
+        fallback: { available: false, enabled: false, active: false, automatic: false },
+        evidenceNamespace: null,
+        reason: "governed_authority_status_unavailable",
+      }),
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "stale-client", version: "1.0.0" });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+    const result = await client.callTool({ name: "x402_wallet", arguments: {} });
+    expect(result.structuredContent).toMatchObject({
+      runtimeAuthority: {
+        status: "unavailable",
+        active: null,
+        reason: "governed_authority_capacity_stale",
+      },
+    });
 
     await Promise.all([client.close(), server.close()]);
   });

@@ -280,6 +280,23 @@ async function main() {
       },
     )
     .command(
+      "status",
+      "Read the exact hosted purchase intent after an uncertain or completed fetch",
+      (y) =>
+        y.option("intent-id", {
+          type: "string",
+          demandOption: true,
+          description: "Opaque intentId returned by `opendexter check`",
+        }),
+      async (args) => {
+        const { cliStatus } = await import("./tools/fetch.js");
+        await cliStatus({
+          intentId: args["intent-id"],
+          dev: args.dev,
+        });
+      },
+    )
+    .command(
       "connect [subcommand]",
       "Connect this CLI to the hosted governed x402 runtime, or check/clear the connection",
       (y) =>

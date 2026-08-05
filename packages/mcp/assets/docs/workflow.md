@@ -3,7 +3,9 @@
 The local `@dexterai/opendexter` MCP is a proxy to OpenDexter's hosted governed
 runtime. It exposes exactly seven tools and never derives or enables a local
 private key for payment or identity proof. Search and check can use the anonymous hosted
-surface; every account-bound operation requires the OAuth bearer created by
+surface. Access is a separate anonymous fresh one-call legacy wallet-proof
+operation, not OAuth/governed authority, and has no cross-call continuity.
+Every account-bound operation requires the OAuth bearer created by
 `opendexter connect`. Its audience is `https://open.dexter.cash/mcp` and its
 exact requested scope is `vault`. Dexter's signed top-level dexter_surface
 token claim is separate authority evidence, not a requested OAuth scope. No
@@ -17,7 +19,7 @@ local executor or fallback exists.
 | `x402_check` | Read exact current terms and, when connected, one opaque intent | Optional |
 | `x402_fetch` | Execute exactly one governed server-owned intent | Required |
 | `x402_status` | Read the same intent after uncertain or completed execution | Required |
-| `x402_access` | Use hosted wallet-bound SIWX access | Required |
+| `x402_access` | Use one fresh anonymous legacy SIWX wallet-proof context; no continuity | No |
 | `x402_wallet` | Read hosted wallet and exact authority evidence | Required |
 | `dexter_portfolio` | Read the connected governed asset inventory | Required |
 
@@ -51,8 +53,8 @@ atomic ceiling does not authorize a different action.
 - Execute a paid action → connected `x402_check`, explicit approval, then one
   `x402_fetch` with the opaque intent and ceiling.
 - Reconcile an ambiguous action → `x402_status` with the same intent.
-- Access an SIWX-protected resource → `x402_access` through the connected
-  hosted principal.
+- Access an SIWX-protected resource → `x402_access` as one fresh anonymous
+  legacy wallet-proof operation, separate from OAuth/governed authority.
 - Read deposit, balance, or exact authority evidence → `x402_wallet`.
 - Read the connected governed asset inventory → `dexter_portfolio`; portfolio
   value is not spendable-cash proof.
@@ -81,17 +83,21 @@ Before a fetch, require all of the following:
 
 The consequential fetch never auth-refreshes and retries after possible
 dispatch. A timeout, transport failure, or bearer rejection can hide a
-completed payment or provider mutation. The only automatic next step is the
+completed payment or provider mutation. The only safe next step is the
 read-only status call for the same intent. Do not create a replacement intent
 or fetch again until status proves another action is safe and the user approves
 it.
 
-## Wallet-bound access
+## One-call legacy access
 
-Use the access tool only when current route requirements call for SIWX. It uses
-the connected hosted principal. It does not use a legacy file or environment
-key, and it does not bypass a charge. A non-GET access request needs separate
-approval and is never auth-refreshed and retried after possible dispatch.
+Use the access tool only when current route requirements call for SIWX. Every
+call starts one fresh anonymous hosted wallet-proof context. It is not Dexter
+OAuth, not the connected governed payment wallet, and does not preserve
+continuity across calls. The proxy accepts and persists no access-session
+credentials. It does not use a local file or environment key, and it does not
+bypass a charge. A non-GET access request needs separate approval for that
+exact one-call request and is never automatically retried after possible
+dispatch.
 
 ## Authority truth
 

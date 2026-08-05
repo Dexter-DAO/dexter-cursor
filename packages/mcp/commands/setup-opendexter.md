@@ -67,9 +67,15 @@ response was ambiguous.
 ## Authority boundary
 
 The local process never derives or enables a file or environment private key
-to pay or prove identity. There is no local executor or fallback. `x402_access`,
-`x402_wallet`, `dexter_portfolio`, `x402_fetch`, and `x402_status` require the
-connected bearer.
+to pay or prove identity. There is no local executor or fallback. `x402_wallet`,
+`dexter_portfolio`, `x402_fetch`, and `x402_status` require the connected
+bearer.
+
+`x402_access` is separate: it starts one fresh anonymous legacy wallet-proof
+context per call. It is not Dexter OAuth, not governed payment authority, and
+does not preserve continuity across calls. The proxy accepts and persists no
+access-session credentials. A non-GET request needs separate approval for that
+exact one-call request and is never automatically retried.
 
 `opendexter wallet --legacy-recovery` parses an existing legacy JSON file but
 returns only validated public addresses and balances. It never derives,

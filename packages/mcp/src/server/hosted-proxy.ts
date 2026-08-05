@@ -6,6 +6,7 @@ import {
   callHostedRuntimeTool,
   projectRuntimeAuthorityStatus,
   readGovernedAuthorityStatus,
+  sanitizeLegacyAccessResult,
   structuredToolResult,
   type HostedRuntimeToolName,
 } from "../connect/wallet.js";
@@ -26,13 +27,13 @@ export const HOSTED_PROXY_INSTRUCTIONS = `You are connected to OpenDexter's host
 
 # Tool routing
 
-x402_search discovers live resources. x402_check probes exact terms without paying. A non-GET x402_check can still cause seller-side effects, so obtain separate explicit authorization for the exact probe before calling it; that probe authorization is not payment approval. Those two tools can use the anonymous hosted surface. x402_fetch, x402_status, x402_access, x402_wallet, and dexter_portfolio require the connected OAuth bearer. For a connected paid route, x402_check returns one opaque server-owned intentId; never parse, reconstruct, or replace it.
+x402_search discovers live resources and always uses the anonymous hosted surface. x402_check probes exact terms without paying; it uses OAuth when available and otherwise remains anonymously usable. A non-GET x402_check can still cause seller-side effects, so obtain separate explicit authorization for the exact probe before calling it; that probe authorization is not payment approval. x402_fetch, x402_status, x402_wallet, and dexter_portfolio require the connected OAuth bearer. For a connected paid route, x402_check returns one opaque server-owned intentId; never parse, reconstruct, or replace it.
 
 x402_fetch accepts only that intentId and a separately approved maxAmountAtomic ceiling. Those two values do not authorize a different URL, body, seller, route, amount, or payment mode. A failed or ambiguous fetch must never be retried blindly.
 
 x402_status accepts the same intentId and is the read-only recovery path after an ambiguous or completed x402_fetch. Reconcile status before deciding whether any retry is appropriate.
 
-x402_access calls SIWX-protected resources through the hosted wallet-bound principal. A non-GET x402_access can cause seller-side effects and requires separate explicit authorization for that exact request before it is sent. x402_wallet reads the hosted wallet and runtimeAuthority evidence. dexter_portfolio reads the session-bound governed asset inventory; portfolio value is not spendable cash.
+x402_access is a separate anonymous legacy wallet-proof operation. Every call starts one fresh hosted access context: it is not Dexter OAuth, not the governed payment wallet, and does not preserve continuity across calls. This proxy never accepts, exposes, or persists access session credentials. A non-GET x402_access can cause seller-side effects and requires separate explicit authorization for that exact one-call request before it is sent. x402_wallet reads the hosted wallet and runtimeAuthority evidence. dexter_portfolio reads the session-bound governed asset inventory; portfolio value is not spendable cash.
 
 # Authority truth
 
@@ -55,6 +56,8 @@ export interface HostedProxyOptions {
   ) => Promise<CallToolResult>;
   /** Test seam for the bearer-authenticated read-only authority endpoint. */
   readAuthorityStatus?: () => ReturnType<typeof readGovernedAuthorityStatus>;
+  /** Deterministic authority-evidence clock. */
+  now?: () => number;
 }
 
 function errorResult(error: unknown): CallToolResult {
@@ -90,7 +93,10 @@ export function registerHostedProxyTools(
     retryRejectedBearer = true,
   ): Promise<CallToolResult> => {
     try {
-      return await callTool(toolName, args, retryRejectedBearer);
+      const result = await callTool(toolName, args, retryRejectedBearer);
+      return toolName === "x402_access"
+        ? sanitizeLegacyAccessResult(result)
+        : result;
     } catch (error) {
       return errorResult(error);
     }
@@ -163,7 +169,7 @@ export function registerHostedProxyTools(
     "x402_access",
     {
       description:
-        "Use the hosted wallet-bound proof path for an SIWX-protected resource. Non-GET requests can cause seller-side effects and require separate explicit request authorization.",
+        "Use one fresh anonymous legacy wallet-proof context for an SIWX-protected resource. It is separate from Dexter OAuth and governed payment authority and has no cross-call continuity. Non-GET requests can cause seller-side effects and require separate explicit request authorization.",
       inputSchema: z.object({
         url: z.string().url(),
         method: httpMethod.optional(),
@@ -172,9 +178,9 @@ export function registerHostedProxyTools(
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: true },
     },
-    // GET access is retry-safe after an auth rejection; mutating methods are
-    // one-dispatch requests and require explicit recovery before any retry.
-    (args) => call("x402_access", args, (args.method ?? "GET") === "GET"),
+    // Every access call is one fresh anonymous context. Never redispatch it or
+    // invent continuity after any failure, including GET failures.
+    (args) => call("x402_access", args, false),
   );
 
   server.registerTool(
@@ -193,11 +199,12 @@ export function registerHostedProxyTools(
         : await readGovernedAuthorityStatus({
             dev: opts.dev,
             dataDir: opts.dataDir,
+            now: opts.now,
           });
       // Until the bearer endpoint is source-complete it truthfully returns an
       // unavailable projection. An exact evidence tuple embedded by the hosted
       // wallet remains acceptable and is never inferred from balances.
-      const embeddedStatus = projectRuntimeAuthorityStatus(wallet);
+      const embeddedStatus = projectRuntimeAuthorityStatus(wallet, opts.now);
       const status = endpointStatus.evidenceNamespace
         ? endpointStatus
         : embeddedStatus.evidenceNamespace

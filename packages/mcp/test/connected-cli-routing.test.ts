@@ -28,17 +28,30 @@ vi.mock("../src/wallet/index.js", () => ({
 
 import { cliAccess } from "../src/tools/access.js";
 import { cliCheck } from "../src/tools/check.js";
-import { cliFetch } from "../src/tools/fetch.js";
+import { cliFetch, cliStatus } from "../src/tools/fetch.js";
 import { callHostedRuntimeTool } from "../src/connect/wallet.js";
 import { loadOrCreateWallet } from "../src/wallet/index.js";
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
-  vi.mocked(callHostedRuntimeTool).mockClear();
+  vi.mocked(callHostedRuntimeTool).mockReset();
+  vi.mocked(callHostedRuntimeTool).mockImplementation(async ({
+    toolName,
+    arguments: args,
+    onDispatch,
+  }) => {
+    onDispatch?.();
+    return {
+      content: [{ type: "text", text: JSON.stringify({ ok: true, toolName, args }) }],
+      structuredContent: { ok: true, toolName, args },
+    };
+  });
   vi.mocked(loadOrCreateWallet).mockClear();
+  process.exitCode = undefined;
 });
 
 afterEach(() => {
+  process.exitCode = undefined;
   vi.restoreAllMocks();
 });
 
@@ -68,7 +81,7 @@ describe("connected CLI routing", () => {
       intentId: "intent_exact",
       maxAmountAtomic: "250000",
     });
-    expect(callHostedRuntimeTool).toHaveBeenCalledWith({
+    expect(callHostedRuntimeTool).toHaveBeenCalledWith(expect.objectContaining({
       toolName: "x402_fetch",
       arguments: {
         intentId: "intent_exact",
@@ -76,11 +89,12 @@ describe("connected CLI routing", () => {
       },
       dev: false,
       retryRejectedBearer: false,
-    });
+      onDispatch: expect.any(Function),
+    }));
     expect(loadOrCreateWallet).not.toHaveBeenCalled();
   });
 
-  it("routes wallet-proof access through the connected hosted principal", async () => {
+  it("routes wallet-proof access as a fresh hosted legacy one-call operation", async () => {
     await cliAccess("https://seller.example/private", {
       method: "GET",
       network: "solana-mainnet",
@@ -116,5 +130,124 @@ describe("connected CLI routing", () => {
       retryRejectedBearer: false,
     });
     expect(loadOrCreateWallet).not.toHaveBeenCalled();
+  });
+
+  it("forwards one exact intent to the read-only hosted status tool", async () => {
+    await cliStatus({ dev: false, intentId: "intent_exact" });
+    expect(callHostedRuntimeTool).toHaveBeenCalledTimes(1);
+    expect(callHostedRuntimeTool).toHaveBeenCalledWith({
+      toolName: "x402_status",
+      arguments: { intentId: "intent_exact" },
+      dev: false,
+    });
+    expect(loadOrCreateWallet).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it.each([undefined, "x".repeat(257)])(
+    "rejects an invalid status intent before hosted dispatch",
+    async (intentId) => {
+      await cliStatus({ dev: false, intentId });
+      expect(callHostedRuntimeTool).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    },
+  );
+
+  it("prints the exact same intent and a pinned no-retry command after an ambiguous fetch", async () => {
+    const intentId = "intent 'quoted' $HOME `cmd` ; stop";
+    vi.mocked(callHostedRuntimeTool).mockImplementationOnce(async ({ onDispatch }) => {
+      onDispatch?.();
+      throw new Error("transport closed after dispatch");
+    });
+
+    await cliFetch({
+      dev: false,
+      intentId,
+      maxAmountAtomic: "250000",
+    });
+
+    expect(callHostedRuntimeTool).toHaveBeenCalledTimes(1);
+    expect(callHostedRuntimeTool).toHaveBeenCalledWith(expect.objectContaining({
+      toolName: "x402_fetch",
+      arguments: { intentId, maxAmountAtomic: "250000" },
+      dev: false,
+      retryRejectedBearer: false,
+      onDispatch: expect.any(Function),
+    }));
+    const output = JSON.parse(
+      String(vi.mocked(console.log).mock.calls.at(-1)?.[0]),
+    ) as {
+      noRetry: boolean;
+      intentId: string;
+      recovery: { tool: string; argv: string[]; command: string };
+    };
+    expect(output).toMatchObject({
+      noRetry: true,
+      intentId,
+      recovery: { tool: "x402_status" },
+    });
+    expect(output.recovery.argv).toEqual([
+      "npx",
+      "-y",
+      "@dexterai/opendexter@1.23.2",
+      "status",
+      "--intent-id",
+      intentId,
+    ]);
+    expect(output.recovery.command).toContain(
+      "npx -y @dexterai/opendexter@1.23.2 status --intent-id",
+    );
+    expect(output.recovery.command).toBe(
+      "npx -y @dexterai/opendexter@1.23.2 status --intent-id "
+        + "'intent '\"'\"'quoted'\"'\"' $HOME `cmd` ; stop'",
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("treats an error result as ambiguous without automatic status or retry", async () => {
+    vi.mocked(callHostedRuntimeTool).mockImplementationOnce(async ({ onDispatch }) => {
+      onDispatch?.();
+      return {
+        isError: true,
+        content: [{ type: "text" as const, text: '{"error":"unknown_after_dispatch"}' }],
+        structuredContent: { error: "unknown_after_dispatch" },
+      };
+    });
+    await cliFetch({
+      dev: false,
+      intentId: "intent_error",
+      maxAmountAtomic: "1",
+    });
+    expect(callHostedRuntimeTool).toHaveBeenCalledTimes(1);
+    expect(callHostedRuntimeTool).toHaveBeenCalledWith(expect.objectContaining({
+      toolName: "x402_fetch",
+      arguments: { intentId: "intent_error", maxAmountAtomic: "1" },
+    }));
+    const output = JSON.parse(
+      String(vi.mocked(console.log).mock.calls.at(-1)?.[0]),
+    );
+    expect(output).toMatchObject({
+      noRetry: true,
+      intentId: "intent_error",
+      recovery: { tool: "x402_status" },
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("does not claim ambiguity when the wrapper fails before hosted dispatch", async () => {
+    vi.mocked(callHostedRuntimeTool).mockRejectedValueOnce(
+      new Error("Invalid URL"),
+    );
+    await cliFetch({
+      dev: false,
+      intentId: "intent_not_dispatched",
+      maxAmountAtomic: "1",
+    });
+    const output = JSON.parse(
+      String(vi.mocked(console.log).mock.calls.at(-1)?.[0]),
+    );
+    expect(output).toEqual({ error: "Invalid URL" });
+    expect(callHostedRuntimeTool).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBe(1);
   });
 });

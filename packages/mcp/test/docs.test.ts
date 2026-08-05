@@ -109,6 +109,15 @@ const CURRENT_PUBLIC_CONNECTION_GUIDANCE = [
   ["connection HTML", connectGuideHtml],
 ] as const;
 
+const ACCESS_TRUTH_GUIDANCE = [
+  ["root README", rootReadme],
+  ["package README", packageReadme],
+  ["installable skill", stripFrontmatter(skill)],
+  ["served workflow", workflow],
+  ["coding rule", stripFrontmatter(codingRule)],
+  ["setup command", stripFrontmatter(setupCommand)],
+] as const;
+
 const PACKAGED_GUIDANCE_PATHS = [
   "README.md",
   ".cursor-plugin/plugin.json",
@@ -222,6 +231,37 @@ describe("docs resources", () => {
       expect(text).toMatch(/not payment approval/i);
       expect(text).toMatch(/never (?:auth-refreshed and )?retried|never automatically retried/i);
     }
+  });
+
+  it.each(ACCESS_TRUTH_GUIDANCE)(
+    "%s keeps access separate from governed authority and continuity",
+    (_name, text) => {
+      const copy = plainText(text);
+      expect(copy).toMatch(/x402_access.*anonymous/s);
+      expect(copy).toMatch(/x402_access.*(?:fresh|one-call)/s);
+      expect(copy).toMatch(/x402_access.*(?:not|separate).*(?:oauth|governed)/s);
+      expect(copy).toMatch(/x402_access.*(?:no cross-call continuity|does not preserve continuity|no continuity)/s);
+      expect(text).not.toContain(
+        "x402_access calls SIWX-protected resources through the hosted wallet-bound principal",
+      );
+      expect(text).not.toContain(
+        "`x402_access` uses the connected hosted principal",
+      );
+      expect(text).not.toContain(
+        "`x402_access`, `x402_wallet`, and `dexter_portfolio` are account-bound",
+      );
+    },
+  );
+
+  it("documents the pinned same-intent CLI status recovery command", () => {
+    expect(packageReadme).toContain(
+      "npx @dexterai/opendexter@1.23.2 status",
+    );
+    expect(packageReadme).toContain("--intent-id \"<same-opaque-intent-id>\"");
+    expect(packageReadme).toContain("`noRetry`");
+    expect(packageReadme).not.toContain(
+      "The CLI does not expose a separate intent-status subcommand",
+    );
   });
 
   it.each(CURRENT_PUBLIC_CONNECTION_GUIDANCE)(

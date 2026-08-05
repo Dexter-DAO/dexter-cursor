@@ -21,7 +21,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { getApiBase, VERSION } from "../config.js";
-import { loadSession, saveSession, type VaultSession } from "./store.js";
+import { clearSession, loadSession, saveSession, type VaultSession } from "./store.js";
 
 /** The connector rail's OAuth token endpoint (device grant + refresh). */
 const TOKEN_PATH = "/api/connector/oauth/token";
@@ -122,6 +122,9 @@ export interface RuntimeAuthorityStatus {
   reason: string | null;
 }
 
+const AUTHORITY_CAPACITY_MAX_AGE_MS = 60_000;
+const AUTHORITY_CAPACITY_MAX_FUTURE_SKEW_MS = 5_000;
+
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -139,7 +142,9 @@ function stringValue(value: unknown): string | null {
  */
 export function projectRuntimeAuthorityStatus(
   wallet: HostedWalletResult | Record<string, unknown> | null,
+  now: () => number = () => Date.now(),
 ): RuntimeAuthorityStatus {
+  const currentTime = now();
   const container = wallet ?? {};
   const candidates = [
     container.runtimeAuthority,
@@ -202,6 +207,19 @@ export function projectRuntimeAuthorityStatus(
       : null;
   const authoritySource = stringValue(evidence.source);
   const expiresAt = stringValue(evidence.expiresAt);
+  const expiresAtMs = expiresAt === null ? Number.NaN : Date.parse(expiresAt);
+  const capacityEvaluatedAt = stringValue(capacity?.evaluatedAt);
+  const capacityEvaluatedAtMs = capacityEvaluatedAt === null
+    ? Number.NaN
+    : Date.parse(capacityEvaluatedAt);
+  const capacityTimestampFresh =
+    Number.isFinite(capacityEvaluatedAtMs)
+    && capacityEvaluatedAtMs >= currentTime - AUTHORITY_CAPACITY_MAX_AGE_MS
+    && capacityEvaluatedAtMs <= currentTime + AUTHORITY_CAPACITY_MAX_FUTURE_SKEW_MS;
+  const authorityUnexpired = Number.isFinite(expiresAtMs) && expiresAtMs > currentTime;
+  const authorityExpired = active === true
+    && Number.isFinite(expiresAtMs)
+    && !authorityUnexpired;
   const atomic = (value: unknown): value is string =>
     typeof value === "string" && /^\d+$/.test(value);
   const digest = (value: unknown): boolean =>
@@ -232,8 +250,7 @@ export function projectRuntimeAuthorityStatus(
     && BigInt(capacity.usedAggregateAmountAtomic)
       + BigInt(capacity.remainingAggregateAmountAtomic)
       === BigInt(capacity.maximumAggregateAmountAtomic)
-    && stringValue(capacity.evaluatedAt) !== null
-    && Number.isFinite(Date.parse(String(capacity.evaluatedAt)))
+    && capacityTimestampFresh
     && digest(capacity.snapshotDigest);
   const exactActiveRole =
     activeRole?.status === "active"
@@ -254,8 +271,7 @@ export function projectRuntimeAuthorityStatus(
     && grantRevision >= 0
     && exactPrincipal
     && exactCapacity
-    && expiresAt !== null
-    && Number.isFinite(Date.parse(expiresAt))
+    && authorityUnexpired
     && scopesObject?.network === "solana-mainnet"
     && scopesObject.assetId === "usdc"
     && scopesObject.action === "send"
@@ -271,10 +287,16 @@ export function projectRuntimeAuthorityStatus(
     status:
       completeActiveEvidence
         ? "active"
+        : authorityExpired || active === false
+          ? "inactive"
         : mode === "unavailable" || active === null || active === true
           ? "unavailable"
           : "inactive",
-    active: completeActiveEvidence ? true : active === false ? false : null,
+    active: completeActiveEvidence
+      ? true
+      : authorityExpired || active === false
+        ? false
+        : null,
     authoritySource,
     grantId,
     grantRevision,
@@ -307,8 +329,14 @@ export function projectRuntimeAuthorityStatus(
     fallback,
     evidenceNamespace: "dexter-governed-agent-surface-authority/v1",
     reason:
-      active === true && !completeActiveEvidence
-        ? "governed_authority_evidence_incomplete"
+      authorityExpired
+        ? "governed_authority_expired"
+        : active === true
+          && Number.isFinite(capacityEvaluatedAtMs)
+          && !capacityTimestampFresh
+          ? "governed_authority_capacity_stale"
+          : active === true && !completeActiveEvidence
+            ? "governed_authority_evidence_incomplete"
         : stringValue(evidence.inactiveReason),
   };
 }
@@ -325,6 +353,8 @@ export async function callHostedTool(opts: {
   arguments?: Record<string, unknown>;
   serverUrl?: string;
   fetchImpl?: typeof fetch;
+  /** Called only after MCP connection succeeds, immediately before callTool. */
+  onDispatch?: () => void;
 }): Promise<CallToolResult> {
   const url = new URL(opts.serverUrl ?? HOSTED_MCP_URL);
   const headers = opts.accessToken
@@ -340,6 +370,7 @@ export async function callHostedTool(opts: {
   );
   try {
     await client.connect(transport);
+    opts.onDispatch?.();
     return await client.callTool({
       name: opts.toolName,
       arguments: opts.arguments ?? {},
@@ -347,6 +378,71 @@ export async function callHostedTool(opts: {
   } finally {
     await client.close().catch(() => {});
   }
+}
+
+function isAccessCredentialKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[^a-z]/g, "");
+  return normalized === "sessiontoken" || normalized === "sessionkey";
+}
+
+function compositeJson(value: string): unknown | null {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function collectAccessCredentials(value: unknown, secrets: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectAccessCredentials(item, secrets);
+    return;
+  }
+  if (typeof value === "string") {
+    const parsed = compositeJson(value);
+    if (parsed) collectAccessCredentials(parsed, secrets);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (isAccessCredentialKey(key) && typeof item === "string" && item.length > 0) {
+      secrets.add(item);
+    }
+    collectAccessCredentials(item, secrets);
+  }
+}
+
+function scrubAccessCredentials(value: unknown, secrets: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => scrubAccessCredentials(item, secrets));
+  }
+  if (typeof value === "string") {
+    const parsed = compositeJson(value);
+    if (parsed) {
+      return JSON.stringify(scrubAccessCredentials(parsed, secrets), null, 2);
+    }
+    let scrubbed = value;
+    for (const secret of secrets) {
+      scrubbed = scrubbed.split(secret).join("[redacted]");
+    }
+    return scrubbed.replace(/_?session[_-]?(?:token|key)/gi, "sessionCredential");
+  }
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !isAccessCredentialKey(key))
+      .map(([key, item]) => [key, scrubAccessCredentials(item, secrets)]),
+  );
+}
+
+/** Never forward the legacy access context's session credentials locally. */
+export function sanitizeLegacyAccessResult(result: CallToolResult): CallToolResult {
+  const secrets = new Set<string>();
+  collectAccessCredentials(result, secrets);
+  return scrubAccessCredentials(result, secrets) as CallToolResult;
 }
 
 export function structuredToolResult(
@@ -454,6 +550,8 @@ export interface HostedRuntimeCallOpts {
   apiBase?: string;
   fetchImpl?: typeof fetch;
   now?: () => number;
+  /** Exact dispatch seam used by CLI ambiguity recovery. */
+  onDispatch?: () => void;
   /**
    * May disable rejected-bearer retry for a caller with stricter semantics.
    * It cannot enable retry for x402_fetch or a non-GET check/access: those are
@@ -493,12 +591,24 @@ async function refreshAndPersistSession(
   return next;
 }
 
+function isUsableStoredSession(session: VaultSession | null): session is VaultSession {
+  return session !== null
+    && typeof session.accessToken === "string"
+    && session.accessToken.length > 0
+    && typeof session.refreshToken === "string"
+    && session.refreshToken.length > 0
+    && typeof session.expiresAt === "number"
+    && Number.isFinite(session.expiresAt);
+}
+
 /**
  * Call the hosted runtime selected by the current connect store. An absent
- * session may call only anonymous search/check; every account-bound tool fails
- * before dispatch. This path never reads or creates wallet.json. A stale token
- * is refreshed before dispatch. A rejected bearer is retried only for
- * explicitly retry-safe reads and never for fetch or a non-GET seller request.
+ * session may call anonymous search/check/access; every account-bound tool
+ * fails before dispatch. Search and access always use the anonymous hosted
+ * surface. Check uses OAuth when it is currently available, otherwise it
+ * degrades to one anonymous call. This path never reads or creates wallet.json.
+ * A rejected bearer is retried only for explicitly retry-safe reads and never
+ * for fetch or a non-GET seller request.
  */
 export async function callHostedRuntimeTool(
   opts: HostedRuntimeCallOpts,
@@ -511,15 +621,32 @@ export async function callHostedRuntimeTool(
       arguments: args,
       serverUrl: opts.serverUrl,
       fetchImpl: opts.fetchImpl,
+      onDispatch: opts.onDispatch,
     }));
-  let session = loadSession(opts.dataDir);
+  const args = opts.arguments ?? {};
 
-  if (
-    !session
-    && opts.toolName !== "x402_search"
-    && opts.toolName !== "x402_check"
-  ) {
+  // Search and access are intentionally independent of Dexter OAuth. Access is
+  // a fresh one-call legacy wallet-proof context on the hosted server; this
+  // proxy neither accepts nor persists its session credentials.
+  if (opts.toolName === "x402_search" || opts.toolName === "x402_access") {
+    const result = await callHosted(null, opts.toolName, args);
+    return opts.toolName === "x402_access"
+      ? sanitizeLegacyAccessResult(result)
+      : result;
+  }
+
+  let session = loadSession(opts.dataDir);
+  if (session && !isUsableStoredSession(session)) {
+    clearSession(opts.dataDir);
+    session = null;
+  }
+
+  if (!session && opts.toolName !== "x402_check") {
     throw new Error(`connect_required_for_hosted_${opts.toolName}`);
+  }
+
+  if (!session) {
+    return callHosted(null, "x402_check", args);
   }
 
   // Refresh before any dispatch when expiry is already known. This is safe for
@@ -527,15 +654,18 @@ export async function callHostedRuntimeTool(
   if (session && session.expiresAt <= now() + 30_000) {
     session = await refreshAndPersistSession(session, opts);
     if (!session) {
+      clearSession(opts.dataDir);
+      if (opts.toolName === "x402_check") {
+        return callHosted(null, "x402_check", args);
+      }
       throw new Error("connected_session_expired_reconnect_required");
     }
   }
 
-  const args = opts.arguments ?? {};
   const retrySafeByContract =
     opts.toolName !== "x402_fetch"
     && (
-      (opts.toolName !== "x402_check" && opts.toolName !== "x402_access")
+      opts.toolName !== "x402_check"
       || !("method" in args)
       || args.method === "GET"
     );
@@ -550,6 +680,10 @@ export async function callHostedRuntimeTool(
     }
     session = await refreshAndPersistSession(session, opts);
     if (!session) {
+      clearSession(opts.dataDir);
+      if (opts.toolName === "x402_check") {
+        return callHosted(null, "x402_check", args);
+      }
       throw new Error("connected_session_expired_reconnect_required");
     }
     return await callHosted(session.accessToken, opts.toolName, args);
@@ -612,7 +746,7 @@ export async function readGovernedAuthorityStatus(opts: {
     const body = await response.json().catch(() => null);
     const evidence = objectValue(body);
     if (!evidence) return unavailableAuthorityStatus("governed_authority_status_invalid");
-    return projectRuntimeAuthorityStatus({ authority: evidence });
+    return projectRuntimeAuthorityStatus({ authority: evidence }, now);
   } catch {
     return unavailableAuthorityStatus("governed_authority_status_unavailable");
   }
@@ -711,7 +845,7 @@ export async function showConnectedWallet(opts: ConnectedWalletOpts): Promise<vo
     }
   }
 
-  const embeddedAuthority = projectRuntimeAuthorityStatus(result);
+  const embeddedAuthority = projectRuntimeAuthorityStatus(result, now);
   const endpointAuthority = opts.readAuthorityStatus
     ? await opts.readAuthorityStatus()
     : opts.callHostedWallet

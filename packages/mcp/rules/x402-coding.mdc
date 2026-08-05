@@ -18,9 +18,14 @@ x402-coding:
   seller terms. Never reconstruct or replace it.
 - After an uncertain fetch, call `x402_status` with the same `intentId`. Never
   auth-refresh and retry the consequential fetch after possible dispatch.
-- `x402_access`, `x402_wallet`, and `dexter_portfolio` are account-bound and
-  require the connected bearer. A balance or portfolio does not prove active
-  governed authority.
+- `x402_access` is a separate anonymous fresh one-call legacy wallet-proof
+  operation. It is not Dexter OAuth or governed payment authority, preserves no
+  cross-call continuity, and never accepts or persists access-session
+  credentials. A non-GET access request needs separate approval and is never
+  automatically retried.
+- `x402_wallet` and `dexter_portfolio` are account-bound and require the
+  connected bearer. A balance or portfolio does not prove active governed
+  authority.
 - For a deliberately independent `@dexterai/x402` integration, import from
   subpaths, never from the root package:
   - `import { wrapFetch } from '@dexterai/x402/client'`

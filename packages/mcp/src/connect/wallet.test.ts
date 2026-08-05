@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
+  callHostedTool,
   callHostedRuntimeTool,
   projectRuntimeAuthorityStatus,
   readGovernedAuthorityStatus,
@@ -217,6 +218,7 @@ describe("connect/wallet — refreshVaultToken", () => {
 });
 
 describe("connect/wallet — governed runtime authority", () => {
+  const NOW = Date.parse("2026-08-05T00:00:30.000Z");
   const exactEvidence = {
     namespace: "dexter-governed-agent-surface-authority/v1",
     mode: "bounded_payment_authority",
@@ -249,7 +251,7 @@ describe("connect/wallet — governed runtime authority", () => {
       maximumAggregateAmountAtomic: "10000000",
       usedAggregateAmountAtomic: "2250000",
       remainingAggregateAmountAtomic: "7750000",
-      evaluatedAt: "2026-08-05T00:00:00.000Z",
+      evaluatedAt: new Date(NOW).toISOString(),
       snapshotDigest: "a".repeat(64),
     },
     revoked: false,
@@ -268,7 +270,7 @@ describe("connect/wallet — governed runtime authority", () => {
     const status = projectRuntimeAuthorityStatus({
       balances: { usdc: 12.34 },
       authority: exactEvidence,
-    });
+    }, () => NOW);
     expect(status).toMatchObject({
       status: "active",
       active: true,
@@ -293,7 +295,7 @@ describe("connect/wallet — governed runtime authority", () => {
       revocation: { revoked: false },
       fallback: { active: false, automatic: false },
     });
-    expect(projectRuntimeAuthorityStatus({ balances: { usdc: 12.34 } }))
+    expect(projectRuntimeAuthorityStatus({ balances: { usdc: 12.34 } }, () => NOW))
       .toMatchObject({ status: "unavailable", active: null, grantId: null });
     expect(projectRuntimeAuthorityStatus({
       authority: {
@@ -301,7 +303,7 @@ describe("connect/wallet — governed runtime authority", () => {
         mode: "bounded_payment_authority",
         active: true,
       },
-    })).toMatchObject({
+    }, () => NOW)).toMatchObject({
       status: "unavailable",
       active: null,
       reason: "governed_authority_evidence_incomplete",
@@ -314,11 +316,69 @@ describe("connect/wallet — governed runtime authority", () => {
           remainingDailyAmountAtomic: "4000000",
         },
       },
-    })).toMatchObject({
+    }, () => NOW)).toMatchObject({
       status: "unavailable",
       active: null,
       reason: "governed_authority_evidence_incomplete",
     });
+  });
+
+  it.each([
+    ["capacity 60,001ms old", {
+      capacity: {
+        ...exactEvidence.capacity,
+        evaluatedAt: new Date(NOW - 60_001).toISOString(),
+      },
+    }, "governed_authority_capacity_stale"],
+    ["capacity 5,001ms in the future", {
+      capacity: {
+        ...exactEvidence.capacity,
+        evaluatedAt: new Date(NOW + 5_001).toISOString(),
+      },
+    }, "governed_authority_capacity_stale"],
+    ["malformed expiry", { expiresAt: "not-a-time" }, "governed_authority_evidence_incomplete"],
+    ["malformed capacity time", {
+      capacity: { ...exactEvidence.capacity, evaluatedAt: "not-a-time" },
+    }, "governed_authority_evidence_incomplete"],
+  ] as const)("fails closed for %s", (_label, override, reason) => {
+    expect(projectRuntimeAuthorityStatus({
+      authority: { ...exactEvidence, ...override },
+    }, () => NOW)).toMatchObject({
+      status: "unavailable",
+      active: null,
+      reason,
+    });
+  });
+
+  it.each([
+    ["expiry equal to now", NOW],
+    ["expired evidence", NOW - 1],
+  ])("projects %s as deterministically inactive", (_label, expiresAt) => {
+    expect(projectRuntimeAuthorityStatus({
+      authority: {
+        ...exactEvidence,
+        expiresAt: new Date(expiresAt).toISOString(),
+      },
+    }, () => NOW)).toMatchObject({
+      status: "inactive",
+      active: false,
+      reason: "governed_authority_expired",
+    });
+  });
+
+  it.each([
+    ["capacity exactly 60,000ms old", NOW - 60_000],
+    ["capacity exactly 5,000ms in the future", NOW + 5_000],
+  ])("accepts %s", (_label, evaluatedAt) => {
+    expect(projectRuntimeAuthorityStatus({
+      authority: {
+        ...exactEvidence,
+        capacity: {
+          ...exactEvidence.capacity,
+          evaluatedAt: new Date(evaluatedAt).toISOString(),
+        },
+      },
+    }, () => NOW)).toMatchObject({ status: "active", active: true });
   });
 
   it("reads exact status with only the stored bearer and no caller identity", async () => {
@@ -331,6 +391,7 @@ describe("connect/wallet — governed runtime authority", () => {
       dataDir: dir,
       apiBase: "https://api.example",
       fetchImpl: fetchImpl as unknown as typeof fetch,
+      now: () => NOW,
     });
     expect(status.status).toBe("active");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -397,7 +458,6 @@ describe("connect/wallet — governed runtime authority", () => {
     const callHosted = vi.fn();
     for (const toolName of [
       "x402_status",
-      "x402_access",
       "x402_wallet",
       "dexter_portfolio",
     ] as const) {
@@ -409,6 +469,252 @@ describe("connect/wallet — governed runtime authority", () => {
     }
     expect(callHosted).not.toHaveBeenCalled();
   });
+
+  it.each(["x402_search", "x402_access"] as const)(
+    "always dispatches %s once anonymously without refreshing OAuth",
+    async (toolName) => {
+      seedSession({ expiresAt: 0 });
+      const fetchImpl = vi.fn();
+      const callHosted = vi.fn(async () => ({
+        content: [{ type: "text" as const, text: '{"ok":true}' }],
+      }));
+      await callHostedRuntimeTool({
+        toolName,
+        arguments: { url: "https://seller.example/read", method: "GET" },
+        dataDir: dir,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        callHosted,
+      });
+      expect(callHosted).toHaveBeenCalledTimes(1);
+      expect(callHosted).toHaveBeenCalledWith(
+        null,
+        toolName,
+        { url: "https://seller.example/read", method: "GET" },
+      );
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  it("strips every legacy access credential field and value from the returned result", async () => {
+    const sessionToken = "open_access_token_secret";
+    const sessionKey = "open_access_key_secret";
+    const callHosted = vi.fn(async () => ({
+      _meta: {
+        sessionToken,
+        session_key: sessionKey,
+        preserved: "meta-safe",
+      },
+      structuredContent: {
+        ok: true,
+        nested: {
+          sessionToken,
+          preserved: "structured-safe",
+        },
+      },
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            sessionKey,
+            preserved: "json-safe",
+          }),
+        },
+        {
+          type: "text" as const,
+          text: `sessionToken=${sessionToken}; session_key=${sessionKey}; visible`,
+        },
+      ],
+    }));
+
+    const result = await callHostedRuntimeTool({
+      toolName: "x402_access",
+      arguments: { url: "https://seller.example/private", method: "GET" },
+      dataDir: dir,
+      callHosted,
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(sessionToken);
+    expect(serialized).not.toContain(sessionKey);
+    expect(serialized).not.toMatch(/session[_-]?(?:token|key)/i);
+    expect(result).toMatchObject({
+      _meta: { preserved: "meta-safe" },
+      structuredContent: {
+        ok: true,
+        nested: { preserved: "structured-safe" },
+      },
+    });
+    expect(result.content).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: expect.stringContaining("json-safe") }),
+      expect.objectContaining({ text: expect.stringContaining("visible") }),
+    ]));
+  });
+
+  it("does not mark dispatch when the production hosted wrapper rejects its URL", async () => {
+    const onDispatch = vi.fn();
+    await expect(callHostedTool({
+      accessToken: "at.test.sig",
+      toolName: "x402_fetch",
+      arguments: { intentId: "intent-not-dispatched", maxAmountAtomic: "1" },
+      serverUrl: "not a URL",
+      onDispatch,
+    })).rejects.toThrow();
+    expect(onDispatch).not.toHaveBeenCalled();
+  });
+
+  it("degrades an expired unrefreshable check to one anonymous dispatch", async () => {
+    seedSession({ expiresAt: NOW - 1 });
+    const callHosted = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: '{"ok":true}' }],
+    }));
+    await callHostedRuntimeTool({
+      toolName: "x402_check",
+      arguments: { url: "https://seller.example/price", method: "GET" },
+      dataDir: dir,
+      apiBase: "https://api.example",
+      now: () => NOW,
+      fetchImpl: tokenFetch(400, { error: "invalid_grant" }) as unknown as typeof fetch,
+      callHosted,
+    });
+    expect(callHosted).toHaveBeenCalledTimes(1);
+    expect(callHosted).toHaveBeenCalledWith(
+      null,
+      "x402_check",
+      { url: "https://seller.example/price", method: "GET" },
+    );
+    expect(loadSession(dir)).toBeNull();
+  });
+
+  it("uses a refreshed bearer for an expired check when refresh succeeds", async () => {
+    seedSession({ expiresAt: NOW - 1 });
+    const callHosted = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: '{"ok":true}' }],
+    }));
+    await callHostedRuntimeTool({
+      toolName: "x402_check",
+      arguments: { url: "https://seller.example/price", method: "GET" },
+      dataDir: dir,
+      apiBase: "https://api.example",
+      now: () => NOW,
+      fetchImpl: tokenFetch(200, {
+        access_token: "at.refreshed.sig",
+        refresh_token: "dlt_refreshed",
+        expires_in: 3600,
+      }) as unknown as typeof fetch,
+      callHosted,
+    });
+    expect(callHosted).toHaveBeenCalledOnce();
+    expect(callHosted).toHaveBeenCalledWith(
+      "at.refreshed.sig",
+      "x402_check",
+      { url: "https://seller.example/price", method: "GET" },
+    );
+  });
+
+  it("falls back once anonymously when a GET check bearer is rejected and cannot refresh", async () => {
+    seedSession({ expiresAt: NOW + 3600_000 });
+    const callHosted = vi.fn(async (accessToken: string | null) => {
+      if (accessToken) throw authError();
+      return { content: [{ type: "text" as const, text: '{"ok":true}' }] };
+    });
+    await callHostedRuntimeTool({
+      toolName: "x402_check",
+      arguments: { url: "https://seller.example/price", method: "GET" },
+      dataDir: dir,
+      apiBase: "https://api.example",
+      now: () => NOW,
+      fetchImpl: tokenFetch(400, { error: "invalid_grant" }) as unknown as typeof fetch,
+      callHosted,
+    });
+    expect(callHosted).toHaveBeenCalledTimes(2);
+    expect(callHosted.mock.calls).toEqual([
+      ["at.original.sig", "x402_check", {
+        url: "https://seller.example/price",
+        method: "GET",
+      }],
+      [null, "x402_check", {
+        url: "https://seller.example/price",
+        method: "GET",
+      }],
+    ]);
+  });
+
+  it("never redispatches a failed anonymous legacy access call", async () => {
+    seedSession();
+    const callHosted = vi.fn(async () => {
+      throw new Error("legacy access outcome unknown");
+    });
+    await expect(callHostedRuntimeTool({
+      toolName: "x402_access",
+      arguments: {
+        url: "https://seller.example/private",
+        method: "POST",
+        body: '{"action":"issue"}',
+      },
+      dataDir: dir,
+      callHosted,
+    })).rejects.toThrow("legacy access outcome unknown");
+    expect(callHosted).toHaveBeenCalledTimes(1);
+    expect(callHosted).toHaveBeenCalledWith(null, "x402_access", {
+      url: "https://seller.example/private",
+      method: "POST",
+      body: '{"action":"issue"}',
+    });
+  });
+
+  it("degrades an invalid stored session for check but keeps account tools fail-closed", async () => {
+    writeFileSync(join(dir, "vault.json"), JSON.stringify({
+      version: 1,
+      accessToken: "",
+      refreshToken: "",
+      expiresAt: "invalid",
+    }));
+    const callHosted = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: '{"ok":true}' }],
+    }));
+    await callHostedRuntimeTool({
+      toolName: "x402_check",
+      arguments: { url: "https://seller.example/price" },
+      dataDir: dir,
+      callHosted,
+    });
+    expect(callHosted).toHaveBeenCalledOnce();
+    expect(callHosted).toHaveBeenLastCalledWith(
+      null,
+      "x402_check",
+      { url: "https://seller.example/price" },
+    );
+
+    writeFileSync(join(dir, "vault.json"), JSON.stringify({
+      version: 1,
+      accessToken: "",
+      refreshToken: "",
+      expiresAt: "invalid",
+    }));
+    callHosted.mockClear();
+    await expect(callHostedRuntimeTool({
+      toolName: "x402_wallet",
+      dataDir: dir,
+      callHosted,
+    })).rejects.toThrow("connect_required_for_hosted_x402_wallet");
+    expect(callHosted).not.toHaveBeenCalled();
+  });
+
+  it.each(["x402_fetch", "x402_status", "x402_wallet", "dexter_portfolio"] as const)(
+    "fails an expired unrefreshable %s before dispatch",
+    async (toolName) => {
+      seedSession({ expiresAt: NOW - 1 });
+      const callHosted = vi.fn();
+      await expect(callHostedRuntimeTool({
+        toolName,
+        dataDir: dir,
+        apiBase: "https://api.example",
+        now: () => NOW,
+        fetchImpl: tokenFetch(400, { error: "invalid_grant" }) as unknown as typeof fetch,
+        callHosted,
+      })).rejects.toThrow("connected_session_expired_reconnect_required");
+      expect(callHosted).not.toHaveBeenCalled();
+    },
+  );
 
   it("sends the stored OAuth bearer with the exact status-recovery intent", async () => {
     seedSession();

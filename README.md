@@ -180,7 +180,7 @@ The local proxy exposes exactly these seven model-facing tools:
 | `x402_check` | Reads current terms and can prepare one opaque intent | A non-GET probe can mutate seller state; it requires separate probe approval |
 | `x402_fetch` | Executes one opaque intent under a separately approved atomic ceiling | Yes; it can move USDC |
 | `x402_status` | Reconciles the same intent after an uncertain or completed fetch | No |
-| `x402_access` | Uses the hosted wallet-bound principal for SIWX access | A non-GET request can mutate seller state; it requires separate request approval |
+| `x402_access` | Starts one fresh anonymous legacy SIWX wallet-proof context, separate from Dexter OAuth and governed payment authority, with no cross-call continuity | A non-GET request can mutate seller state; it requires separate request approval |
 | `x402_wallet` | Reads the connected wallet and exact authority evidence | No |
 | `dexter_portfolio` | Reads the governed portfolio bound to the same principal | No |
 

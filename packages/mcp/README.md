@@ -23,8 +23,10 @@ as an OpenDexter payer.
 It provides:
 
 - anonymous hosted capability search and price/requirements checks;
-- a connected OAuth path for wallet proof, wallet and portfolio reads, exact
-  governed purchase intents, and intent-status recovery;
+- a connected OAuth path for wallet and portfolio reads, exact governed
+  purchase intents, and intent-status recovery;
+- a separate anonymous, fresh one-call legacy SIWX wallet-proof path with no
+  OAuth/governed-authority binding or cross-call continuity;
 - truthful live bounded-authority status from Dexter's bearer-authenticated
   authority endpoint;
 - an explicitly labeled, read-only recovery view for public addresses and
@@ -121,7 +123,7 @@ authentication state.
 | `x402_check` | Read exact current terms; when connected, receive one opaque server-owned intent | Optional |
 | `x402_fetch` | Execute exactly one server-owned intent under governed authority | Required |
 | `x402_status` | Read the same intent after an uncertain or completed fetch; never dispatch payment | Required |
-| `x402_access` | Use the hosted wallet-bound proof path for an SIWX-protected resource | Required |
+| `x402_access` | Use one fresh anonymous legacy SIWX wallet-proof context, separate from governed authority and without cross-call continuity | No |
 | `x402_wallet` | Read the hosted wallet and exact runtime-authority evidence | Required |
 | `dexter_portfolio` | Read the governed portfolio bound to the connected principal | Required |
 
@@ -159,15 +161,19 @@ npx @dexterai/opendexter@1.23.2 check \
 npx @dexterai/opendexter@1.23.2 fetch \
   --intent-id "<opaque-intent-id-from-the-connected-check>" \
   --max-amount-atomic "<user-approved-ceiling>"
+
+npx @dexterai/opendexter@1.23.2 status \
+  --intent-id "<same-opaque-intent-id>"
 ```
 
 Inspect the returned terms and ceiling before the fetch. The final command can
 move real USDC through hosted governed authority. The CLI also accepts `pay` as
 an alias of this same intent-only fetch; it is not a second executor.
 
-The CLI does not expose a separate intent-status subcommand. When a CLI fetch
-is ambiguous, do not run it again; reconcile the intent through the MCP
-`x402_status` tool.
+When a CLI fetch is ambiguous, its output preserves the exact `intentId`, marks
+the action `noRetry`, and prints the pinned `status --intent-id` recovery
+command. Run that read-only status command; never repeat the fetch merely
+because its outcome was hidden.
 
 ## Search, check, and access
 
@@ -183,10 +189,12 @@ probe is never auth-refreshed and retried automatically. Anonymous checks can
 inspect terms; only a connected check can prepare an account-bound intent for
 execution.
 
-`x402_access` uses the connected hosted principal for an SIWX-protected
-resource. A non-GET access request likewise needs separate approval and is
-never auth-refreshed and retried after possible dispatch. It does not use an
-application key or a legacy wallet signer.
+`x402_access` is a separate anonymous legacy wallet-proof surface for an
+SIWX-protected resource. Every call starts one fresh hosted context. It is not
+Dexter OAuth, not the connected governed payment wallet, and does not preserve
+continuity across calls; the proxy accepts and persists no access-session
+credentials. A non-GET access request needs separate approval for that exact
+one-call request and is never automatically retried after possible dispatch.
 
 ## Wallet and authority truth
 
@@ -225,7 +233,8 @@ search <query>          Search the hosted catalog anonymously
 check <url>             Inspect hosted terms; connected checks can return an intent
 fetch                   Execute one connected intent with an atomic ceiling
 pay                     Alias of the same connected intent execution
-access <url>            Use hosted wallet-bound proof
+status                  Read the same intent after an uncertain/completed fetch
+access <url>            Use one fresh anonymous legacy wallet-proof context
 wallet                  Read hosted wallet and authority status
 connect                 Connect, inspect status, or disconnect OAuth
 ```
