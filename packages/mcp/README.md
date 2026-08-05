@@ -17,7 +17,8 @@
 
 This package runs locally, but x402 authority and account-bound execution do
 not. The local process proxies the canonical hosted runtime at
-`https://open.dexter.cash/mcp` and never loads a local private key to pay.
+`https://open.dexter.cash/mcp` and never derives or enables a local private key
+as an OpenDexter payer.
 
 It provides:
 
@@ -53,8 +54,9 @@ npx @dexterai/opendexter@1.23.2 connect status
 ```
 
 The device flow stores an OAuth bearer locally. Account-bound tools send that
-bearer only to `https://open.dexter.cash/mcp`. The connector requests the exact
-`vault dexter_surface` scopes. Connection alone is not proof of spend authority:
+bearer only to `https://open.dexter.cash/mcp`. The connector requests exact
+OAuth scope `vault`; Dexter's signed top-level dexter_surface token claim is
+separate authority evidence, not a requested scope. Connection alone is not proof of spend authority:
 `connect status` reads `GET /api/connector/oauth/authority`, and authority stays
 unavailable unless the exact live grant, principal, limits, remaining capacity,
 expiry, scopes, active role, and revocation evidence is complete.
@@ -175,12 +177,16 @@ networks, and structured input/output evidence. A degraded ranking is a live
 fallback, not an empty catalog and not proof that the first result is best.
 
 `x402_check` probes the exact URL without making an x402 payment. A non-GET
-probe can still mutate provider state, so obtain approval for that external
-action. Anonymous checks can inspect terms; only a connected check can prepare
-an account-bound intent for execution.
+probe can still mutate provider state, so obtain separate approval for that
+exact probe; probe approval is not payment approval. After dispatch, a non-GET
+probe is never auth-refreshed and retried automatically. Anonymous checks can
+inspect terms; only a connected check can prepare an account-bound intent for
+execution.
 
 `x402_access` uses the connected hosted principal for an SIWX-protected
-resource. It does not use an application key or a legacy wallet signer.
+resource. A non-GET access request likewise needs separate approval and is
+never auth-refreshed and retried after possible dispatch. It does not use an
+application key or a legacy wallet signer.
 
 ## Wallet and authority truth
 
@@ -201,10 +207,10 @@ non-payment recovery command:
 npx @dexterai/opendexter@1.23.2 wallet --legacy-recovery
 ```
 
-That view validates and returns only public addresses and balance reads. It
-does not load, derive, return, repair, create, migrate, or enable private-key
-material. It cannot execute `x402_fetch`, `x402_access`, or any other payment or
-proof action.
+That view parses the existing JSON file, validates its public addresses, and
+returns only those addresses and balance reads. It never derives, returns,
+exports, or enables private-key fields as a signer. It cannot execute
+`x402_fetch`, `x402_access`, or any other payment or proof action.
 
 Legacy local settings data, if present, has no effect on the hosted runtime. Manage
 the real grant, limits, and revocation at `https://dexter.cash/wallet` and

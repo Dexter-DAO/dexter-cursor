@@ -362,6 +362,25 @@ describe("connect/wallet — governed runtime authority", () => {
     expect(callHosted).toHaveBeenCalledTimes(1);
   });
 
+  it("cannot enable auth retry for a non-GET check after possible dispatch", async () => {
+    seedSession();
+    const callHosted = vi.fn(async () => {
+      throw authError();
+    });
+    await expect(callHostedRuntimeTool({
+      toolName: "x402_check",
+      arguments: {
+        url: "https://seller.example/check",
+        method: "POST",
+        body: '{"action":"reserve"}',
+      },
+      dataDir: dir,
+      retryRejectedBearer: true,
+      callHosted,
+    })).rejects.toThrow(/no_automatic_retry/);
+    expect(callHosted).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects disconnected fetch before dispatch even when a legacy signer env name exists", async () => {
     vi.stubEnv("DEXTER_PRIVATE_KEY", "legacy-material-must-not-be-read");
     const callHosted = vi.fn();

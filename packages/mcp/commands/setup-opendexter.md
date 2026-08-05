@@ -34,8 +34,9 @@ npx @dexterai/opendexter@1.23.2 connect status
 ```
 
 The connection stores an OAuth bearer. It does not by itself prove an active
-grant. The bearer targets `https://open.dexter.cash/mcp` with requested scopes
-`vault dexter_surface`. Status must report the exact live grant, principal,
+grant. The bearer targets `https://open.dexter.cash/mcp` with exact requested
+scope `vault`. Dexter's signed top-level dexter_surface token claim is
+separate authority evidence, not a requested OAuth scope. Status must report the exact live grant, principal,
 limits, remaining capacity, expiry, scopes, active role, and revocation evidence
 before payment authority is treated as active.
 
@@ -51,7 +52,9 @@ x402_search({"query":"extract tables from a PDF"})
 ```
 
 Then call `x402_check` for the selected exact URL, method, and body. A search
-result does not authorize payment.
+result does not authorize payment. A non-GET check needs separate approval for
+that exact probe; probe approval is not payment approval, and the request is
+never automatically retried after possible dispatch.
 
 5. For a paid action, use a connected check. Keep its returned `intentId`
 opaque, show the exact current terms, obtain approval for
@@ -63,13 +66,14 @@ response was ambiguous.
 
 ## Authority boundary
 
-The local process never loads a file or environment private key to pay or prove
-identity. There is no local executor or fallback. `x402_access`,
+The local process never derives or enables a file or environment private key
+to pay or prove identity. There is no local executor or fallback. `x402_access`,
 `x402_wallet`, `dexter_portfolio`, `x402_fetch`, and `x402_status` require the
 connected bearer.
 
-`opendexter wallet --legacy-recovery` can inspect only validated public
-addresses and balances in an existing legacy file. It never loads or returns
-private-key material and cannot satisfy an account-bound tool.
+`opendexter wallet --legacy-recovery` parses an existing legacy JSON file but
+returns only validated public addresses and balances. It never derives,
+returns, exports, or enables private-key fields as a signer and cannot satisfy
+an account-bound tool.
 
 Manage or revoke the hosted grant at `https://dexter.cash/wallet`.

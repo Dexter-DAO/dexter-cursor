@@ -455,9 +455,10 @@ export interface HostedRuntimeCallOpts {
   fetchImpl?: typeof fetch;
   now?: () => number;
   /**
-   * Safe for reads and pre-dispatch checks. x402_fetch must set this false:
-   * once dispatch may have happened, an auth-looking failure is not proof that
-   * no charge occurred and must never trigger an automatic second call.
+   * May disable rejected-bearer retry for a caller with stricter semantics.
+   * It cannot enable retry for x402_fetch or a non-GET check/access: those are
+   * centrally one-dispatch because an auth-looking failure is not proof that
+   * no charge or mutation occurred.
    */
   retryRejectedBearer?: boolean;
   /** Test seam for the one hosted MCP call. */
@@ -497,7 +498,7 @@ async function refreshAndPersistSession(
  * session may call only anonymous search/check; every account-bound tool fails
  * before dispatch. This path never reads or creates wallet.json. A stale token
  * is refreshed before dispatch. A rejected bearer is retried only for
- * explicitly retry-safe tools and never for fetch.
+ * explicitly retry-safe reads and never for fetch or a non-GET seller request.
  */
 export async function callHostedRuntimeTool(
   opts: HostedRuntimeCallOpts,
@@ -531,11 +532,18 @@ export async function callHostedRuntimeTool(
   }
 
   const args = opts.arguments ?? {};
+  const retrySafeByContract =
+    opts.toolName !== "x402_fetch"
+    && (
+      (opts.toolName !== "x402_check" && opts.toolName !== "x402_access")
+      || !("method" in args)
+      || args.method === "GET"
+    );
   try {
     return await callHosted(session?.accessToken ?? null, opts.toolName, args);
   } catch (error) {
     if (!session || !isAuthError(error)) throw error;
-    if (opts.retryRejectedBearer === false || opts.toolName === "x402_fetch") {
+    if (opts.retryRejectedBearer === false || !retrySafeByContract) {
       throw new Error(
         "connected_session_rejected_no_automatic_retry; reconnect and reconcile the same intent before any retry",
       );
@@ -557,9 +565,10 @@ function unavailableAuthorityStatus(reason: string): RuntimeAuthorityStatus {
 
 /**
  * Read exact live authority evidence with the stored OAuth bearer. The API
- * independently verifies aud=https://open.dexter.cash/mcp plus vault and
- * dexter_surface scopes and resolves durable server-side bindings; the client
- * sends no principal, grant, vault, role, or internal HMAC material.
+ * independently verifies aud=https://open.dexter.cash/mcp and exact OAuth
+ * scope=vault, then validates the separate signed dexter_surface token claim
+ * and durable server-side bindings. The client sends no principal, grant,
+ * vault, role, or internal HMAC material.
  */
 export async function readGovernedAuthorityStatus(opts: {
   dev?: boolean;

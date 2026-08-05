@@ -93,6 +93,19 @@ describe("local MCP tool registration", () => {
     expect(statusSchema.required).toEqual(["intentId"]);
     expect(Object.keys(statusSchema.properties ?? {})).toEqual(["intentId"]);
     expect(statusSchema.additionalProperties).toBe(false);
+    const accessSchema = result.tools.find(
+      ({ name }) => name === "x402_access",
+    )!.inputSchema as {
+      properties?: Record<string, unknown>;
+      additionalProperties?: boolean;
+    };
+    expect(Object.keys(accessSchema.properties ?? {})).toEqual([
+      "url",
+      "method",
+      "body",
+      "network",
+    ]);
+    expect(accessSchema.additionalProperties).toBe(false);
     expect(HOSTED_PROXY_INSTRUCTIONS).toContain("x402_status");
     expect(HOSTED_PROXY_INSTRUCTIONS).toContain("never be retried blindly");
     expect(HOSTED_PROXY_INSTRUCTIONS).toContain("OAuth bearer");
@@ -142,7 +155,7 @@ describe("local MCP tool registration", () => {
     expect(loadOrCreateWallet).not.toHaveBeenCalled();
   });
 
-  it("forwards exact hosted intents and exposes status without retrying fetch", async () => {
+  it("forwards exact hosted requests and retries only read-safe methods", async () => {
     const server = new McpServer({ name: "proxy-test", version: "1.0.0" });
     const callTool = vi.fn(async (toolName: string, args: Record<string, unknown>) => ({
       content: [{ type: "text" as const, text: JSON.stringify({ ok: true, toolName, args }) }],
@@ -191,6 +204,29 @@ describe("local MCP tool registration", () => {
       name: "x402_status",
       arguments: { intentId: "intent_exact" },
     });
+    await client.callTool({
+      name: "x402_check",
+      arguments: {
+        url: "https://seller.example/check",
+        method: "POST",
+        body: '{"symbol":"SOL"}',
+      },
+    });
+    await client.callTool({
+      name: "x402_access",
+      arguments: {
+        url: "https://seller.example/access",
+        method: "DELETE",
+      },
+    });
+    await client.callTool({
+      name: "x402_check",
+      arguments: { url: "https://seller.example/read", method: "GET" },
+    });
+    await client.callTool({
+      name: "x402_access",
+      arguments: { url: "https://seller.example/read", method: "GET" },
+    });
 
     expect(callTool).toHaveBeenNthCalledWith(
       1,
@@ -202,6 +238,34 @@ describe("local MCP tool registration", () => {
       2,
       "x402_status",
       { intentId: "intent_exact" },
+      true,
+    );
+    expect(callTool).toHaveBeenNthCalledWith(
+      3,
+      "x402_check",
+      {
+        url: "https://seller.example/check",
+        method: "POST",
+        body: '{"symbol":"SOL"}',
+      },
+      false,
+    );
+    expect(callTool).toHaveBeenNthCalledWith(
+      4,
+      "x402_access",
+      { url: "https://seller.example/access", method: "DELETE" },
+      false,
+    );
+    expect(callTool).toHaveBeenNthCalledWith(
+      5,
+      "x402_check",
+      { url: "https://seller.example/read", method: "GET" },
+      true,
+    );
+    expect(callTool).toHaveBeenNthCalledWith(
+      6,
+      "x402_access",
+      { url: "https://seller.example/read", method: "GET" },
       true,
     );
 

@@ -125,7 +125,9 @@ export function registerHostedProxyTools(
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: true },
     },
-    (args) => call("x402_check", args),
+    // A non-GET probe may mutate seller state. If its bearer is rejected after
+    // possible dispatch, never refresh and send that request a second time.
+    (args) => call("x402_check", args, (args.method ?? "GET") === "GET"),
   );
 
   server.registerTool(
@@ -166,13 +168,13 @@ export function registerHostedProxyTools(
         url: z.string().url(),
         method: httpMethod.optional(),
         body: z.string().optional(),
-        sessionToken: z.string().optional(),
-        sessionKey: z.string().optional(),
         network: z.string().optional(),
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: true },
     },
-    (args) => call("x402_access", args),
+    // GET access is retry-safe after an auth rejection; mutating methods are
+    // one-dispatch requests and require explicit recovery before any retry.
+    (args) => call("x402_access", args, (args.method ?? "GET") === "GET"),
   );
 
   server.registerTool(

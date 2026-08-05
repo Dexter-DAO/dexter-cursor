@@ -202,7 +202,7 @@ export async function readConnectedPortfolio(
 export function registerPortfolioTool(server: McpServer): void {
   server.tool(
     "dexter_portfolio",
-    "Read the governed Dexter Wallet portfolio linked to this local OpenDexter installation. The tool accepts no wallet, user, agent, or grant selector; run `opendexter connect` first. This is a read-only account link: local paid calls still use the separately configured local signer.",
+    "Read the governed Dexter Wallet portfolio linked to this local OpenDexter installation. The tool accepts no wallet, user, agent, or grant selector; run `opendexter connect` first. Portfolio reads and paid OpenDexter calls use the same hosted governed principal; no local signer is selected as a fallback.",
     {},
     async () => {
       const payload = await readConnectedPortfolio();

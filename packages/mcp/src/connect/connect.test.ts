@@ -85,7 +85,7 @@ const success = () =>
     access_token: makeAccessJwt(),
     expires_in: 3600,
     refresh_token: "dlt_abc123",
-    scope: "vault dexter_surface",
+    scope: "vault",
   });
 
 describe("connect/connect — cliConnect device flow", () => {
@@ -129,7 +129,7 @@ describe("connect/connect — cliConnect device flow", () => {
     const deviceRequest = JSON.parse(
       ((fetchImpl.mock.calls[0] as unknown as [unknown, RequestInit])[1]).body as string,
     );
-    expect(deviceRequest.scope).toBe("vault dexter_surface");
+    expect(deviceRequest.scope).toBe("vault");
   });
 
   it("offers to open the browser unless noBrowser is set", async () => {

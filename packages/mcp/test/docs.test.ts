@@ -73,6 +73,8 @@ function textFiles(relative: string): string[] {
 }
 
 const rootReadme = read("../../../README.md");
+const connectGuide = read("../../../docs/connect-your-wallet.md");
+const connectGuideHtml = read("../../../docs/connect-your-wallet.html");
 const packageReadme = read("../README.md");
 const skill = read("../skills/opendexter/SKILL.md");
 const workflow = read("../assets/docs/workflow.md");
@@ -98,6 +100,12 @@ const AUTHORITATIVE_RUNTIME_GUIDANCE = [
   ["coding rule", stripFrontmatter(codingRule)],
   ["protocol rule", stripFrontmatter(protocolRule)],
   ["setup command", stripFrontmatter(setupCommand)],
+] as const;
+
+const CURRENT_PUBLIC_CONNECTION_GUIDANCE = [
+  ["root README", rootReadme],
+  ["connection guide", connectGuide],
+  ["connection HTML", connectGuideHtml],
 ] as const;
 
 const PACKAGED_GUIDANCE_PATHS = [
@@ -182,9 +190,35 @@ describe("docs resources", () => {
   it("freezes the connected bearer audience and exact requested scopes", () => {
     for (const text of [packageReadme, skill, workflow, setupCommand]) {
       expect(text).toContain("https://open.dexter.cash/mcp");
-      expect(text).toContain("vault dexter_surface");
+      expect(text).toMatch(/(?:exact requested|requests exact|requested)\s+(?:OAuth\s+)?scope(?:\s+is)?\s+`vault`/i);
+      expect(text).toContain("dexter_surface");
+      expect(text).toMatch(/not a requested (?:OAuth )?scope/i);
+      expect(text).not.toContain("vault dexter_surface");
     }
   });
+
+  it("documents non-GET probe approval and one-dispatch retry behavior", () => {
+    for (const text of [packageReadme, skill, workflow, setupCommand]) {
+      expect(text).toMatch(/non-GET/i);
+      expect(text).toMatch(/separate approval/i);
+      expect(text).toMatch(/not payment approval/i);
+      expect(text).toMatch(/never (?:auth-refreshed and )?retried|never automatically retried/i);
+    }
+  });
+
+  it.each(CURRENT_PUBLIC_CONNECTION_GUIDANCE)(
+    "%s describes the governed wallet as the only OpenDexter payer",
+    (_name, text) => {
+      const copy = plainText(text);
+      expect(copy).toMatch(/hosted governed|governed wallet/);
+      expect(copy).toMatch(/no local signer fallback|never swaps to a wallet file/);
+      expect(copy).toMatch(/\bvault\b/);
+      expect(text).toContain("dexter_surface");
+      for (const retired of RETIRED_LOCAL_EXECUTOR_CLAIMS) {
+        expect(text).not.toContain(retired);
+      }
+    },
+  );
 
   it("marks every shipped private-key SDK example as a separate non-fallback executor", () => {
     for (const path of PACKAGED_GUIDANCE_PATHS) {

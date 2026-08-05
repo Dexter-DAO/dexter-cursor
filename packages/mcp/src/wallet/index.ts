@@ -192,7 +192,8 @@ export interface ShowWalletOpts {
  * The same hosted runtime is the only payment executor. No-session mode is
  * non-custodial and never reads or creates wallet.json. An explicit
  * `--legacy-recovery` view may read public addresses and balances from an
- * existing wallet.json, but never loads, exports, or enables its signer.
+ * existing wallet.json. The parser necessarily reads that file, but it never
+ * derives, returns, exports, or enables its private-key fields as a signer.
  */
 export async function showWalletInfo(opts: ShowWalletOpts): Promise<void> {
   const log = opts.log ?? console.log;

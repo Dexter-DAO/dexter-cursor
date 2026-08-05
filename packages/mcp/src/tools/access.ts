@@ -28,6 +28,7 @@ export async function cliAccess(
         ...(opts.network !== undefined ? { network: opts.network } : {}),
       },
       dev: opts.dev,
+      retryRejectedBearer: opts.method === "GET",
     });
     console.log(JSON.stringify(structuredToolResult(response), null, 2));
     if (response.isError === true) process.exit(1);

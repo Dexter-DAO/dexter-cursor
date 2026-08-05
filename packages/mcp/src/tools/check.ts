@@ -26,6 +26,7 @@ export async function cliCheck(
         ...(opts.body !== undefined ? { body: opts.body } : {}),
       },
       dev: opts.dev,
+      retryRejectedBearer: opts.method === "GET",
     });
     console.log(JSON.stringify(structuredToolResult(response), null, 2));
     if (response.isError === true) process.exit(1);

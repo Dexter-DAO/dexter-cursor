@@ -13,8 +13,9 @@ connected or disconnected.
 
 Search and check can use the anonymous hosted surface. Every account-bound
 tool requires the OAuth bearer created by `opendexter connect`, with audience
-`https://open.dexter.cash/mcp` and scopes `vault dexter_surface`. There is no
-automatic or opt-in local fallback.
+`https://open.dexter.cash/mcp` and exact requested scope `vault`. Dexter's
+signed top-level dexter_surface token claim is separate authority evidence,
+not a requested OAuth scope. There is no automatic or opt-in local fallback.
 
 All maintained OpenDexter surfaces share one product truth, safety model, and
 user-outcome vocabulary, but their skill editions are surface-specific. This
@@ -88,7 +89,9 @@ for them. Never treat a displayed or cached price as approval to pay.
 Probe the exact URL and intended HTTP method. The result can include current
 price, accepted asset and network, request/response schemas, and authentication
 requirements. Checking does not make an x402 payment. A non-GET check can still
-mutate provider state, so obtain approval for that external action.
+mutate provider state, so obtain separate approval for that exact probe; probe
+approval is not payment approval. Once dispatched, the runtime never
+auth-refreshes and retries a non-GET check automatically.
 
 An anonymous check can inspect terms. Only a connected check can return an
 account-bound intent for later execution. The returned `intentId` is a
@@ -119,7 +122,9 @@ is safe and the user authorizes it.
 
 Use `x402_access` only for a route whose current requirements call for SIWX.
 It uses the hosted wallet-bound principal. It does not sign with a legacy file
-or environment key and does not bypass a charge.
+or environment key and does not bypass a charge. A non-GET access request needs
+separate approval and is never auth-refreshed and retried after possible
+dispatch.
 
 ## Authority truth
 
@@ -138,9 +143,9 @@ Manage and revoke hosted authority at `https://dexter.cash/wallet`.
 ## Legacy wallet recovery
 
 `opendexter wallet --legacy-recovery` is the only legacy wallet-file surface.
-It validates and returns safe public addresses and balance reads from an
-existing file. It never creates, migrates, repairs, derives, loads, returns, or
-enables private-key material.
+It parses an existing JSON file, validates its public addresses, and returns
+only those addresses and balance reads. It never creates, migrates, repairs,
+derives, returns, exports, or enables private-key fields as a signer.
 
 Legacy recovery is not an executor and cannot satisfy any account-bound tool.
 Do not ask the user for private keys or authentication tokens. Legacy local

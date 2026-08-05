@@ -155,7 +155,7 @@ export async function buildDoctorReport(
     );
   } else if (legacyRecoveryMaterial === "wallet_file_unavailable") {
     nextActions.push(
-      "A legacy wallet file exists but has no safe public recovery view. Doctor left it unchanged; the runtime will not repair, load, or execute it.",
+      "A legacy wallet file exists but has no safe public recovery view. Doctor left it unchanged; the runtime will not repair it or derive, return, export, or enable its private-key fields.",
     );
   }
   if (connectedSession) {

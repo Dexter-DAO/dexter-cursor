@@ -32,8 +32,9 @@ const DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 /** The client_id the connector rail knows this CLI by. */
 const CLIENT_ID = "opendexter-cli";
 const DEVICE_LABEL = "opendexter-cli";
-/** Account view plus server-resolved governed-surface authority evidence. */
-const CONNECT_SCOPE = "vault dexter_surface";
+/** Exact OAuth scope. The API returns `dexter_surface` as a separate signed
+ * token claim; it is authority evidence, not a client-requested scope. */
+const CONNECT_SCOPE = "vault";
 /** Where the human approves — printed alongside the typed user_code. */
 const VERIFICATION_PAGE = "dexter.cash/wallet/connect";
 /** Slow-down back-off step (RFC 8628 §3.5: bump the interval, keep polling). */

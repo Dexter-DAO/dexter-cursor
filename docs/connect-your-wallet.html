@@ -148,7 +148,7 @@
 <main class="wrap">
   <p class="eyebrow">OpenDexter</p>
   <h1>Connect your wallet<br>to your terminal.</h1>
-  <p class="lede">Your Dexter wallet lives behind your passkey. Let the local OpenDexter package show its balance and Solana deposit address in under a minute. <strong>No keys copied. No passwords.</strong></p>
+  <p class="lede">Your Dexter Wallet lives behind your passkey. Connect the local OpenDexter proxy to the same hosted governed wallet for account reads and bounded x402 execution. <strong>No keys copied. No passwords.</strong></p>
 
   <div class="need">
     <span><b>You need:</b> the OpenDexter tool</span>
@@ -191,14 +191,20 @@ Approve with your passkey — any one of these:
         <li><b>Phone</b><span>Scan the QR code with your camera.</span></li>
         <li><b>Server</b><span>No browser? Type the short code at dexter.cash/wallet/connect on any device.</span></li>
       </ul>
-      <p>The page shows <strong>which app is asking</strong>. Tap Face ID or your fingerprint. That's the only thing that approves — and it never leaves your device.</p>
+      <p>The page shows <strong>which app is asking</strong>, the requested authority, and its limits. Tap Face ID or your fingerprint. That's the only thing that approves — and it never leaves your device.</p>
     </li>
 
     <li class="step">
-      <div class="step-title">See your wallet</div>
+      <div class="step-title">Verify authority, then see your wallet</div>
       <div class="term">
         <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-label">terminal</span></div>
-<pre><span class="p">$</span> opendexter wallet
+<pre><span class="p">$</span> opendexter connect status
+
+Authority status: <span class="g">active</span>
+Grant ID: <span class="a">grant_…</span>
+Remaining: <span class="a">current live capacity</span>
+
+<span class="p">$</span> opendexter wallet
 
 Dexter wallet
   lane: <span class="g">connected</span>
@@ -209,7 +215,7 @@ Dexter wallet
   Deposit address
     <span class="a">3NWeBKn…QR9Ke</span></pre>
       </div>
-      <p>Your real balance and deposit address, right in the terminal. Done.</p>
+      <p>Payment authority is active only when status proves the expected grant, limits, remaining capacity, expiry, role, and revocation state. The wallet command then shows the connected balance, deposit address, and authority evidence.</p>
     </li>
   </ol>
 
@@ -217,7 +223,9 @@ Dexter wallet
     <h2>That's the whole thing.</h2>
     <div class="safety">
       <div class="row"><span class="k">Your keys</span><span class="v">No private key is copied into the terminal. Your <strong>passkey</strong> approves the connection — no password or secret key to paste.</span></div>
-      <div class="row"><span class="k">Payment signer</span><span class="v">Connect does not change the payment signer. Local paid calls still use the local wallet or configured environment keys.</span></div>
+      <div class="row"><span class="k">Payment source</span><span class="v">Account-bound tools use the same hosted Dexter Wallet grant. The local proxy has <strong>no local signer fallback</strong>.</span></div>
+      <div class="row"><span class="k">OAuth scope</span><span class="v">The request uses exact scope <span style="font-family:var(--mono)">vault</span>. Dexter's signed <span style="font-family:var(--mono)">dexter_surface</span> token claim is separate, not a requested scope.</span></div>
+      <div class="row"><span class="k">Old files</span><span class="v">Legacy wallet files are preserved. Explicit recovery may parse one for validated public addresses and balances, but never derives, returns, exports, or enables its private-key fields.</span></div>
       <div class="row"><span class="k">Your control</span><span class="v">Revoke the connector at <a href="https://dexter.cash/wallet">dexter.cash/wallet</a>. <span style="font-family:var(--mono)">opendexter connect disconnect</span> only removes this terminal's stored session.</span></div>
       <div class="row"><span class="k">Anywhere</span><span class="v">Laptop or a headless server over SSH — the short-code path always works when there's no browser.</span></div>
       <div class="row"><span class="k">To fund it</span><span class="v">Send USDC on Solana to the deposit address <span style="font-family:var(--mono)">opendexter wallet</span> shows you. Always that one.</span></div>

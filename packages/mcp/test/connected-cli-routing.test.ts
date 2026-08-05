@@ -57,6 +57,7 @@ describe("connected CLI routing", () => {
         body: '{"symbol":"SOL"}',
       },
       dev: false,
+      retryRejectedBearer: false,
     });
     expect(loadOrCreateWallet).not.toHaveBeenCalled();
   });
@@ -93,6 +94,26 @@ describe("connected CLI routing", () => {
         network: "solana-mainnet",
       },
       dev: false,
+      retryRejectedBearer: true,
+    });
+    expect(loadOrCreateWallet).not.toHaveBeenCalled();
+  });
+
+  it("does not retry a mutating wallet-proof request after bearer rejection", async () => {
+    await cliAccess("https://seller.example/private", {
+      method: "POST",
+      body: '{"action":"issue"}',
+      dev: false,
+    });
+    expect(callHostedRuntimeTool).toHaveBeenCalledWith({
+      toolName: "x402_access",
+      arguments: {
+        url: "https://seller.example/private",
+        method: "POST",
+        body: '{"action":"issue"}',
+      },
+      dev: false,
+      retryRejectedBearer: false,
     });
     expect(loadOrCreateWallet).not.toHaveBeenCalled();
   });

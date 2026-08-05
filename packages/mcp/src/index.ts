@@ -142,7 +142,7 @@ async function main() {
     )
     .command(
       "access <url>",
-      "Access an identity-gated endpoint using wallet proof instead of payment",
+      "Access an identity-gated endpoint; non-GET requests can mutate seller state",
       (y) =>
         y
           .positional("url", { type: "string", demandOption: true })
@@ -164,7 +164,7 @@ async function main() {
     )
     .command(
       "check <url>",
-      "Inspect an endpoint's x402 pricing and requirements without paying",
+      "Inspect x402 terms without payment; non-GET probes can mutate seller state",
       (y) =>
         y
           .positional("url", { type: "string", demandOption: true })

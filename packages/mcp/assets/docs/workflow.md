@@ -1,12 +1,13 @@
 # OpenDexter governed x402 workflow
 
 The local `@dexterai/opendexter` MCP is a proxy to OpenDexter's hosted governed
-runtime. It exposes exactly seven tools and never loads a local private key for
-payment or identity proof. Search and check can use the anonymous hosted
+runtime. It exposes exactly seven tools and never derives or enables a local
+private key for payment or identity proof. Search and check can use the anonymous hosted
 surface; every account-bound operation requires the OAuth bearer created by
 `opendexter connect`. Its audience is `https://open.dexter.cash/mcp` and its
-requested scopes are `vault dexter_surface`. No local executor or fallback
-exists.
+exact requested scope is `vault`. Dexter's signed top-level dexter_surface
+token claim is separate authority evidence, not a requested OAuth scope. No
+local executor or fallback exists.
 
 ## Exact roster
 
@@ -29,7 +30,9 @@ payment-alias, card, or local-executor MCP tools.
    price are not payment authorization.
 2. While connected, call `x402_check` for the exact URL, method, and request
    body. Checking does not make an x402 payment, although a non-GET probe can
-   still mutate provider state.
+   still mutate provider state. Obtain separate approval for that exact probe;
+   probe approval is not payment approval. A dispatched non-GET probe is never
+   auth-refreshed and retried automatically.
 3. Keep the returned `intentId` opaque. Present the exact current terms and
    obtain approval for a separate atomic-unit ceiling.
 4. Call `x402_fetch` once with only `intentId` and `maxAmountAtomic`.
@@ -87,7 +90,8 @@ it.
 
 Use the access tool only when current route requirements call for SIWX. It uses
 the connected hosted principal. It does not use a legacy file or environment
-key, and it does not bypass a charge.
+key, and it does not bypass a charge. A non-GET access request needs separate
+approval and is never auth-refreshed and retried after possible dispatch.
 
 ## Authority truth
 
@@ -111,10 +115,10 @@ The only legacy file surface is:
 opendexter wallet --legacy-recovery
 ```
 
-It validates and returns safe public addresses and balance reads from an
-existing wallet file. It never creates, migrates, repairs, derives, loads,
-returns, or enables private-key material. It cannot satisfy any account-bound
-tool and is never a fallback.
+It parses an existing JSON file, validates its public addresses, and returns
+only those addresses and balance reads. It never creates, migrates, repairs,
+derives, returns, exports, or enables private-key fields as a signer. It cannot
+satisfy any account-bound tool and is never a fallback.
 
 Legacy local settings have no effect on the hosted grant or its limits.
 
