@@ -391,6 +391,24 @@ describe("connect/wallet — governed runtime authority", () => {
     expect(callHosted).not.toHaveBeenCalled();
   });
 
+  it("sends the stored OAuth bearer with the exact status-recovery intent", async () => {
+    seedSession();
+    const callHosted = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: '{"ok":true}' }],
+    }));
+    await callHostedRuntimeTool({
+      toolName: "x402_status",
+      arguments: { intentId: "intent-1" },
+      dataDir: dir,
+      callHosted,
+    });
+    expect(callHosted).toHaveBeenCalledWith(
+      "at.original.sig",
+      "x402_status",
+      { intentId: "intent-1" },
+    );
+  });
+
   it("allows anonymous hosted checks without inspecting local signer material", async () => {
     vi.stubEnv("DEXTER_PRIVATE_KEY", "legacy-material-must-not-be-read");
     const callHosted = vi.fn(async () => ({

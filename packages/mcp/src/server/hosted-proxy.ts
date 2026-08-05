@@ -21,12 +21,12 @@ export const HOSTED_PROXY_TOOL_ROSTER = [
 ] as const satisfies readonly HostedRuntimeToolName[];
 
 /** Exact operating contract for this proxy; the legacy shared rendering still
- * describes caller-carried preparedPurchase and therefore cannot be served. */
-export const HOSTED_PROXY_INSTRUCTIONS = `You are connected to OpenDexter's hosted governed x402 runtime through the local proxy. The proxy never handles private keys and never switches to a local signer automatically.
+ * describes a caller-carried purchase contract and therefore cannot be served. */
+export const HOSTED_PROXY_INSTRUCTIONS = `You are connected to OpenDexter's hosted governed x402 runtime through the local proxy. Account-bound tools use the stored OAuth bearer. The proxy never handles private keys and never switches to a local signer automatically.
 
 # Tool routing
 
-x402_search discovers live resources. x402_check reads exact terms without paying. For a connected paid route, x402_check returns one opaque server-owned intentId; never parse, reconstruct, or replace it.
+x402_search discovers live resources. x402_check reads exact terms without paying. Those two tools can use the anonymous hosted surface. x402_fetch, x402_status, x402_access, x402_wallet, and dexter_portfolio require the connected OAuth bearer. For a connected paid route, x402_check returns one opaque server-owned intentId; never parse, reconstruct, or replace it.
 
 x402_fetch accepts only that intentId and a separately approved maxAmountAtomic ceiling. Those two values do not authorize a different URL, body, seller, route, amount, or payment mode. A failed or ambiguous fetch must never be retried blindly.
 
@@ -36,7 +36,7 @@ x402_access calls SIWX-protected resources through the hosted wallet-bound princ
 
 # Authority truth
 
-A connect token proves account authorization only. It does not prove an active grant, remaining capacity, or active on-chain role. Treat runtimeAuthority as active only when its exact live evidence reports active bounded_payment_authority. Report unavailable fields as unavailable. Never infer authority from a balance, address, token claim, or portfolio metadata.
+An OAuth bearer proves account authorization only. It does not prove an active grant, remaining capacity, or active on-chain role. Treat runtimeAuthority as active only when its exact live evidence reports active bounded_payment_authority. Report unavailable fields as unavailable. Never infer authority from a balance, address, token claim, or portfolio metadata.
 
 Local wallet.json/environment signing is not a payment executor on this runtime. Existing local wallets may be inspected only through the explicitly labeled non-payment recovery view. There is no automatic or opt-in local payment fallback. Manage or revoke hosted authority at https://dexter.cash/wallet.
 

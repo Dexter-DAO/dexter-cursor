@@ -175,7 +175,7 @@ async function main() {
           .option("body", {
             type: "string",
             description:
-              "Exact JSON object to price for POST/PUT/DELETE. Required for an execution-bound prepared purchase.",
+              "Exact JSON object to price for POST/PUT/DELETE. A connected check can bind it to an opaque hosted intent.",
           }),
       async (args) => {
         const { cliCheck } = await import("./tools/check.js");
@@ -188,7 +188,7 @@ async function main() {
     )
     .command(
       "audition <url>",
-      "Audition an x402 API for the OpenDexter catalog — real paid test, quality score, synthesized agent Skill",
+      "Request a server-side x402 merchant audit; this does not use local or connected user payment authority",
       (y) =>
         y
           .positional("url", { type: "string", demandOption: true })
@@ -207,17 +207,17 @@ async function main() {
     )
     .command(
       "settings",
-      "Read or update OpenDexter spending policy",
+      "Read or update a legacy local settings record; it does not govern hosted authority",
       (y) =>
         y
           .option("max-amount", {
             type: "number",
-            description: "Per-call spend cap (USDC) — no single call may exceed it",
+            description: "Legacy local record only; does not change a hosted per-call limit",
           })
           .option("daily-budget", {
             type: "number",
             description:
-              "Rolling 24h spend budget (USDC) — the velocity guard. 0 disables it.",
+              "Legacy local record only; does not change a hosted daily limit",
           }),
       async (args) => {
         const { cliSettings } = await import("./tools/settings.js");

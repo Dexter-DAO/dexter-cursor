@@ -7,6 +7,11 @@ description: Add x402 payment handling to a Node.js project using @dexterai/x402
 
 Set up automatic x402 payment handling so your application can call paid APIs.
 
+This command builds an independent `@dexterai/x402` SDK client. It is not the
+OpenDexter MCP runtime, does not inherit an OpenDexter OAuth bearer or grant,
+and must never be used as a fallback for a disconnected or unavailable
+OpenDexter account-bound tool.
+
 ## Steps
 
 1. Install the SDK:

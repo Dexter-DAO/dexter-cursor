@@ -1,13 +1,7 @@
 import { loadSettings, saveSettings, SETTINGS_FILE } from "../settings.js";
 import { spentLast24h } from "../spend-ledger.js";
 
-/**
- * Builds the local CLI settings response. Reports both spend controls and — for
- * the budget — how much has been spent so far, so the agent can reason about
- * headroom. The `tip` text is deliberately honest about each control's scope:
- * the budget only sees spend made through this tool, never the wallet's
- * total on-chain spend.
- */
+/** Builds a truthful compatibility view of the retired local policy record. */
 function buildPayload(settings: ReturnType<typeof loadSettings>) {
   const spent = spentLast24h();
   return {
@@ -20,12 +14,13 @@ function buildPayload(settings: ReturnType<typeof loadSettings>) {
           : null,
     },
     settingsFile: SETTINGS_FILE,
+    hostedAuthorityAffected: false,
+    paymentEnabled: false,
+    manageUrl: "https://dexter.cash/wallet",
     tips: [
-      "maxAmountUsdc — per-call cap: x402_fetch refuses any single call priced above it.",
-      settings.dailyBudgetUsdc > 0
-        ? "dailyBudgetUsdc — rolling 24h budget: x402_fetch refuses a call that would push spend-through-this-tool over it. Set to 0 to disable."
-        : "dailyBudgetUsdc is 0 (disabled). Set it to add a rolling 24h spend ceiling — the guard against a loop of small in-cap calls.",
-      "Scope note: the budget counts only x402 spend made through this tool on this machine — not the wallet's total on-chain spend.",
+      "This is a legacy local record. The hosted governed runtime does not read it.",
+      "Manage the real grant, per-call and aggregate limits, and revocation at https://dexter.cash/wallet.",
+      "Run `opendexter connect status` to read the live bearer-authenticated authority projection.",
     ],
   };
 }

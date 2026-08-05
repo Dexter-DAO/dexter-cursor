@@ -5,6 +5,12 @@ description: "Diagnose x402 payment failures: facilitator health, error codes, b
 
 # x402 Debugging Guide
 
+This is generic `@dexterai/x402` SDK and protocol guidance. An SDK wallet is
+independent and is not the OpenDexter MCP runtime. For OpenDexter, never add a
+local signer or retry an uncertain `x402_fetch`; use the connected
+`x402_wallet` authority view and reconcile the same intent with
+`x402_status`.
+
 ## Quick Diagnosis Checklist
 
 1. **Is the facilitator healthy?** `curl https://x402.dexter.cash/healthz`
@@ -20,7 +26,7 @@ description: "Diagnose x402 payment failures: facilitator health, error codes, b
 |---------|-------|-----|
 | 402 but no payment prompt | Client not handling 402 responses | Use `wrapFetch()` or `createX402Client()` from `@dexterai/x402/client` |
 | Payment verification fails | Wrong network format | Use CAIP-2 for v2: `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` |
-| "Insufficient balance" | Wallet lacks USDC | Fund wallet, check with `x402_wallet` |
+| "Insufficient balance" | Wallet lacks USDC | SDK: inspect the application-owned wallet. OpenDexter: use connected `x402_wallet` |
 | Settlement timeout | Solana RPC congestion | Increase `maxTimeoutSeconds`, check RPC health, or use `maxRetries` |
 | "Missing fee payer" | Solana accept missing `extra.feePayer` | Facilitator must provide `feePayer` in the accept |
 | "No matching payment option" | No wallet for available chains | Add wallet for the required chain (Solana or EVM) |
@@ -162,7 +168,8 @@ const client = createX402Client({
 });
 ```
 
-Retries are safe: EIP-3009 nonces and Solana blockhash expiry prevent double payments.
+This SDK retry option is not an OpenDexter recovery path. Never retry an
+uncertain OpenDexter fetch; query `x402_status` for the same intent instead.
 
 ## Fee Payer Safety (Solana)
 

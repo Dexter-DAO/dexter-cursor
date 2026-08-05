@@ -17,17 +17,8 @@ export interface ServerOptions {
   dataDir?: string;
 }
 
-const PUBLISHED_LOCAL_DOCS_ROSTER = [
-  "x402_search",
-  "x402_check",
-  "x402_fetch",
-  "x402_access",
-  "x402_wallet",
-  "dexter_portfolio",
-] as const;
-/** Published six-tool compatibility roster used by the legacy local docs. */
-export const LOCAL_TOOL_ROSTER = PUBLISHED_LOCAL_DOCS_ROSTER;
-/** Actual default runtime roster; x402_status is the no-blind-retry recovery read. */
+/** Published and actual runtime roster; status is the no-blind-retry recovery read. */
+export const LOCAL_TOOL_ROSTER = HOSTED_PROXY_TOOL_ROSTER;
 export const HOSTED_RUNTIME_TOOL_ROSTER = HOSTED_PROXY_TOOL_ROSTER;
 
 export async function startServer(opts: ServerOptions): Promise<void> {

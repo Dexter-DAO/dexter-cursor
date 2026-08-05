@@ -61,12 +61,41 @@ describe("local MCP tool registration", () => {
     expect(client).toBeDefined();
     const result = await client!.listTools();
     expect(result.tools.map(({ name }) => name)).toEqual(HOSTED_RUNTIME_TOOL_ROSTER);
-    expect(result.tools.find(({ name }) => name === "x402_fetch")?.inputSchema)
-      .toMatchObject({ required: ["intentId", "maxAmountAtomic"] });
-    expect(result.tools.find(({ name }) => name === "x402_status")?.inputSchema)
-      .toMatchObject({ required: ["intentId"] });
+    expect(HOSTED_RUNTIME_TOOL_ROSTER).toEqual([
+      "x402_search",
+      "x402_check",
+      "x402_fetch",
+      "x402_status",
+      "x402_access",
+      "x402_wallet",
+      "dexter_portfolio",
+    ]);
+    const fetchSchema = result.tools.find(
+      ({ name }) => name === "x402_fetch",
+    )!.inputSchema as {
+      required?: string[];
+      properties?: Record<string, unknown>;
+      additionalProperties?: boolean;
+    };
+    expect(fetchSchema.required).toEqual(["intentId", "maxAmountAtomic"]);
+    expect(Object.keys(fetchSchema.properties ?? {})).toEqual([
+      "intentId",
+      "maxAmountAtomic",
+    ]);
+    expect(fetchSchema.additionalProperties).toBe(false);
+    const statusSchema = result.tools.find(
+      ({ name }) => name === "x402_status",
+    )!.inputSchema as {
+      required?: string[];
+      properties?: Record<string, unknown>;
+      additionalProperties?: boolean;
+    };
+    expect(statusSchema.required).toEqual(["intentId"]);
+    expect(Object.keys(statusSchema.properties ?? {})).toEqual(["intentId"]);
+    expect(statusSchema.additionalProperties).toBe(false);
     expect(HOSTED_PROXY_INSTRUCTIONS).toContain("x402_status");
     expect(HOSTED_PROXY_INSTRUCTIONS).toContain("never be retried blindly");
+    expect(HOSTED_PROXY_INSTRUCTIONS).toContain("OAuth bearer");
     expect(HOSTED_PROXY_INSTRUCTIONS).not.toContain("preparedPurchase");
     expect(loadOrCreateWallet).not.toHaveBeenCalled();
 
