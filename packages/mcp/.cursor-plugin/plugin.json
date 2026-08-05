@@ -1,8 +1,8 @@
 {
   "name": "opendexter",
   "displayName": "OpenDexter",
-  "version": "1.23.1",
-  "description": "Run the local OpenDexter MCP: search for x402 services, check exact terms, make a bounded call with the local signer, inspect that local wallet, and read a separately linked Dexter Wallet portfolio. Includes x402 integration guidance.",
+  "version": "1.23.2",
+  "description": "Run the local proxy for OpenDexter's hosted governed x402 runtime: search, check, execute and reconcile OAuth-bound intents, and read wallet authority or portfolio state. No local payment fallback.",
   "author": {
     "name": "Dexter",
     "email": "dev@dexter.cash"

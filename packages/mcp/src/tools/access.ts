@@ -1,13 +1,13 @@
-import { accessWithWalletProof } from "@dexterai/x402-mcp-tools";
-import { loadOrCreateWallet } from "../wallet/index.js";
-import { createNpmWalletAdapter } from "../wallet/adapter.js";
+import {
+  callHostedRuntimeTool,
+  structuredToolResult,
+} from "../connect/wallet.js";
 
 /**
  * CLI entrypoint for the `opendexter access` subcommand.
  *
- * The MCP tool registration for `x402_access` lives in the shared
- * @dexterai/x402-mcp-tools package and is mounted in src/server/index.ts.
- * This file owns only the npm-CLI-flavored output.
+ * The MCP server and this CLI both proxy the canonical hosted tool. This file
+ * owns only the npm-CLI-flavored output and has no local wallet-proof signer.
  */
 export async function cliAccess(
   url: string,
@@ -19,13 +19,19 @@ export async function cliAccess(
   },
 ): Promise<void> {
   try {
-    const wallet = await loadOrCreateWallet({ quiet: true });
-    const adapter = wallet ? createNpmWalletAdapter(wallet) : null;
-    const result = await accessWithWalletProof(
-      { url, method: opts.method, body: opts.body, preferredNetwork: opts.network },
-      adapter,
-    );
-    console.log(JSON.stringify(result, null, 2));
+    const response = await callHostedRuntimeTool({
+      toolName: "x402_access",
+      arguments: {
+        url,
+        method: opts.method,
+        ...(opts.body !== undefined ? { body: opts.body } : {}),
+        ...(opts.network !== undefined ? { network: opts.network } : {}),
+      },
+      dev: opts.dev,
+      retryRejectedBearer: opts.method === "GET",
+    });
+    console.log(JSON.stringify(structuredToolResult(response), null, 2));
+    if (response.isError === true) process.exit(1);
   } catch (err: any) {
     console.log(JSON.stringify({ error: err.message || String(err) }, null, 2));
     process.exit(1);

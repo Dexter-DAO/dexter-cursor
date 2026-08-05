@@ -10,15 +10,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildDoctorReport,
-  inspectSignerConfiguration,
+  inspectLegacyRecoveryMaterial,
 } from "../src/cli/doctor.js";
 
 describe("read-only OpenDexter doctor", () => {
-  it("classifies registration and signer readiness without changing the wallet file", async () => {
+  it("classifies registration and legacy recovery material without changing or exposing the wallet file", async () => {
     const directory = mkdtempSync(join(tmpdir(), "opendexter-doctor-"));
     try {
       const walletFile = join(directory, "wallet.json");
       const original = JSON.stringify({
+        solanaAddress: "11111111111111111111111111111111",
         solanaPrivateKey: "configured-but-never-returned",
         createdAt: "2026-08-04T00:00:00.000Z",
       });
@@ -32,7 +33,7 @@ describe("read-only OpenDexter doctor", () => {
 
       const report = await buildDoctorReport(
         { client: "codex", registrationName: "opendexter-local" },
-        { inspectRegistration: inspect, walletFile, env: {} },
+        { inspectRegistration: inspect, walletFile, env: {}, connectedSession: false },
       );
 
       expect(report).toMatchObject({
@@ -49,9 +50,19 @@ describe("read-only OpenDexter doctor", () => {
           searchAndCheckNeedWallet: false,
           searchAndCheckNeedFunding: false,
         },
+        legacyRecovery: {
+          material: "wallet_file_public_recovery",
+          readOnly: true,
+          paymentEnabled: false,
+          signerLoaded: false,
+          privateKeysReturned: false,
+        },
         payment: {
-          signerConfiguration: "local_file",
+          source: "hosted_governed_x402",
+          connection: "disconnected",
+          authorityStatus: "not_checked",
           balanceChecked: false,
+          localSignerExecutor: false,
           configurationIsApproval: false,
         },
       });
@@ -62,26 +73,30 @@ describe("read-only OpenDexter doctor", () => {
     }
   });
 
-  it("does not require a signer or funding for search and check", async () => {
+  it("does not require legacy material or funding for search and check", async () => {
     const report = await buildDoctorReport(
       {},
       {
         detectClients: () => [],
         walletFile: "/definitely/missing/opendexter-wallet.json",
         env: {},
+        connectedSession: false,
       },
     );
 
-    expect(report.payment.signerConfiguration).toBe("not_configured");
+    expect(report.legacyRecovery.material).toBe("not_present");
     expect(report.nextActions.join(" ")).toContain(
-      "does not block search or check",
+      "opendexter connect",
     );
+    expect(report.nextActions.join(" ")).not.toContain("configure one");
+    expect(report.payment.source).toBe("hosted_governed_x402");
+    expect(report.payment.localSignerExecutor).toBe(false);
     expect(report.payment.configurationIsApproval).toBe(false);
   });
 
-  it("reports environment configuration without reading or exposing keys", () => {
-    expect(inspectSignerConfiguration("/missing", {
+  it("reports only environment variable-name presence without exposing keys", () => {
+    expect(inspectLegacyRecoveryMaterial("/missing", {
       EVM_PRIVATE_KEY: "0xprivate",
-    })).toBe("environment");
+    })).toBe("environment_material_present");
   });
 });

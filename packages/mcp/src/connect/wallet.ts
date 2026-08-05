@@ -19,11 +19,15 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { getApiBase, VERSION } from "../config.js";
-import { saveSession, type VaultSession } from "./store.js";
+import { clearSession, loadSession, saveSession, type VaultSession } from "./store.js";
 
 /** The connector rail's OAuth token endpoint (device grant + refresh). */
 const TOKEN_PATH = "/api/connector/oauth/token";
+/** Bearer-authenticated read-only authority evidence; never accepts identity input. */
+export const GOVERNED_AUTHORITY_STATUS_PATH =
+  "/api/connector/oauth/authority";
 /** The client_id the connector rail knows this CLI by (matches connect.ts). */
 const CLIENT_ID = "opendexter-cli";
 /**
@@ -31,7 +35,16 @@ const CLIENT_ID = "opendexter-cli";
  * origin, so we always target it (a dev dexter-api still issues prod-aud vault
  * tokens). `OPENDEXTER_MCP_URL` overrides for local server testing.
  */
-const HOSTED_MCP_URL = process.env.OPENDEXTER_MCP_URL || "https://open.dexter.cash/mcp";
+export const HOSTED_MCP_URL = process.env.OPENDEXTER_MCP_URL || "https://open.dexter.cash/mcp";
+
+export type HostedRuntimeToolName =
+  | "x402_search"
+  | "x402_check"
+  | "x402_fetch"
+  | "x402_status"
+  | "x402_access"
+  | "x402_wallet"
+  | "dexter_portfolio";
 
 /**
  * The subset of the hosted `x402_wallet` structuredContent we read. Kept loose
@@ -65,26 +78,290 @@ export interface HostedWalletResult {
   mode?: string;
   enroll_url?: string;
   pairing_url?: string;
+  /** Exact status evidence may be embedded by the hosted wallet runtime. */
+  authority?: unknown;
+  governedAuthority?: unknown;
+  runtimeAuthority?: unknown;
   [key: string]: unknown;
 }
 
+export interface RuntimeAuthorityStatus {
+  namespace: "opendexter-runtime-authority/v1";
+  runtimeSource: "hosted_governed_x402";
+  status: "active" | "inactive" | "unavailable" | "disconnected";
+  active: boolean | null;
+  authoritySource: string | null;
+  grantId: string | null;
+  grantRevision: number | null;
+  logicalGrantActive: boolean | null;
+  principal: Record<string, unknown> | null;
+  limits: {
+    maximumPerCallAmountAtomic: string | null;
+    maximumDailyAmountAtomic: string | null;
+    maximumAggregateAmountAtomic: string | null;
+  } | null;
+  remaining: {
+    perCallAmountAtomic: string | null;
+    dailyAmountAtomic: string | null;
+    aggregateAmountAtomic: string | null;
+  } | null;
+  expiresAt: string | null;
+  scopes: Record<string, unknown> | readonly string[] | null;
+  activeRole: Record<string, unknown> | null;
+  revocation: {
+    revoked: boolean | null;
+    manageUrl: string | null;
+  };
+  fallback: {
+    available: false;
+    enabled: false;
+    active: false;
+    automatic: false;
+  };
+  evidenceNamespace: string | null;
+  reason: string | null;
+}
+
+const AUTHORITY_CAPACITY_MAX_AGE_MS = 60_000;
+const AUTHORITY_CAPACITY_MAX_FUTURE_SKEW_MS = 5_000;
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 /**
- * Open an MCP client to the hosted server with the ES256 bearer and call
- * `x402_wallet`. Returns the tool's structuredContent (or the parsed text
- * content as a fallback). Throws on transport/auth failure — a 401 surfaces as
- * a StreamableHTTPError with `.code === 401`, which `isAuthError` recognizes.
+ * Project only the exact governed-authority evidence contract. A wallet
+ * balance, connect token, or arbitrary `authority` object is never promoted to
+ * bounded payment authority. Missing evidence stays visibly unavailable.
  */
-export async function callHostedAccountTool<T extends Record<string, unknown> = Record<string, unknown>>(opts: {
-  accessToken: string;
-  toolName: "x402_wallet" | "dexter_portfolio";
+export function projectRuntimeAuthorityStatus(
+  wallet: HostedWalletResult | Record<string, unknown> | null,
+  now: () => number = () => Date.now(),
+): RuntimeAuthorityStatus {
+  const currentTime = now();
+  const container = wallet ?? {};
+  const candidates = [
+    container.runtimeAuthority,
+    container.governedAuthority,
+    container.authority,
+  ];
+  const evidence = candidates
+    .map(objectValue)
+    .find((candidate) =>
+      candidate?.namespace === "dexter-governed-agent-surface-authority/v1"
+    ) ?? null;
+  const fallback = {
+    available: false as const,
+    enabled: false as const,
+    active: false as const,
+    automatic: false as const,
+  };
+
+  if (!evidence) {
+    return {
+      namespace: "opendexter-runtime-authority/v1",
+      runtimeSource: "hosted_governed_x402",
+      status: "unavailable",
+      active: null,
+      authoritySource: null,
+      grantId: null,
+      grantRevision: null,
+      logicalGrantActive: null,
+      principal: null,
+      limits: null,
+      remaining: null,
+      expiresAt: null,
+      scopes: null,
+      activeRole: null,
+      revocation: {
+        revoked: null,
+        manageUrl: "https://dexter.cash/wallet",
+      },
+      fallback,
+      evidenceNamespace: null,
+      reason: "governed_authority_status_unavailable",
+    };
+  }
+
+  const capacity = objectValue(evidence.capacity);
+  const active = typeof evidence.active === "boolean" ? evidence.active : null;
+  const mode = stringValue(evidence.mode);
+  const principal = objectValue(evidence.principal);
+  const scopesObject = objectValue(evidence.scopes);
+  const activeRole = objectValue(evidence.activeRole);
+  const scopesArray = Array.isArray(evidence.scopes)
+    && evidence.scopes.every((scope) => typeof scope === "string")
+    ? evidence.scopes as string[]
+    : null;
+  const grantId = stringValue(evidence.grantId);
+  const grantRevision =
+    typeof evidence.grantRevision === "number"
+    && Number.isSafeInteger(evidence.grantRevision)
+      ? evidence.grantRevision
+      : null;
+  const authoritySource = stringValue(evidence.source);
+  const expiresAt = stringValue(evidence.expiresAt);
+  const expiresAtMs = expiresAt === null ? Number.NaN : Date.parse(expiresAt);
+  const capacityEvaluatedAt = stringValue(capacity?.evaluatedAt);
+  const capacityEvaluatedAtMs = capacityEvaluatedAt === null
+    ? Number.NaN
+    : Date.parse(capacityEvaluatedAt);
+  const capacityTimestampFresh =
+    Number.isFinite(capacityEvaluatedAtMs)
+    && capacityEvaluatedAtMs >= currentTime - AUTHORITY_CAPACITY_MAX_AGE_MS
+    && capacityEvaluatedAtMs <= currentTime + AUTHORITY_CAPACITY_MAX_FUTURE_SKEW_MS;
+  const authorityUnexpired = Number.isFinite(expiresAtMs) && expiresAtMs > currentTime;
+  const authorityExpired = active === true
+    && Number.isFinite(expiresAtMs)
+    && !authorityUnexpired;
+  const atomic = (value: unknown): value is string =>
+    typeof value === "string" && /^\d+$/.test(value);
+  const digest = (value: unknown): boolean =>
+    typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
+  const integer = (value: unknown): value is number =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+  const exactPrincipal =
+    principal !== null
+    && stringValue(principal.actor) !== null
+    && stringValue(principal.vaultPda) !== null
+    && stringValue(principal.walletAddress) !== null
+    && stringValue(principal.agentId) !== null;
+  const exactCapacity =
+    capacity !== null
+    && atomic(capacity.maximumPerCallAmountAtomic)
+    && atomic(capacity.remainingPerCallAmountAtomic)
+    && BigInt(capacity.remainingPerCallAmountAtomic)
+      <= BigInt(capacity.maximumPerCallAmountAtomic)
+    && atomic(capacity.maximumDailyAmountAtomic)
+    && atomic(capacity.usedDailyAmountAtomic)
+    && atomic(capacity.remainingDailyAmountAtomic)
+    && BigInt(capacity.usedDailyAmountAtomic)
+      + BigInt(capacity.remainingDailyAmountAtomic)
+      === BigInt(capacity.maximumDailyAmountAtomic)
+    && atomic(capacity.maximumAggregateAmountAtomic)
+    && atomic(capacity.usedAggregateAmountAtomic)
+    && atomic(capacity.remainingAggregateAmountAtomic)
+    && BigInt(capacity.usedAggregateAmountAtomic)
+      + BigInt(capacity.remainingAggregateAmountAtomic)
+      === BigInt(capacity.maximumAggregateAmountAtomic)
+    && capacityTimestampFresh
+    && digest(capacity.snapshotDigest);
+  const exactActiveRole =
+    activeRole?.status === "active"
+    && integer(activeRole.roleId)
+    && stringValue(activeRole.authoritySigner) !== null
+    && integer(activeRole.sessionExpirySlot)
+    && integer(activeRole.currentSlot)
+    && activeRole.sessionExpirySlot >= activeRole.currentSlot
+    && digest(activeRole.resolutionDigest);
+  const completeActiveEvidence =
+    active === true
+    && mode === "bounded_payment_authority"
+    && evidence.inactiveReason === null
+    && evidence.logicalGrantActive === true
+    && authoritySource === "mcp-link-token"
+    && grantId !== null
+    && grantRevision !== null
+    && grantRevision >= 0
+    && exactPrincipal
+    && exactCapacity
+    && authorityUnexpired
+    && scopesObject?.network === "solana-mainnet"
+    && scopesObject.assetId === "usdc"
+    && scopesObject.action === "send"
+    && scopesObject.protocolId === "x402-exact-v2"
+    && scopesObject.counterpartyScope === "any-valid-x402-seller"
+    && evidence.revoked === false
+    && exactActiveRole
+    && evidence.fallback === false;
+
+  return {
+    namespace: "opendexter-runtime-authority/v1",
+    runtimeSource: "hosted_governed_x402",
+    status:
+      completeActiveEvidence
+        ? "active"
+        : authorityExpired || active === false
+          ? "inactive"
+        : mode === "unavailable" || active === null || active === true
+          ? "unavailable"
+          : "inactive",
+    active: completeActiveEvidence
+      ? true
+      : authorityExpired || active === false
+        ? false
+        : null,
+    authoritySource,
+    grantId,
+    grantRevision,
+    logicalGrantActive:
+      typeof evidence.logicalGrantActive === "boolean"
+        ? evidence.logicalGrantActive
+        : null,
+    principal,
+    limits: capacity
+      ? {
+          maximumPerCallAmountAtomic: stringValue(capacity.maximumPerCallAmountAtomic),
+          maximumDailyAmountAtomic: stringValue(capacity.maximumDailyAmountAtomic),
+          maximumAggregateAmountAtomic: stringValue(capacity.maximumAggregateAmountAtomic),
+        }
+      : null,
+    remaining: capacity
+      ? {
+          perCallAmountAtomic: stringValue(capacity.remainingPerCallAmountAtomic),
+          dailyAmountAtomic: stringValue(capacity.remainingDailyAmountAtomic),
+          aggregateAmountAtomic: stringValue(capacity.remainingAggregateAmountAtomic),
+        }
+      : null,
+    expiresAt,
+    scopes: scopesObject ?? scopesArray,
+    activeRole,
+    revocation: {
+      revoked: typeof evidence.revoked === "boolean" ? evidence.revoked : null,
+      manageUrl: "https://dexter.cash/wallet",
+    },
+    fallback,
+    evidenceNamespace: "dexter-governed-agent-surface-authority/v1",
+    reason:
+      authorityExpired
+        ? "governed_authority_expired"
+        : active === true
+          && Number.isFinite(capacityEvaluatedAtMs)
+          && !capacityTimestampFresh
+          ? "governed_authority_capacity_stale"
+          : active === true && !completeActiveEvidence
+            ? "governed_authority_evidence_incomplete"
+        : stringValue(evidence.inactiveReason),
+  };
+}
+
+/**
+ * Open one short-lived client to the canonical hosted MCP and return its exact
+ * tool result. With no bearer this is the hosted anonymous surface; a stored
+ * connect token selects the authenticated governed surface. This proxy never
+ * transports wallet keys or model-authored authority fields.
+ */
+export async function callHostedTool(opts: {
+  accessToken?: string | null;
+  toolName: HostedRuntimeToolName;
+  arguments?: Record<string, unknown>;
   serverUrl?: string;
   fetchImpl?: typeof fetch;
-}): Promise<T> {
+  /** Called only after MCP connection succeeds, immediately before callTool. */
+  onDispatch?: () => void;
+}): Promise<CallToolResult> {
   const url = new URL(opts.serverUrl ?? HOSTED_MCP_URL);
+  const headers = opts.accessToken
+    ? { Authorization: `Bearer ${opts.accessToken}` }
+    : undefined;
   const transport = new StreamableHTTPClientTransport(url, {
-    requestInit: {
-      headers: { Authorization: `Bearer ${opts.accessToken}` },
-    },
+    ...(headers ? { requestInit: { headers } } : {}),
     ...(opts.fetchImpl ? { fetch: opts.fetchImpl as unknown as typeof fetch } : {}),
   });
   const client = new Client(
@@ -93,28 +370,115 @@ export async function callHostedAccountTool<T extends Record<string, unknown> = 
   );
   try {
     await client.connect(transport);
-    const res = (await client.callTool({ name: opts.toolName, arguments: {} })) as {
-      structuredContent?: unknown;
-      content?: Array<{ type?: string; text?: string }>;
-    };
-    if (res.structuredContent && typeof res.structuredContent === "object") {
-      return res.structuredContent as T;
-    }
-    // Fallback: the tool always mirrors structuredContent into a text block.
-    const text = Array.isArray(res.content)
-      ? res.content.find((c) => c?.type === "text")?.text
-      : undefined;
-    if (text) {
-      try {
-        return JSON.parse(text) as T;
-      } catch {
-        /* fall through to empty */
-      }
-    }
-    return {} as T;
+    opts.onDispatch?.();
+    return await client.callTool({
+      name: opts.toolName,
+      arguments: opts.arguments ?? {},
+    }) as CallToolResult;
   } finally {
     await client.close().catch(() => {});
   }
+}
+
+function isAccessCredentialKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[^a-z]/g, "");
+  return normalized === "sessiontoken" || normalized === "sessionkey";
+}
+
+function compositeJson(value: string): unknown | null {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function collectAccessCredentials(value: unknown, secrets: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectAccessCredentials(item, secrets);
+    return;
+  }
+  if (typeof value === "string") {
+    const parsed = compositeJson(value);
+    if (parsed) collectAccessCredentials(parsed, secrets);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (isAccessCredentialKey(key) && typeof item === "string" && item.length > 0) {
+      secrets.add(item);
+    }
+    collectAccessCredentials(item, secrets);
+  }
+}
+
+function scrubAccessCredentials(value: unknown, secrets: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => scrubAccessCredentials(item, secrets));
+  }
+  if (typeof value === "string") {
+    const parsed = compositeJson(value);
+    if (parsed) {
+      return JSON.stringify(scrubAccessCredentials(parsed, secrets), null, 2);
+    }
+    let scrubbed = value;
+    for (const secret of secrets) {
+      scrubbed = scrubbed.split(secret).join("[redacted]");
+    }
+    return scrubbed.replace(/_?session[_-]?(?:token|key)/gi, "sessionCredential");
+  }
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !isAccessCredentialKey(key))
+      .map(([key, item]) => [key, scrubAccessCredentials(item, secrets)]),
+  );
+}
+
+/** Never forward the legacy access context's session credentials locally. */
+export function sanitizeLegacyAccessResult(result: CallToolResult): CallToolResult {
+  const secrets = new Set<string>();
+  collectAccessCredentials(result, secrets);
+  return scrubAccessCredentials(result, secrets) as CallToolResult;
+}
+
+export function structuredToolResult(
+  result: Pick<CallToolResult, "structuredContent" | "content">,
+): Record<string, unknown> {
+  if (result.structuredContent && typeof result.structuredContent === "object") {
+    return result.structuredContent;
+  }
+  const text = Array.isArray(result.content)
+    ? result.content.find((content) => content?.type === "text")?.text
+    : undefined;
+  if (text) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      /* A prose result has no structured projection. */
+    }
+  }
+  return {};
+}
+
+export async function callHostedAccountTool<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(opts: {
+  accessToken: string;
+  toolName: "x402_wallet" | "dexter_portfolio";
+  serverUrl?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<T> {
+  return structuredToolResult(await callHostedTool({
+    ...opts,
+    arguments: {},
+  })) as T;
 }
 
 export async function callHostedWalletTool(opts: {
@@ -177,6 +541,244 @@ export async function refreshVaultToken(opts: {
   }
 }
 
+export interface HostedRuntimeCallOpts {
+  toolName: HostedRuntimeToolName;
+  arguments?: Record<string, unknown>;
+  dev?: boolean;
+  dataDir?: string;
+  serverUrl?: string;
+  apiBase?: string;
+  fetchImpl?: typeof fetch;
+  now?: () => number;
+  /** Exact dispatch seam used by CLI ambiguity recovery. */
+  onDispatch?: () => void;
+  /**
+   * May disable rejected-bearer retry for a caller with stricter semantics.
+   * It cannot enable retry for x402_fetch or a non-GET check/access: those are
+   * centrally one-dispatch because an auth-looking failure is not proof that
+   * no charge or mutation occurred.
+   */
+  retryRejectedBearer?: boolean;
+  /** Test seam for the one hosted MCP call. */
+  callHosted?: (
+    accessToken: string | null,
+    toolName: HostedRuntimeToolName,
+    args: Record<string, unknown>,
+  ) => Promise<CallToolResult>;
+}
+
+async function refreshAndPersistSession(
+  session: VaultSession,
+  opts: Pick<HostedRuntimeCallOpts, "apiBase" | "dev" | "fetchImpl" | "dataDir" | "now">,
+): Promise<VaultSession | null> {
+  const refreshed = await refreshVaultToken({
+    refreshToken: session.refreshToken,
+    apiBase: opts.apiBase ?? getApiBase(opts.dev ?? false),
+    fetchImpl: opts.fetchImpl,
+  });
+  if (!refreshed) return null;
+  const now = opts.now ?? (() => Date.now());
+  const next = {
+    ...session,
+    accessToken: refreshed.accessToken,
+    refreshToken: refreshed.refreshToken ?? session.refreshToken,
+    expiresAt:
+      now() + (refreshed.expiresIn && refreshed.expiresIn > 0
+        ? refreshed.expiresIn
+        : 3600) * 1000,
+  } satisfies VaultSession;
+  saveSession(next, opts.dataDir);
+  return next;
+}
+
+function isUsableStoredSession(session: VaultSession | null): session is VaultSession {
+  return session !== null
+    && typeof session.accessToken === "string"
+    && session.accessToken.length > 0
+    && typeof session.refreshToken === "string"
+    && session.refreshToken.length > 0
+    && typeof session.expiresAt === "number"
+    && Number.isFinite(session.expiresAt);
+}
+
+/**
+ * Call the hosted runtime selected by the current connect store. An absent
+ * session may call anonymous search/check/access; every account-bound tool
+ * fails before dispatch. Search and access always use the anonymous hosted
+ * surface. Check uses OAuth when it is currently available, otherwise it
+ * degrades to one anonymous call. This path never reads or creates wallet.json.
+ * A rejected bearer is retried only for explicitly retry-safe reads and never
+ * for fetch or a non-GET seller request.
+ */
+export async function callHostedRuntimeTool(
+  opts: HostedRuntimeCallOpts,
+): Promise<CallToolResult> {
+  const now = opts.now ?? (() => Date.now());
+  const callHosted = opts.callHosted ?? ((accessToken, toolName, args) =>
+    callHostedTool({
+      accessToken,
+      toolName,
+      arguments: args,
+      serverUrl: opts.serverUrl,
+      fetchImpl: opts.fetchImpl,
+      onDispatch: opts.onDispatch,
+    }));
+  const args = opts.arguments ?? {};
+
+  // Search and access are intentionally independent of Dexter OAuth. Access is
+  // a fresh one-call legacy wallet-proof context on the hosted server; this
+  // proxy neither accepts nor persists its session credentials.
+  if (opts.toolName === "x402_search" || opts.toolName === "x402_access") {
+    const result = await callHosted(null, opts.toolName, args);
+    return opts.toolName === "x402_access"
+      ? sanitizeLegacyAccessResult(result)
+      : result;
+  }
+
+  let session = loadSession(opts.dataDir);
+  if (session && !isUsableStoredSession(session)) {
+    clearSession(opts.dataDir);
+    session = null;
+  }
+
+  if (!session && opts.toolName !== "x402_check") {
+    throw new Error(`connect_required_for_hosted_${opts.toolName}`);
+  }
+
+  if (!session) {
+    return callHosted(null, "x402_check", args);
+  }
+
+  // Refresh before any dispatch when expiry is already known. This is safe for
+  // x402_fetch because no consequential request has been sent yet.
+  if (session && session.expiresAt <= now() + 30_000) {
+    session = await refreshAndPersistSession(session, opts);
+    if (!session) {
+      clearSession(opts.dataDir);
+      if (opts.toolName === "x402_check") {
+        return callHosted(null, "x402_check", args);
+      }
+      throw new Error("connected_session_expired_reconnect_required");
+    }
+  }
+
+  const retrySafeByContract =
+    opts.toolName !== "x402_fetch"
+    && (
+      opts.toolName !== "x402_check"
+      || !("method" in args)
+      || args.method === "GET"
+    );
+  try {
+    return await callHosted(session?.accessToken ?? null, opts.toolName, args);
+  } catch (error) {
+    if (!session || !isAuthError(error)) throw error;
+    if (opts.retryRejectedBearer === false || !retrySafeByContract) {
+      throw new Error(
+        "connected_session_rejected_no_automatic_retry; reconnect and reconcile the same intent before any retry",
+      );
+    }
+    session = await refreshAndPersistSession(session, opts);
+    if (!session) {
+      clearSession(opts.dataDir);
+      if (opts.toolName === "x402_check") {
+        return callHosted(null, "x402_check", args);
+      }
+      throw new Error("connected_session_expired_reconnect_required");
+    }
+    return await callHosted(session.accessToken, opts.toolName, args);
+  }
+}
+
+function unavailableAuthorityStatus(reason: string): RuntimeAuthorityStatus {
+  return {
+    ...projectRuntimeAuthorityStatus(null),
+    reason,
+  };
+}
+
+/**
+ * Read exact live authority evidence with the stored OAuth bearer. The API
+ * independently verifies aud=https://open.dexter.cash/mcp and exact OAuth
+ * scope=vault, then validates the separate signed dexter_surface token claim
+ * and durable server-side bindings. The client sends no principal, grant,
+ * vault, role, or internal HMAC material.
+ */
+export async function readGovernedAuthorityStatus(opts: {
+  dev?: boolean;
+  dataDir?: string;
+  apiBase?: string;
+  fetchImpl?: typeof fetch;
+  now?: () => number;
+} = {}): Promise<RuntimeAuthorityStatus> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const now = opts.now ?? (() => Date.now());
+  const apiBase = (opts.apiBase ?? getApiBase(opts.dev ?? false)).replace(/\/+$/, "");
+  let session = loadSession(opts.dataDir);
+  if (!session) return unavailableAuthorityStatus("connect_required");
+
+  if (session.expiresAt <= now() + 30_000) {
+    session = await refreshAndPersistSession(session, opts);
+    if (!session) return unavailableAuthorityStatus("connected_session_expired");
+  }
+
+  const read = async (accessToken: string): Promise<Response> =>
+    fetchImpl(`${apiBase}${GOVERNED_AUTHORITY_STATUS_PATH}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+  try {
+    let response = await read(session.accessToken);
+    if (response.status === 401) {
+      const refreshed = await refreshAndPersistSession(session, opts);
+      if (!refreshed) return unavailableAuthorityStatus("connected_session_expired");
+      session = refreshed;
+      response = await read(session.accessToken);
+    }
+    if (!response.ok) {
+      return unavailableAuthorityStatus(
+        response.status === 403
+          ? "governed_authority_scope_unavailable"
+          : "governed_authority_status_unavailable",
+      );
+    }
+    const body = await response.json().catch(() => null);
+    const evidence = objectValue(body);
+    if (!evidence) return unavailableAuthorityStatus("governed_authority_status_invalid");
+    return projectRuntimeAuthorityStatus({ authority: evidence }, now);
+  } catch {
+    return unavailableAuthorityStatus("governed_authority_status_unavailable");
+  }
+}
+
+/** Add local runtime truth without replacing any provider payload or receipt. */
+export function attachRuntimeAuthorityStatus(
+  result: CallToolResult,
+  status: RuntimeAuthorityStatus,
+): CallToolResult {
+  const structuredContent = {
+    ...structuredToolResult(result),
+    runtimeAuthority: status,
+  };
+  let replacedText = false;
+  const content = result.content.map((block) => {
+    if (!replacedText && block.type === "text") {
+      replacedText = true;
+      return { ...block, text: JSON.stringify(structuredContent, null, 2) };
+    }
+    return block;
+  });
+  if (!replacedText) {
+    content.unshift({ type: "text", text: JSON.stringify(structuredContent, null, 2) });
+  }
+  return {
+    ...result,
+    content,
+    structuredContent,
+  };
+}
+
 export interface ConnectedWalletOpts {
   session: VaultSession;
   dev?: boolean;
@@ -188,6 +790,8 @@ export interface ConnectedWalletOpts {
   fetchImpl?: typeof fetch;
   /** Test seam — the hosted x402_wallet call (default: real MCP client). */
   callHostedWallet?: (accessToken: string) => Promise<HostedWalletResult>;
+  /** Test seam — exact bearer-authenticated governed authority read. */
+  readAuthorityStatus?: () => Promise<RuntimeAuthorityStatus>;
 }
 
 /**
@@ -241,7 +845,24 @@ export async function showConnectedWallet(opts: ConnectedWalletOpts): Promise<vo
     }
   }
 
-  renderConnectedWallet(result, log);
+  const embeddedAuthority = projectRuntimeAuthorityStatus(result, now);
+  const endpointAuthority = opts.readAuthorityStatus
+    ? await opts.readAuthorityStatus()
+    : opts.callHostedWallet
+      ? embeddedAuthority
+      : await readGovernedAuthorityStatus({
+          dev: opts.dev,
+          dataDir: opts.dataDir,
+          apiBase: opts.apiBase,
+          fetchImpl,
+          now,
+        });
+  const authority = endpointAuthority.evidenceNamespace
+    ? endpointAuthority
+    : embeddedAuthority.evidenceNamespace
+      ? embeddedAuthority
+      : endpointAuthority;
+  renderConnectedWallet(result, authority, log);
 }
 
 /** Atomic (6-dp) USDC string → number, or null when unparseable. */
@@ -270,22 +891,25 @@ function readActivated(result: HostedWalletResult): boolean | null {
  * is always the hosted result's `address` (the wallet-PDA) — never the
  * dexter.vault state address on the session.
  */
-function renderConnectedWallet(result: HostedWalletResult, log: (line: string) => void): void {
+function renderConnectedWallet(
+  result: HostedWalletResult,
+  authority: RuntimeAuthorityStatus,
+  log: (line: string) => void,
+): void {
   // The session is connected, but the vault itself isn't set up yet — a user
   // who ran `connect` before finishing wallet setup. Guide them to finish;
   // never imply a service outage (that message is for a genuine no-data read).
   if (result.vault_status === "not_enrolled" || result.mode === "vault_required") {
     const setupUrl = result.enroll_url || result.pairing_url || "https://dexter.cash/wallet";
     log("");
-    log("Dexter Wallet account view");
-    log("  link: read-only");
+    log("Dexter Wallet connected runtime");
+    log("  x402 path: hosted governed runtime");
     log("");
     log("  Your wallet isn't set up yet.");
     log(`  Finish setup at ${setupUrl}`);
     log("  then run `opendexter wallet` again.");
     log("");
-    log("Payments in this local client still use its separately configured local signer.");
-    log("Revoke this read-only link anytime at dexter.cash/wallet.");
+    renderAuthority(authority, log);
     return;
   }
 
@@ -298,8 +922,8 @@ function renderConnectedWallet(result: HostedWalletResult, log: (line: string) =
   const activated = readActivated(result);
 
   log("");
-  log("Dexter Wallet account view");
-  log("  link: read-only");
+  log("Dexter Wallet connected runtime");
+  log("  x402 path: hosted governed runtime");
 
   log("");
   log("  USDC balance");
@@ -320,7 +944,36 @@ function renderConnectedWallet(result: HostedWalletResult, log: (line: string) =
     log("  Your vault activates automatically on your first deposit.");
   }
 
+  renderAuthority(authority, log);
+}
+
+function renderAuthority(
+  authority: RuntimeAuthorityStatus,
+  log: (line: string) => void,
+): void {
   log("");
-  log("Payments in this local client still use its separately configured local signer.");
-  log("Revoke this read-only link anytime at dexter.cash/wallet.");
+  log("  Governed x402 authority");
+  log(`    status: ${authority.status}`);
+  log(`    source: ${authority.authoritySource ?? "unavailable"}`);
+  log(`    grant: ${authority.grantId ?? "unavailable"}`);
+  log(`    grant revision: ${authority.grantRevision ?? "unavailable"}`);
+  log(`    logical grant active: ${authority.logicalGrantActive ?? "unavailable"}`);
+  log(`    principal: ${authority.principal ? JSON.stringify(authority.principal) : "unavailable"}`);
+  log(`    limits: ${authority.limits ? JSON.stringify(authority.limits) : "unavailable"}`);
+  log(`    remaining: ${authority.remaining ? JSON.stringify(authority.remaining) : "unavailable"}`);
+  log(`    expiry: ${authority.expiresAt ?? "unavailable"}`);
+  log(`    scopes: ${authority.scopes ? JSON.stringify(authority.scopes) : "unavailable"}`);
+  log(`    active role: ${authority.activeRole ? JSON.stringify(authority.activeRole) : "unavailable"}`);
+  log(
+    `    revocation: ${authority.revocation.revoked === null
+      ? "unavailable"
+      : authority.revocation.revoked
+        ? "revoked"
+        : "not revoked"}`,
+  );
+  if (authority.reason) log(`    reason: ${authority.reason}`);
+  log("");
+  log("  Local signer execution: unavailable (legacy wallet recovery is view-only)");
+  log("  Automatic fallback: never");
+  log("  Manage or revoke at https://dexter.cash/wallet");
 }

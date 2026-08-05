@@ -7,6 +7,11 @@ description: "x402 v2 protocol specification reference. Use when you need to und
 
 Canonical spec: https://github.com/coinbase/x402
 
+This document describes the generic wire protocol, not the OpenDexter MCP
+runtime. For OpenDexter, the hosted governed server owns signing and exact
+request binding; the local proxy accepts an opaque intent plus atomic ceiling
+and uses `x402_status` rather than blindly repeating an uncertain fetch.
+
 ## Core Architecture
 
 Three actors:

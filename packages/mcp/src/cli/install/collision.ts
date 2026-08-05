@@ -455,7 +455,7 @@ export function existingRegistrationMessage(
   return [
     reason,
     "Setup left the client unchanged.",
-    "The hosted connector and local package use different wallet authority and must not share one client registration name.",
+    "The hosted connector and local package target the same hosted governed wallet authority, but isolation between their duplicate tool, authentication, and session identities has not been proven.",
     "Aliasing does not make two OpenDexter registrations safe in a client whose duplicate tool-name namespacing has not been proven.",
     next,
   ].join(" ");

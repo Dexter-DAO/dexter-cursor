@@ -122,8 +122,14 @@ describe("connect/connect — cliConnect device flow", () => {
     expect(out).toContain("[qr]");
     expect(out).toContain(DEVICE_AUTH_BODY.user_code);
     expect(out).toContain(VAULT_ADDRESS);
-    expect(out).toContain("Linked your Dexter Wallet for read-only account views");
-    expect(out).toContain("separately configured local signer");
+    expect(out).toContain("Connected your Dexter Wallet to the hosted governed x402 runtime");
+    expect(out).toContain("No bounded payment authority is claimed");
+    expect(out).toContain("not payment executors");
+    expect(out).not.toContain("OPENDEXTER_LOCAL_SIGNER_FALLBACK");
+    const deviceRequest = JSON.parse(
+      ((fetchImpl.mock.calls[0] as unknown as [unknown, RequestInit])[1]).body as string,
+    );
+    expect(deviceRequest.scope).toBe("vault");
   });
 
   it("offers to open the browser unless noBrowser is set", async () => {
@@ -204,10 +210,49 @@ describe("connect/connect — status + disconnect", () => {
   it("status reports the vault address when connected", async () => {
     seed();
     const log: string[] = [];
-    await cliConnectStatus({ dataDir: dir, log: (l) => log.push(l) });
+    await cliConnectStatus({
+      dataDir: dir,
+      log: (l) => log.push(l),
+      readAuthorityStatus: async () => ({
+        namespace: "opendexter-runtime-authority/v1",
+        runtimeSource: "hosted_governed_x402",
+        status: "active",
+        active: true,
+        authoritySource: "mcp-link-token",
+        grantId: "grant-1",
+        grantRevision: 3,
+        logicalGrantActive: true,
+        principal: { actor: "agent", agentId: "agent-1" },
+        limits: {
+          maximumPerCallAmountAtomic: "1000000",
+          maximumDailyAmountAtomic: "5000000",
+          maximumAggregateAmountAtomic: "10000000",
+        },
+        remaining: {
+          perCallAmountAtomic: "750000",
+          dailyAmountAtomic: "3750000",
+          aggregateAmountAtomic: "7750000",
+        },
+        expiresAt: "2026-08-06T00:00:00.000Z",
+        scopes: { protocolId: "x402-exact-v2" },
+        activeRole: { status: "active", roleId: 7 },
+        revocation: { revoked: false, manageUrl: "https://dexter.cash/wallet" },
+        fallback: {
+          available: false,
+          enabled: false,
+          active: false,
+          automatic: false,
+        },
+        evidenceNamespace: "dexter-governed-agent-surface-authority/v1",
+        reason: null,
+      }),
+    });
     expect(log.join("\n")).toContain(VAULT_ADDRESS);
-    expect(log.join("\n")).toContain("Dexter Wallet read-only link");
-    expect(log.join("\n")).toContain("Payment authority");
+    expect(log.join("\n")).toContain("Dexter Wallet connected runtime");
+    expect(log.join("\n")).toContain("Authority status: active");
+    expect(log.join("\n")).toContain("Grant ID: grant-1");
+    expect(log.join("\n")).toContain("Remaining:");
+    expect(log.join("\n")).toContain("Revocation: not revoked");
   });
 
   it("status reports Not connected when there is no session", async () => {

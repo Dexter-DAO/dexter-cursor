@@ -7,9 +7,10 @@
  * (link, terminal QR, hand-typed code), then poll /token with
  * grant_type=device_code until the user approves with their passkey on any
  * device. On success we persist the returned vault token pair via the atomic
- * session store so `opendexter wallet` can read the hosted wallet without
- * re-authenticating. The local MCP server and paid CLI commands do not consume
- * this session; they continue to use the local file/env wallet.
+ * session store so the local MCP and CLI can use the same hosted governed x402
+ * runtime without re-authenticating. wallet.json and environment signers are
+ * never payment executors. Existing wallet.json users retain only an explicit
+ * read-only public-address and balance recovery view.
  *
  * The CLI never handles a password, private key, or passkey ceremony — OAuth is
  * only the transport; approval happens in the browser at
@@ -21,12 +22,19 @@
 import { getApiBase } from "../config.js";
 import { tryOpenInBrowser, renderQr } from "../util/browser.js";
 import { saveSession, loadSession, clearSession, type VaultSession } from "./store.js";
+import {
+  readGovernedAuthorityStatus,
+  type RuntimeAuthorityStatus,
+} from "./wallet.js";
 
 /** RFC 8628 §3.4 grant_type for the device_code poll. */
 const DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 /** The client_id the connector rail knows this CLI by. */
 const CLIENT_ID = "opendexter-cli";
 const DEVICE_LABEL = "opendexter-cli";
+/** Exact OAuth scope. The API returns `dexter_surface` as a separate signed
+ * token claim; it is authority evidence, not a client-requested scope. */
+const CONNECT_SCOPE = "vault";
 /** Where the human approves — printed alongside the typed user_code. */
 const VERIFICATION_PAGE = "dexter.cash/wallet/connect";
 /** Slow-down back-off step (RFC 8628 §3.5: bump the interval, keep polling). */
@@ -125,7 +133,7 @@ export async function cliConnect(opts: ConnectOpts = {}): Promise<void> {
     const res = await fetchImpl(`${base}/api/connector/oauth/device_authorization`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: CLIENT_ID, scope: "vault" }),
+      body: JSON.stringify({ client_id: CLIENT_ID, scope: CONNECT_SCOPE }),
     });
     const body = (await res.json().catch(() => ({}))) as DeviceAuthorization & { error?: string };
     if (!res.ok || !body.device_code || !body.user_code) {
@@ -261,17 +269,23 @@ async function finishConnect(
   saveSession(session, ctx.dataDir);
 
   ctx.log("");
-  ctx.log("Linked your Dexter Wallet for read-only account views");
+  ctx.log("Connected your Dexter Wallet to the hosted governed x402 runtime");
   if (vaultAddress) ctx.log(`  ${vaultAddress}`);
   ctx.log("");
-  ctx.log("Run `opendexter wallet` to see your balance.");
-  ctx.log("Payments in this local client still use its separately configured local signer.");
+  ctx.log("Run `opendexter connect status` to verify the active grant, limits, remaining capacity, expiry, scopes, and revocation state.");
+  ctx.log("No bounded payment authority is claimed until that live status read proves it.");
+  ctx.log("Local wallet.json/environment signers are not payment executors on this runtime.");
   ctx.log("Revoke anytime at dexter.cash/wallet.");
 }
 
 export interface ConnectStatusOpts {
   dataDir?: string;
   log?: (line: string) => void;
+  dev?: boolean;
+  fetchImpl?: typeof fetch;
+  now?: () => number;
+  /** Test seam for exact status evidence. */
+  readAuthorityStatus?: () => Promise<RuntimeAuthorityStatus>;
 }
 
 export async function cliConnectStatus(opts: ConnectStatusOpts = {}): Promise<void> {
@@ -281,9 +295,37 @@ export async function cliConnectStatus(opts: ConnectStatusOpts = {}): Promise<vo
     log("Not connected.");
     return;
   }
-  log("Dexter Wallet read-only link");
+  const authority = opts.readAuthorityStatus
+    ? await opts.readAuthorityStatus()
+    : await readGovernedAuthorityStatus({
+        dataDir: opts.dataDir,
+        dev: opts.dev,
+        fetchImpl: opts.fetchImpl,
+        now: opts.now,
+      });
+  log("Dexter Wallet connected runtime");
   log(`  ${session.vaultAddress}`);
-  log("Payment authority: this local client's separately configured signer.");
+  log("x402 path: hosted governed runtime");
+  log(`Authority status: ${authority.status}`);
+  log(`Authority source: ${authority.authoritySource ?? "unavailable"}`);
+  log(`Grant ID: ${authority.grantId ?? "unavailable"}`);
+  log(`Grant revision: ${authority.grantRevision ?? "unavailable"}`);
+  log(`Logical grant active: ${authority.logicalGrantActive ?? "unavailable"}`);
+  log(`Principal: ${authority.principal ? JSON.stringify(authority.principal) : "unavailable"}`);
+  log(`Limits: ${authority.limits ? JSON.stringify(authority.limits) : "unavailable"}`);
+  log(`Remaining: ${authority.remaining ? JSON.stringify(authority.remaining) : "unavailable"}`);
+  log(`Expiry: ${authority.expiresAt ?? "unavailable"}`);
+  log(`Scopes: ${authority.scopes ? JSON.stringify(authority.scopes) : "unavailable"}`);
+  log(`Active role: ${authority.activeRole ? JSON.stringify(authority.activeRole) : "unavailable"}`);
+  log(
+    `Revocation: ${authority.revocation.revoked === null
+      ? "unavailable"
+      : authority.revocation.revoked
+        ? "revoked"
+        : "not revoked"}`,
+  );
+  if (authority.reason) log(`Reason: ${authority.reason}`);
+  log("Local signer fallback: unavailable; automatic fallback: never.");
 }
 
 export async function cliConnectDisconnect(opts: ConnectStatusOpts = {}): Promise<void> {

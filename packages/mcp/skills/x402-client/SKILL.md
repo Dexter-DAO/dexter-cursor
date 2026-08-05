@@ -7,6 +7,12 @@ description: "Integrate x402 payments into any Node.js or browser application us
 
 Add automatic x402 payment handling to any application. The client detects 402 responses, signs a USDC payment, and retries, all transparently.
 
+This skill builds an independent application-owned SDK executor. It is not the
+OpenDexter MCP runtime, does not inherit an OpenDexter OAuth bearer or governed
+grant, and must never be used as a fallback for a disconnected or unavailable
+OpenDexter account-bound tool. Keep its wallet material out of agent-visible
+text.
+
 ```bash
 npm install @dexterai/x402
 ```

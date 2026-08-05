@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Your agent can find an API, see what it costs, and call it.</strong><br>
-  OpenDexter searches paid services by the job they do, checks the current terms, and makes a bounded request through the configured wallet.
+OpenDexter searches paid services by the job they do, checks the current terms, and makes a bounded request through the connected Dexter Wallet.
 </p>
 
 <p align="center">
@@ -24,20 +24,20 @@ you chose.
 
 ## Choose how it runs
 
-OpenDexter has two deliberately different ways to hold payment authority.
+OpenDexter has two connection forms and one payment-authority model. Both use
+the passkey-controlled Dexter Wallet and the same hosted governed executor.
 
 | | Hosted connector | Local package |
 |---|---|---|
-| Best for | Chat clients with remote MCP and OAuth | Codex, Claude Code, Cursor, VS Code, Windsurf, Gemini CLI, scripts |
-| Runs | At `https://open.dexter.cash/mcp` | On your machine through npm/stdio |
-| Wallet | Passkey-protected Dexter Wallet, bound to the authenticated session | Solana and EVM keys stored locally, or keys supplied through environment variables |
-| Networks | Solana | Solana plus configured EVM networks |
-| Setup | Add one MCP URL; the client handles OAuth when a protected tool needs it | Run the setup command below |
-| Spending policy | Managed by the hosted wallet experience | Default per-call limit and optional rolling 24-hour budget stored on this machine |
+| Best for | Chat clients with remote MCP and native OAuth | Codex, Claude Code, Cursor, VS Code, Windsurf, Gemini CLI, scripts |
+| Client connection | Remote MCP at `https://open.dexter.cash/mcp` | Local npm/stdio proxy to that hosted runtime |
+| Payment source | Connected Dexter Wallet grant | The same connected Dexter Wallet grant |
+| Setup | Add the MCP URL; the client handles OAuth | Install the proxy, then run `connect` |
+| Authority | Server-verified grant limits, capacity, expiry, role, and revocation | The same live server-verified authority; no local signer fallback |
 
-The Codex and Claude Code plugins connect to the hosted service. The local npm
-package runs a separate stdio MCP and uses an explicitly configured local
-signer for payments.
+The Codex and Claude Code plugins connect directly to the hosted service. The
+npm package runs a local stdio proxy for clients that need one, but it does not
+create or select a second payment wallet.
 
 ### Local: start in one command
 
@@ -47,15 +47,16 @@ evidence-gated step. Never replace the exact version below with a floating tag
 in client configuration.
 
 ```bash
-npx @dexterai/opendexter@1.23.1 setup
+npx @dexterai/opendexter@1.23.2 setup
 ```
 
-`setup` creates or loads the local wallet, detects supported AI clients,
-configures the clients it can edit safely, and prints any remaining manual step
-plus the shortest path to a first search. To target one client:
+`setup` detects supported AI clients, configures the clients it can edit safely,
+and prints any remaining manual step plus the shortest path to `connect` and a
+first search. It does not create, import, or enable a payment wallet. To target
+one client:
 
 ```bash
-npx @dexterai/opendexter@1.23.1 install --client cursor
+npx @dexterai/opendexter@1.23.2 install --client cursor
 ```
 
 Use `claude-code`, `codex`, `vscode`, `windsurf`, or `gemini-cli` in place of
@@ -63,7 +64,7 @@ Use `claude-code`, `codex`, `vscode`, `windsurf`, or `gemini-cli` in place of
 connection directly:
 
 ```bash
-claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.1
+claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.2
 ```
 
 This local installer never adds the repository's hosted Claude Code plugin.
@@ -74,14 +75,14 @@ For a manual stdio MCP configuration in another client:
   "mcpServers": {
     "opendexter": {
       "command": "npx",
-      "args": ["-y", "@dexterai/opendexter@1.23.1"]
+      "args": ["-y", "@dexterai/opendexter@1.23.2"]
     }
   }
 }
 ```
 
-See the [local package guide](./packages/mcp/README.md) for wallet, policy,
-client, CLI, and seller workflows.
+See the [local package guide](./packages/mcp/README.md) for authority, client,
+CLI, recovery, and seller workflows.
 
 ### Hosted connector
 
@@ -140,7 +141,7 @@ namespacing has been separately proven. `--registration-name` chooses the name
 of that one registration; it does not bypass an existing hosted or local
 OpenDexter registration. The installer never silently renames or overwrites one.
 
-Run `npx @dexterai/opendexter@1.23.1 doctor` for a read-only report. Doctor
+Run `npx @dexterai/opendexter@1.23.2 doctor` for a read-only report. Doctor
 does not create a wallet, read balances, edit client configuration, or pay.
 
 ## From request to result
@@ -156,7 +157,9 @@ OpenDexter keeps discovery and spending separate:
    hosted check also persists one exact quote/request intent for a later
    approved call. It returns current per-chain pricing, accepted assets,
    schemas when published, and whether the endpoint is paid, identity-gated,
-   API-key protected, or unprotected.
+   API-key protected, or unprotected. A non-GET probe can still mutate seller
+   state, needs separate probe approval, and is never automatically retried
+   after possible dispatch.
 3. **Call.** `x402_fetch` makes one exact prepared request and, when required,
    settles a compatible payment within the active policy.
 4. **Receive.** The tool returns the provider response with settlement detail
@@ -169,79 +172,57 @@ safe.
 
 ## Product tool surfaces
 
-The local package keeps these six model-facing tools:
+The local proxy exposes exactly these seven model-facing tools:
 
-| Tool | What it does | Moves money? |
+| Tool | What it does | Consequential? |
 |---|---|---|
 | `x402_search` | Finds services by capability in the OpenDexter catalog | No |
-| `x402_check` | Reads current price, route, schema, and authentication requirements | No |
-| `x402_access` | Uses a wallet signature for Sign-In-With-X access | No payment |
-| `x402_fetch` | Calls an endpoint and settles a compatible x402 charge when required | Yes |
-| `x402_wallet` | Shows local addresses and verified balance reads | No |
-| `dexter_portfolio` | Reads the governed portfolio from an explicitly linked Dexter account | No |
+| `x402_check` | Reads current terms and can prepare one opaque intent | A non-GET probe can mutate seller state; it requires separate probe approval |
+| `x402_fetch` | Executes one opaque intent under a separately approved atomic ceiling | Yes; it can move USDC |
+| `x402_status` | Reconciles the same intent after an uncertain or completed fetch | No |
+| `x402_access` | Starts one fresh anonymous legacy SIWX wallet-proof context, separate from Dexter OAuth and governed payment authority, with no cross-call continuity | A non-GET request can mutate seller state; it requires separate request approval |
+| `x402_wallet` | Reads the connected wallet and exact authority evidence | No |
+| `dexter_portfolio` | Reads the governed portfolio bound to the same principal | No |
 
-The hosted contract uses those six names plus `x402_status` and five governed
-asset tools for prepare, execute, status, reconciliation, and wallet history.
-Its anonymous roster has five entry tools; native OAuth promotes seven more,
-making the connected hosted roster exactly twelve.
-
-The authority also differs. Hosted wallet, payment, portfolio, and governed
-action calls use the authenticated Dexter Wallet session and its reusable
-bounded mandate. The local package uses its file or environment signer for
-wallet-proof and paid calls, while `dexter_portfolio` is a separate read-only
-link to the user's hosted Dexter Wallet. Neither surface exposes compatibility,
-card, passkey-status, marketplace-composition, diagnostic, or public-authorize
-tools.
+Every account-bound call uses the authenticated Dexter Wallet session. The
+local package never swaps to a wallet file or environment key when hosted
+authority is missing, rejected, expired, or revoked. Developer SDKs may still
+accept an application-supplied signer for a separate application, but that is
+not an OpenDexter MCP payment path or fallback.
 
 ## Wallets and authority
 
-### Local wallet
-
-The npm package creates a Solana keypair and an EVM keypair at:
-
-```text
-~/.dexterai-mcp/wallet.json
-```
-
-The directory and file are created with owner-only permissions. You can supply
-`DEXTER_PRIVATE_KEY` or `SOLANA_PRIVATE_KEY` for Solana and `EVM_PRIVATE_KEY`
-for EVM instead; environment variables take precedence over the wallet file.
-
-Local balance and signing support is configured for Solana, Base, Polygon,
-Arbitrum, Optimism, Avalanche, BNB Chain, and SKALE. An endpoint still decides
-which network and asset it accepts; `x402_check` shows the actual options before
-a paid call.
-
-### Local `connect`
-
-`npx @dexterai/opendexter@1.23.1 connect` creates a read-only account link for
-hosted wallet and portfolio views. It labels that account separately from local
-payment authority.
-
-It does **not** change the payment signer used by the local MCP server, `fetch`,
-or `pay`. Local paid calls still use the local wallet file or configured
-environment keys. See [Connect your Dexter wallet](./docs/connect-your-wallet.md)
-for the exact boundary.
-
-### Spending policy
-
-The local package stores a default per-call USDC limit and can enforce an
-optional rolling 24-hour budget. A caller can supply a different limit for one
-call, so the stored value is not an immutable wallet ceiling. The rolling
-budget counts only x402 spending witnessed by this installation on this
-machine; it is not a complete view of the wallet's on-chain activity.
+Run the device flow, approve with the wallet passkey, and then inspect the live
+authority projection:
 
 ```bash
-npx @dexterai/opendexter@1.23.1 settings
-npx @dexterai/opendexter@1.23.1 settings --max-amount 2.50 --daily-budget 20
+npx @dexterai/opendexter@1.23.2 connect
+npx @dexterai/opendexter@1.23.2 connect status
+npx @dexterai/opendexter@1.23.2 wallet
 ```
+
+The OAuth request uses the exact `vault` scope. The returned access token can
+separately carry Dexter's signed `dexter_surface` claim; that claim is not a
+client-requested scope. Connection alone is not proof of payment authority.
+Treat it as active only when status reports the exact grant, principal, limits,
+remaining capacity, expiry, scopes, role, and revocation state.
+
+Older installations may still have `~/.dexterai-mcp/wallet.json`. OpenDexter
+does not delete or transfer it automatically. The explicit
+`wallet --legacy-recovery` command parses the existing file to recover validated
+public addresses and balance reads; it never derives, returns, exports, or
+enables private-key fields as a signer. Legacy settings and environment signer
+variables do not govern the hosted runtime.
+
+See [Connect your Dexter wallet](./docs/connect-your-wallet.md) for the exact
+connection and authority boundary.
 
 ## Build or sell
 
 - **Build an x402 client or server:** use
   [`@dexterai/x402`](https://www.npmjs.com/package/@dexterai/x402).
 - **Prepare a compatible service for discovery:** run
-  `npx @dexterai/opendexter@1.23.1 audition https://your-service.example`.
+  `npx @dexterai/opendexter@1.23.2 audition https://your-service.example`.
   Audition performs real paid test calls, so use a testable endpoint and fund
   only the amount you intend those tests to spend.
 - **Inspect the protocol:** read the [x402 specification](https://x402.org).

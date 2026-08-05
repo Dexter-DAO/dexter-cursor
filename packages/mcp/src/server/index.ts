@@ -1,108 +1,36 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { buildServerInstructions, LOCAL_CAPS, assertInstructionRosterParity } from "@dexterai/mcp-instructions";
-import {
-  composeAllTools,
-  buildToolMetas,
-  type WidgetUris,
-} from "@dexterai/x402-mcp-tools";
-import { CAPABILITY_PATH, VERSION, getApiBase } from "../config.js";
-import { loadOrCreateWallet } from "../wallet/index.js";
-import { createNpmWalletAdapter } from "../wallet/adapter.js";
-import { loadSettings } from "../settings.js";
-import { recordSpend, spentLast24h } from "../spend-ledger.js";
-import { createPurchaseAttemptStore } from "../purchase-attempt-ledger.js";
-import { createTabLane } from "../tabs/lane.js";
-import { registerPortfolioTool } from "../tools/portfolio.js";
+import { assertInstructionRosterParity } from "@dexterai/mcp-instructions";
+import { VERSION } from "../config.js";
 import { registerWidgetResources } from "../resources/widgets.js";
 import { registerDocsResources } from "../resources/docs.js";
-import { X402_WIDGET_URIS } from "../widget-uris.js";
+import {
+  HOSTED_PROXY_TOOL_ROSTER,
+  HOSTED_PROXY_INSTRUCTIONS,
+  registerHostedProxyTools,
+} from "./hosted-proxy.js";
 
 export interface ServerOptions {
   transport: "stdio";
   dev: boolean;
+  /** Test seam for the connect store. */
+  dataDir?: string;
 }
 
-export const LOCAL_TOOL_ROSTER = [
-  "x402_search",
-  "x402_check",
-  "x402_fetch",
-  "x402_access",
-  "x402_wallet",
-  "dexter_portfolio",
-] as const;
+/** Published and actual runtime roster; status is the no-blind-retry recovery read. */
+export const LOCAL_TOOL_ROSTER = HOSTED_PROXY_TOOL_ROSTER;
+export const HOSTED_RUNTIME_TOOL_ROSTER = HOSTED_PROXY_TOOL_ROSTER;
 
 export async function startServer(opts: ServerOptions): Promise<void> {
-  let wallet;
-  try {
-    wallet = await loadOrCreateWallet();
-  } catch (err: any) {
-    console.error(`[dexter-mcp] Wallet initialization failed: ${err.message}`);
-    console.error(
-      "[dexter-mcp] Starting in search/check mode. No funding is required for discovery or pricing. Configure payment authority only before the user's instruction or delegated policy authorizes a paid call.",
-    );
-    wallet = null;
-  }
-
-  const instructions = buildServerInstructions(LOCAL_CAPS);
+  const instructions = HOSTED_PROXY_INSTRUCTIONS;
   const server = new McpServer(
     { name: "OpenDexter", version: VERSION },
     { instructions },
   );
 
-  // Wire the file-backed local wallet through the shared adapter contract.
-  const walletAdapter = wallet ? createNpmWalletAdapter(wallet) : null;
-
-  // Resolve widget URIs from this package's content-hashed HTML files,
-  // and pass them into the shared registrars via buildToolMetas().
-  const widgetUris: WidgetUris = {
-    search: X402_WIDGET_URIS.search,
-    fetch: X402_WIDGET_URIS.fetch,
-    pricing: X402_WIDGET_URIS.pricing,
-    wallet: X402_WIDGET_URIS.wallet,
-  };
-  const metas = buildToolMetas(widgetUris);
-
-  // Tab-first payment: 402s whose accepts include scheme 'tab' pay by
-  // voucher when ~/.dexterai-mcp/tabs.json custodies an ACTIVE grant for
-  // the seller (opened via `opendexter tab connect` + one passkey tap on
-  // dexter.cash). One lane for the server's lifetime — its in-process tab
-  // cache turns call 2..N into pure-local voucher signatures; the grant
-  // store is re-read per call, so a tab approved while the server runs
-  // becomes payable without a restart.
-  const tabLane = createTabLane({
-    getMaxAmountUsdc: () => loadSettings().maxAmountUsdc,
-    getBudgetRuntime: () => ({
-      dailyBudgetUsdc: loadSettings().dailyBudgetUsdc,
-      spentLast24hUsdc: spentLast24h(),
-      recordSpend,
-    }),
-  });
-  const purchaseAttempts = createPurchaseAttemptStore();
-
-  composeAllTools(server, {
-    apiBaseUrl: getApiBase(opts.dev),
-    capabilityPath: CAPABILITY_PATH,
-    metas,
-    wallet: walletAdapter,
-    // Per-call USDC cap is read from the local settings file. Wrapping in a
-    // callback (rather than passing the value once) lets users update
-    // ~/.dexterai-mcp/settings.json without restarting the server.
-    getMaxAmountUsdc: () => loadSettings().maxAmountUsdc,
-    // Rolling 24h budget — the velocity guard a per-call cap cannot provide.
-    // Resolved fresh per call: live settings + a current spend-ledger read.
-    getBudgetRuntime: () => ({
-      dailyBudgetUsdc: loadSettings().dailyBudgetUsdc,
-      spentLast24hUsdc: spentLast24h(),
-      recordSpend,
-    }),
-    getTabLane: () => tabLane,
-    getPurchaseAttemptStore: () => purchaseAttempts,
-    registerPayAlias: false,
-    walletlessHint:
-      "Search and check need no wallet or funding. For an approved Direct Exact settlement, configure DEXTER_PRIVATE_KEY (Solana) or EVM_PRIVATE_KEY (EVM).",
-    noWalletTip:
-      `Search and check need no wallet or funding. Before an authorized Direct Exact call, set DEXTER_PRIVATE_KEY or EVM_PRIVATE_KEY, or run \`npx @dexterai/opendexter@${VERSION} wallet\`. A configured signer is not payment authorization.`,
+  registerHostedProxyTools(server, {
+    dev: opts.dev,
+    dataDir: opts.dataDir,
   });
 
   // Dextercard TOOLS: REMOVED (owner ruling Jul 23; docs/CARD-REMOVAL-
@@ -111,12 +39,6 @@ export async function startServer(opts: ServerOptions): Promise<void> {
   // path. Instructions render card-free via @dexterai/mcp-instructions
   // LOCAL_CAPS (hasCardTools:false) — reintroducing a card tool without
   // flipping that cap back on trips the parity assert below at boot.
-
-  // Local spending policy remains available through the explicit
-  // `opendexter settings` CLI command. It is deliberately not an MCP tool:
-  // the local model-facing surface remains exactly six tools. Hosted
-  // OpenDexter has a separate five-anonymous/twelve-connected descriptor.
-  registerPortfolioTool(server);
 
   registerWidgetResources(server);
 
@@ -128,7 +50,10 @@ export async function startServer(opts: ServerOptions): Promise<void> {
 
   // Physics, not vigilance: if these instructions ever name a tool this
   // server doesn't register, refuse to start (drift register, R1).
-  assertInstructionRosterParity(instructions, [...LOCAL_TOOL_ROSTER]);
+  assertInstructionRosterParity(
+    instructions,
+    [...HOSTED_PROXY_TOOL_ROSTER],
+  );
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

@@ -7,6 +7,11 @@ description: Add an x402 paywall to an Express API endpoint using @dexterai/x402
 
 Protect any Express endpoint with x402 payments. Users pay USDC to access your API.
 
+The test client below is an independent `@dexterai/x402` SDK integration. It
+is not the OpenDexter MCP runtime and does not inherit OpenDexter identity,
+authority, limits, or receipts. Never substitute it for a blocked OpenDexter
+account-bound operation.
+
 ## Steps
 
 1. Install the SDK:

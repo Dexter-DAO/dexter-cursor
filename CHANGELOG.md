@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-08-05 — stable 1.23.2 governed-runtime convergence
+
+- Replaced the local OpenDexter payment executor with one OAuth-connected
+  proxy to the hosted governed x402 runtime. Connected checks create opaque
+  server-owned intents; fetch executes only an exact intent plus a separately
+  approved atomic ceiling; status is the no-blind-retry recovery path.
+- Made wallet authority explicit. Wallet and connection status now distinguish
+  connector authentication from active bounded payment authority and expose
+  the live grant, limits, remaining capacity, expiry, role, revocation, source,
+  and disabled fallback state when the server supplies that evidence.
+- Preserved existing `wallet.json` files without deleting, moving, repairing,
+  transferring, or loading their signers. `wallet --legacy-recovery` is an
+  explicit read-only public-address and balance view; there is no automatic or
+  opt-in local payment fallback. An in-product transfer migration is deferred
+  and does not block this release.
+- Corrected method truth for hosted probes: non-GET `x402_check` and
+  `x402_access` requests may cause seller-side effects and require separate
+  explicit request authorization before any later payment approval.
+- Public `@dexterai/opendexter@1.23.1` remains immutable.
+  `@dexterai/opendexter@1.23.2` is the new source candidate and remains
+  unpublished until its protected release gates, clean installs, and registry
+  reconciliation complete.
+
 ## 2026-08-04 — stable 1.23.1 release recovery
 
 - Advanced the unchanged OpenDexter product and reconciled dependency train to

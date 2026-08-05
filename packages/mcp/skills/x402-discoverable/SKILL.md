@@ -16,6 +16,11 @@ to call it. A passing audition lists the API automatically.
 
 The verb is `audition`, and it is a subcommand of the OpenDexter CLI.
 
+`audition` requests a server-side merchant test and can cause paid provider
+calls and catalog changes. It does not load a local signer or spend through the
+connected user's governed OpenDexter authority. Obtain explicit approval for
+the audition itself.
+
 ## When this skill applies
 
 Use it when the user's API already returns HTTP 402 with a valid payment
@@ -25,7 +30,7 @@ the paywall first, then come back here).
 ## The one command
 
 ```bash
-npx @dexterai/opendexter@1.23.1 audition <server-url> --json
+npx @dexterai/opendexter@1.23.2 audition <server-url> --json
 ```
 
 - Pass a **server origin** to audition every paid route on the server.
@@ -34,7 +39,8 @@ npx @dexterai/opendexter@1.23.1 audition <server-url> --json
 - Always use `--json` when you are an agent driving this — it is the
   machine-readable path. Omit it only for a human reading the summary.
 
-No global install needed; `npx` fetches the latest published version.
+No global install is needed; this command requests the exact pinned package
+version.
 
 ## What discovery needs from the API
 

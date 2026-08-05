@@ -1,13 +1,14 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { Keypair, Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { createPublicClient, http, erc20Abi } from "viem";
+import { createPublicClient, http, erc20Abi, isAddress } from "viem";
 import { type Chain, base, polygon, arbitrum, optimism, avalanche, bsc, skaleBase } from "viem/chains";
-import bs58 from "bs58";
-import { DATA_DIR, WALLET_FILE, SOLANA_RPC_URL, EVM_RPC_URLS, EVM_USDC_ADDRESSES, CHAIN_NAMES, usdcDecimalsForChain } from "../config.js";
+import { WALLET_FILE, SOLANA_RPC_URL, EVM_RPC_URLS, EVM_USDC_ADDRESSES, CHAIN_NAMES, usdcDecimalsForChain } from "../config.js";
 import { loadSession } from "../connect/store.js";
-import { showConnectedWallet, type HostedWalletResult } from "../connect/wallet.js";
+import {
+  showConnectedWallet,
+  type HostedWalletResult,
+} from "../connect/wallet.js";
 
 export interface WalletInfo {
   solanaPrivateKey?: string;
@@ -17,8 +18,9 @@ export interface WalletInfo {
   createdAt: string;
 }
 
-export function saveWalletInfo(info: WalletInfo): void {
-  persistWalletFile(info);
+/** @deprecated Local wallet mutation is permanently unavailable. */
+export function saveWalletInfo(_info: WalletInfo): void {
+  throw new Error("legacy_local_wallet_mutation_unavailable");
 }
 
 export interface LoadedWallet {
@@ -45,118 +47,15 @@ const VIEM_CHAINS: Record<string, Chain> = {
   "eip155:1187947933": skaleBase,
 };
 
-function generateEvmWallet(): { evmPrivateKey: string; evmAddress: string } {
-  const pk = generatePrivateKey();
-  const account = privateKeyToAccount(pk);
-  return { evmPrivateKey: pk, evmAddress: account.address };
-}
-
-function persistWalletFile(info: WalletInfo): void {
-  mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
-  writeFileSync(WALLET_FILE, JSON.stringify(info, null, 2), { mode: 0o600 });
-}
-
-function buildLoadedWallet(info: WalletInfo, status: LoadedWallet["status"] = "existing"): LoadedWallet {
-  return {
-    info,
-    solanaKeypair: info.solanaPrivateKey ? keypairFromString(info.solanaPrivateKey) : undefined,
-    status,
-  };
-}
-
-export async function loadOrCreateWallet(opts: { quiet?: boolean } = {}): Promise<LoadedWallet | null> {
-  const quiet = opts.quiet === true;
-  const envKey = process.env.DEXTER_PRIVATE_KEY || process.env.SOLANA_PRIVATE_KEY;
-  const envEvmKey = process.env.EVM_PRIVATE_KEY;
-
-  if (envKey || envEvmKey) {
-    const info: WalletInfo = {
-      createdAt: new Date().toISOString(),
-    };
-    if (envKey) {
-      const keypair = keypairFromString(envKey);
-      info.solanaPrivateKey = bs58.encode(keypair.secretKey);
-      info.solanaAddress = keypair.publicKey.toBase58();
-    }
-    if (envEvmKey) {
-      const account = privateKeyToAccount(envEvmKey as `0x${string}`);
-      info.evmPrivateKey = envEvmKey;
-      info.evmAddress = account.address;
-    }
-    return buildLoadedWallet(info, "env");
-  }
-
-  if (existsSync(WALLET_FILE)) {
-    try {
-      const raw = readFileSync(WALLET_FILE, "utf-8");
-      const data = JSON.parse(raw) as WalletInfo;
-      if (!data.solanaPrivateKey && !data.evmPrivateKey) {
-        throw new Error("Missing wallet private keys");
-      }
-      // Persist a one-time dual-wallet normalization so future processes read the
-      // same addresses, but keep the migration logic explicit instead of hiding
-      // shape changes in downstream tool code.
-      if (!data.evmPrivateKey) {
-        const evm = generateEvmWallet();
-        data.evmPrivateKey = evm.evmPrivateKey;
-        data.evmAddress = evm.evmAddress;
-        persistWalletFile(data);
-        if (!quiet) {
-          console.error(`[opendexter] Added EVM wallet to existing file: ${evm.evmAddress}`);
-        }
-        return buildLoadedWallet(data, "migrated");
-      }
-
-      return buildLoadedWallet(data, "existing");
-    } catch (err: any) {
-      if (!quiet) {
-        console.error(`[opendexter] Corrupted wallet file: ${err.message}`);
-        console.error(`[opendexter] Backing up to ${WALLET_FILE}.bak and creating fresh wallet.`);
-      }
-      try { copyFileSync(WALLET_FILE, WALLET_FILE + ".bak"); } catch {}
-    }
-  }
-
-  // Server mode: instant keypair, no vanity grind.
-  // Vanity wallets are created via `opendexter wallet` CLI command (TTY with progress bars).
-  const evm = generateEvmWallet();
-  const keypair = Keypair.generate();
-  const info: WalletInfo = {
-    solanaPrivateKey: bs58.encode(keypair.secretKey),
-    solanaAddress: keypair.publicKey.toBase58(),
-    evmPrivateKey: evm.evmPrivateKey,
-    evmAddress: evm.evmAddress,
-    createdAt: new Date().toISOString(),
-  };
-
-  persistWalletFile(info);
-
-  if (!quiet) {
-    console.error(`[opendexter] New dual wallet created:`);
-    console.error(`[opendexter]   Solana: ${info.solanaAddress}`);
-    console.error(`[opendexter]   EVM:    ${evm.evmAddress}`);
-    console.error(`[opendexter] Saved to ${WALLET_FILE}`);
-    console.error(`[opendexter] Tip: Run \`opendexter wallet --vanity\` to regenerate with a branded dex/0x402 prefix.`);
-    console.error(`[opendexter] Deposit USDC on Solana or any supported EVM chain to start paying for x402 APIs.`);
-  }
-
-  return buildLoadedWallet(info, "created");
-}
-
-function keypairFromString(key: string): Keypair {
-  try {
-    // Try base58
-    return Keypair.fromSecretKey(bs58.decode(key));
-  } catch {
-    // Try JSON array
-    try {
-      const arr = JSON.parse(key);
-      if (Array.isArray(arr)) {
-        return Keypair.fromSecretKey(Uint8Array.from(arr));
-      }
-    } catch {}
-    throw new Error("Invalid private key format. Expected base58 string or JSON byte array.");
-  }
+/**
+ * @deprecated Retained only so stale internal imports fail closed. No command
+ * or MCP tool calls this function, and it never reads, creates, repairs, or
+ * migrates wallet.json or environment signer material.
+ */
+export async function loadOrCreateWallet(
+  _opts: { quiet?: boolean } = {},
+): Promise<LoadedWallet | null> {
+  throw new Error("legacy_local_wallet_executor_unavailable");
 }
 
 export async function getSolanaBalance(
@@ -260,15 +159,23 @@ export async function getAllBalances(
 
 export interface ShowWalletOpts {
   dev: boolean;
+  /** Explicit read-only view of an existing legacy wallet.json. */
+  legacyRecovery?: boolean;
+  /** Legacy wallet path override (test seam). */
+  legacyWalletFile?: string;
   /** Session-store directory override (test seam). */
   dataDir?: string;
   /** Primary output sink (default console.log). */
   log?: (line: string) => void;
-  /** Secondary sink for the connect hint — stderr so it can't corrupt the
-   *  quickstart JSON on stdout (default console.error). */
+  /** Secondary sink for the connect hint — stderr so it can't corrupt JSON. */
   hint?: (line: string) => void;
-  /** Quickstart renderer override (test seam — default renderQuickstartWallet). */
-  renderQuickstart?: (log: (line: string) => void) => Promise<void>;
+  /** Legacy recovery renderer override (test seam). */
+  renderLegacyRecovery?: (
+    log: (line: string) => void,
+    walletFile: string,
+  ) => Promise<void>;
+  /** Read-only balance reader override for legacy recovery tests. */
+  readLegacyBalances?: typeof getAllBalances;
   /** Hosted x402_wallet call override (test seam, forwarded to connected mode). */
   callHostedWallet?: (accessToken: string) => Promise<HostedWalletResult>;
   /** HTTP client override (test seam, forwarded to connected mode). */
@@ -281,13 +188,33 @@ export interface ShowWalletOpts {
  * `opendexter wallet`.
  *
  * Connected mode (a `connect` session exists): read the user's hosted wallet
- * via the remote `x402_wallet` tool and show its wallet-PDA deposit address +
- * balance. This is a view only; it does not replace the signer used by local
- * paid calls. Quickstart mode (no session): render the local-wallet JSON and
- * offer the optional hosted-wallet view.
+ * and governed x402-authority evidence through the remote `x402_wallet` tool.
+ * The same hosted runtime is the only payment executor. No-session mode is
+ * non-custodial and never reads or creates wallet.json. An explicit
+ * `--legacy-recovery` view may read public addresses and balances from an
+ * existing wallet.json. The parser necessarily reads that file, but it never
+ * derives, returns, exports, or enables its private-key fields as a signer.
  */
 export async function showWalletInfo(opts: ShowWalletOpts): Promise<void> {
   const log = opts.log ?? console.log;
+  const hint = opts.hint ?? ((line: string) => console.error(line));
+
+  if (opts.legacyRecovery) {
+    if (opts.renderLegacyRecovery) {
+      await opts.renderLegacyRecovery(log, opts.legacyWalletFile ?? WALLET_FILE);
+    } else {
+      await renderLegacyWalletRecovery(
+        log,
+        opts.legacyWalletFile ?? WALLET_FILE,
+        opts.readLegacyBalances,
+      );
+    }
+    hint("");
+    hint(
+      "Legacy recovery is read-only. Its signer was not loaded and cannot execute payments; run `opendexter connect` for hosted governed x402 authority.",
+    );
+    return;
+  }
 
   const session = loadSession(opts.dataDir);
   if (session) {
@@ -303,29 +230,111 @@ export async function showWalletInfo(opts: ShowWalletOpts): Promise<void> {
     return;
   }
 
-  const hint = opts.hint ?? ((line: string) => console.error(line));
-  const renderQuickstart = opts.renderQuickstart ?? renderQuickstartWallet;
-  await renderQuickstart(log);
+  log(JSON.stringify({ runtimeAuthority: disconnectedRuntimeAuthority() }, null, 2));
   hint("");
+  hint("Run `opendexter connect` to use your hosted governed x402 authority.");
   hint(
-    "Run `opendexter connect` to view your Dexter Wallet balance. " +
-      "This does not change the payment signer; local paid calls still use the local wallet.",
+    "Legacy wallet.json/env signers are not payment executors. `opendexter wallet --legacy-recovery` is a read-only public-address and balance view only.",
   );
 }
 
-async function renderQuickstartWallet(log: (line: string) => void): Promise<void> {
-  const wallet = await loadOrCreateWallet();
+function disconnectedRuntimeAuthority() {
+  return {
+    namespace: "opendexter-runtime-authority/v1",
+    runtimeSource: "hosted_governed_x402",
+    status: "disconnected",
+    active: false,
+    authoritySource: null,
+    grantId: null,
+    grantRevision: null,
+    logicalGrantActive: null,
+    principal: null,
+    limits: null,
+    remaining: null,
+    expiresAt: null,
+    scopes: null,
+    activeRole: null,
+    revocation: {
+      revoked: null,
+      manageUrl: "https://dexter.cash/wallet",
+    },
+    fallback: {
+      available: false,
+      enabled: false,
+      active: false,
+      automatic: false,
+    },
+    evidenceNamespace: null,
+    reason: "connect_required",
+  } as const;
+}
+
+export function readLegacyWalletPublicInfo(
+  walletFile: string = WALLET_FILE,
+): Pick<WalletInfo, "solanaAddress" | "evmAddress" | "createdAt"> | null {
+  if (!existsSync(walletFile)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(walletFile, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const record = parsed as Record<string, unknown>;
+    let solanaAddress: string | undefined;
+    if (typeof record.solanaAddress === "string") {
+      try {
+        const candidate = record.solanaAddress.trim();
+        if (new PublicKey(candidate).toBase58() === candidate) {
+          solanaAddress = candidate;
+        }
+      } catch {
+        // Do not echo an arbitrary wallet-file field as a public address.
+      }
+    }
+    const evmAddress =
+      typeof record.evmAddress === "string" && isAddress(record.evmAddress)
+        ? record.evmAddress
+        : undefined;
+    if (!solanaAddress && !evmAddress) return null;
+    return {
+      createdAt:
+        typeof record.createdAt === "string" ? record.createdAt : "",
+      ...(solanaAddress ? { solanaAddress } : {}),
+      ...(evmAddress ? { evmAddress } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function renderLegacyWalletRecovery(
+  log: (line: string) => void,
+  walletFile: string,
+  readBalances: typeof getAllBalances = getAllBalances,
+): Promise<void> {
+  const wallet = readLegacyWalletPublicInfo(walletFile);
   if (!wallet) {
-    log(JSON.stringify({ error: "Failed to load wallet" }));
-    process.exit(1);
+    log(JSON.stringify({
+      legacyWalletRecovery: {
+        status: "unavailable",
+        readOnly: true,
+        paymentEnabled: false,
+        signerLoaded: false,
+        privateKeysExported: false,
+        walletFile,
+        reason: "existing_wallet_with_public_addresses_not_found",
+      },
+      runtimeAuthority: disconnectedRuntimeAuthority(),
+    }, null, 2));
+    return;
   }
 
-  const { totalUsdc, chains, degraded, unavailableChains } = await getAllBalances(wallet.info);
+  const { totalUsdc, chains, degraded, unavailableChains } =
+    await readBalances(wallet);
 
   const result: Record<string, unknown> = {
-    address: wallet.info.solanaAddress || wallet.info.evmAddress || null,
-    solanaAddress: wallet.info.solanaAddress || null,
-    evmAddress: wallet.info.evmAddress || null,
+    address: wallet.solanaAddress || wallet.evmAddress || null,
+    solanaAddress: wallet.solanaAddress || null,
+    evmAddress: wallet.evmAddress || null,
     network: "multichain",
     chainBalances: Object.fromEntries(
       Object.entries(chains).map(([caip2, data]) => [
@@ -354,15 +363,20 @@ async function renderQuickstartWallet(log: (line: string) => void): Promise<void
     supportedNetworks: Object.keys(chains).length > 0
       ? Object.keys(chains).map((caip2) => CHAIN_NAMES[caip2]?.name?.toLowerCase() || caip2)
       : ["solana", "base", "polygon", "arbitrum", "optimism", "avalanche"],
-    walletFile: WALLET_FILE,
+    legacyWalletRecovery: {
+      status: "available",
+      readOnly: true,
+      paymentEnabled: false,
+      signerLoaded: false,
+      privateKeysExported: false,
+      walletFile,
+    },
+    runtimeAuthority: disconnectedRuntimeAuthority(),
   };
-  // Only suggest depositing when the wallet is VERIFIABLY empty — never when
-  // the total is 0 merely because every chain read failed (that would tell a
-  // funded user to deposit money they already have).
-  if (totalUsdc === 0 && !degraded) {
-    result.tip = `Deposit USDC to ${wallet.info.solanaAddress || "your Solana wallet"}${wallet.info.evmAddress ? ` or ${wallet.info.evmAddress}` : ""} to start paying for x402 APIs.`;
-  } else if (totalUsdc === 0 && degraded) {
-    result.tip = `Could not verify balances on ${unavailableChains.length} chain(s) (RPC unavailable). Retry before assuming the wallet is empty.`;
+  if (degraded) {
+    result.note = `Could not verify balances on ${unavailableChains.length} chain(s). This recovery view is non-payment and reports only verified balances.`;
+  } else {
+    result.note = "Legacy balances are shown for recovery only; connect a hosted governed runtime before any payment.";
   }
 
   log(JSON.stringify(result, null, 2));

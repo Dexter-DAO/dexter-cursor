@@ -1,31 +1,37 @@
 ---
-description: "@dexterai/x402 SDK conventions and OpenDexter tool usage patterns"
+description: "@dexterai/x402 SDK conventions and hosted-only OpenDexter tool usage"
 alwaysApply: true
 ---
 
 x402-coding:
 
-- Import from subpaths, never from the root package:
+- Keep the two execution models separate:
+  - OpenDexter is a local proxy to a hosted governed runtime. It uses a stored
+    OAuth bearer for account-bound tools and never uses a local signer or
+    fallback.
+  - `@dexterai/x402` is an independent application SDK. Its wallet adapters or
+    application-owned keys do not inherit OpenDexter identity, authority, or
+    limits and must never be substituted for a blocked OpenDexter operation.
+- For OpenDexter, use exactly this flow: `x402_search` → `x402_check` → review
+  and approval → `x402_fetch` with only `intentId` and `maxAmountAtomic`.
+- Keep `intentId` opaque. It is server-owned and binds the exact request and
+  seller terms. Never reconstruct or replace it.
+- After an uncertain fetch, call `x402_status` with the same `intentId`. Never
+  auth-refresh and retry the consequential fetch after possible dispatch.
+- `x402_access` is a separate anonymous fresh one-call legacy wallet-proof
+  operation. It is not Dexter OAuth or governed payment authority, preserves no
+  cross-call continuity, and never accepts or persists access-session
+  credentials. A non-GET access request needs separate approval and is never
+  automatically retried.
+- `x402_wallet` and `dexter_portfolio` are account-bound and require the
+  connected bearer. A balance or portfolio does not prove active governed
+  authority.
+- For a deliberately independent `@dexterai/x402` integration, import from
+  subpaths, never from the root package:
   - `import { wrapFetch } from '@dexterai/x402/client'`
   - `import { x402Middleware } from '@dexterai/x402/server'`
   - `import { useX402Payment } from '@dexterai/x402/react'`
-- For Node.js agents and scripts, prefer `wrapFetch()` — it's the simplest one-function pattern:
-  ```typescript
-  const x402Fetch = wrapFetch(fetch, { walletPrivateKey: process.env.SOLANA_PRIVATE_KEY });
-  const res = await x402Fetch('https://x402-api.example.com/data');
-  ```
-- For Express servers, prefer `x402Middleware()` — one-liner paywall:
-  ```typescript
-  app.get('/api/data', x402Middleware({ payTo: 'YourAddress', amount: '0.01' }), handler);
-  ```
-- Handle errors with `X402Error` and its `.code` property for programmatic branching:
-  - `insufficient_balance`, `payment_rejected`, `missing_fee_payer`, `no_matching_payment_option`
-- Solana payments require `feePayer` in the `extra` field (provided by the facilitator). EVM payments do not.
-- `wrapFetch` supports dual-chain: pass `walletPrivateKey` for Solana and `evmPrivateKey` for EVM simultaneously.
-- When using OpenDexter tools, follow this workflow: `x402_search` →
-  `x402_check` → choose one ready `purchaseOption` → pass its unchanged
-  `preparedPurchase` and the approved `maxAmountAtomic` to `x402_fetch`.
-- Keep `direct_exact`, `native_tab`, `gateway_cash`, and `gateway_credit`
-  distinct. Never switch modes after selection or automatically retry after a
-  consequential or uncertain dispatch.
-- The local wallet lives at `~/.dexterai-mcp/wallet.json`. Override with `DEXTER_PRIVATE_KEY` or `SOLANA_PRIVATE_KEY` env vars.
+- Handle SDK errors with `X402Error` and its `.code` property. Do not apply SDK
+  retry guidance to an OpenDexter fetch.
+- Solana SDK payments require `feePayer` in the accept's `extra` field. EVM
+  payments do not.

@@ -32,7 +32,13 @@ A campaign created but not funded has zero budget and cannot be activated. A fun
 
 ## Tool routing
 
-There is no dedicated MCP tool for this. Drive it with x402-paid HTTP calls, using whatever x402 payment client is available (the OpenDexter `x402_fetch` tool, or `@dexterai/x402`'s `wrapFetch`). Every endpoint below returns a 402; the payment client settles it and retries.
+There is no dedicated campaign MCP tool. With OpenDexter, check each exact URL,
+method, and body while connected; show the current terms; obtain explicit
+approval for that campaign action and atomic ceiling; then call `x402_fetch`
+once with the returned opaque `intentId` and `maxAmountAtomic`. If the outcome
+is uncertain, call `x402_status` with the same intent and do not repeat the
+fetch. An independently built `@dexterai/x402` SDK client is a separate
+authority surface, not an OpenDexter fallback.
 
 | The user wants | Call |
 |---|---|
