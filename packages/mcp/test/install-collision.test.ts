@@ -113,6 +113,14 @@ describe("local and hosted OpenDexter registration collision gate", () => {
       expect(
         existingRegistrationMessage("Codex", result, "opendexter-local"),
       ).toMatch(/aliasing does not make two OpenDexter registrations safe/i);
+      const message = existingRegistrationMessage(
+        "Codex",
+        result,
+        "opendexter-local",
+      );
+      expect(message).toMatch(/same hosted governed wallet authority/i);
+      expect(message).toMatch(/tool, authentication, and session identities/i);
+      expect(message).not.toMatch(/different wallet authority/i);
     }
   });
 

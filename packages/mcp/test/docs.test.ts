@@ -75,6 +75,7 @@ function textFiles(relative: string): string[] {
 const rootReadme = read("../../../README.md");
 const connectGuide = read("../../../docs/connect-your-wallet.md");
 const connectGuideHtml = read("../../../docs/connect-your-wallet.html");
+const releaseAcceptance = read("../../../docs/OPENDXTER-RELEASE-ACCEPTANCE.md");
 const packageReadme = read("../README.md");
 const skill = read("../skills/opendexter/SKILL.md");
 const workflow = read("../assets/docs/workflow.md");
@@ -172,6 +173,23 @@ describe("docs resources", () => {
       for (const retired of RETIRED_PURCHASE_CONTRACT) {
         expect(text, path).not.toContain(retired);
       }
+    }
+  });
+
+  it("keeps the current release acceptance on the hosted opaque-intent contract", () => {
+    expect(releaseAcceptance).toMatch(
+      /stable `@dexterai\/opendexter@1\.23\.2` source candidate/i,
+    );
+    expect(
+      namedTools(releaseAcceptance).filter((name) => name !== "dexter_surface"),
+    ).toEqual(LOCAL_TOOLS);
+    expect(releaseAcceptance).toContain("intentId");
+    expect(releaseAcceptance).toContain("maxAmountAtomic");
+    expect(releaseAcceptance).toMatch(/hosted governed runtime/i);
+    expect(releaseAcceptance).toMatch(/never selected as a payer or fallback/i);
+    expect(releaseAcceptance).toMatch(/does not claim that `1\.23\.2` is published/i);
+    for (const retired of RETIRED_PURCHASE_CONTRACT) {
+      expect(releaseAcceptance).not.toContain(retired);
     }
   });
 
