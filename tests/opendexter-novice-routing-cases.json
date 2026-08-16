@@ -43,6 +43,38 @@
       "expectedConsequence": "inert-read"
     },
     {
+      "id": "hosted-wallet-presence-vague",
+      "surface": "hosted-anonymous",
+      "prompt": "Do I have a Dexter Wallet?",
+      "requiredTools": ["x402_wallet"],
+      "forbiddenTools": [],
+      "expectedConsequence": "connect-or-wallet-read"
+    },
+    {
+      "id": "hosted-wallet-summary-vague",
+      "surface": "hosted-connected",
+      "prompt": "What is in my wallet right now?",
+      "requiredTools": ["x402_wallet", "dexter_portfolio"],
+      "forbiddenTools": [],
+      "expectedConsequence": "inert-read"
+    },
+    {
+      "id": "hosted-payment-missing-target",
+      "surface": "hosted-connected",
+      "prompt": "Please pay for this API for me.",
+      "requiredTools": [],
+      "forbiddenTools": ["x402_fetch"],
+      "expectedConsequence": "clarification"
+    },
+    {
+      "id": "different-wallet-does-not-route",
+      "surface": "hosted-anonymous",
+      "prompt": "What is in my Phantom wallet right now?",
+      "requiredTools": [],
+      "forbiddenTools": ["x402_wallet"],
+      "expectedConsequence": "not-opendexter"
+    },
+    {
       "id": "hosted-buy-ordinary-language",
       "surface": "hosted-connected",
       "prompt": "Use twenty-five dollars from my wallet to buy the supported asset we were discussing. If my standing permission covers it, complete it and tell me what actually happened.",

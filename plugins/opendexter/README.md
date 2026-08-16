@@ -1,16 +1,30 @@
-# OpenDexter for Codex
+# OpenDexter for ChatGPT and Codex
 
-OpenDexter gives Codex a governed Dexter Wallet through the hosted MCP at
-`https://open.dexter.cash/mcp`.
+OpenDexter gives ChatGPT and Codex a governed Dexter Wallet through the hosted
+MCP at `https://open.dexter.cash/mcp`. This is one combined plugin: the current
+owner app binding, the remote MCP dependency, and the hosted workflow skills
+ship together.
 
-Version `0.5.0` targets hosted manifest `0.5.0`. Before OAuth the public
+Version `0.6.0` targets hosted manifest `0.5.0`. Before OAuth the public
 product exposes five entry tools for discovery, exact-term inspection,
 wallet-proof access, wallet connection, and portfolio connection. OAuth
 promotes seven protected purchase and governed-action tools, making the
 connected roster exactly twelve. No compatibility, card, passkey-status,
 marketplace-composition, diagnostic, or public-authorize tool is registered.
 
-## Install
+## Current ChatGPT registration
+
+The owner-created OpenDexter registration currently has technical plugin ID
+`plugin_asdk_app_6a7557267fb88191bc336aa99bf5bf03`. The package's `.app.json`
+binds the corresponding developer app once, while `.mcp.json` describes the
+same hosted endpoint for compatible clients.
+
+The prior ChatGPT installation was app-only. Merging this source does not
+silently update that installed package: the exact combined package must be
+installed from the Dexter marketplace for local testing or attached to the
+same publisher draft before a new plugin version is submitted.
+
+## Install in Codex
 
 ```bash
 codex plugin marketplace add Dexter-DAO/opendexter-ide --ref main
@@ -18,9 +32,10 @@ codex plugin add opendexter@dexter
 codex mcp login opendexter
 ```
 
-Start a fresh Codex task after installation.
+Start a fresh ChatGPT chat or Codex task after installation so the host loads
+the skill metadata and MCP tools together.
 
-## Update
+## Update in Codex
 
 ```bash
 codex plugin marketplace upgrade dexter
@@ -32,7 +47,8 @@ client.
 
 ## Contract
 
-- Native MCP OAuth binds the Codex session to the user's Dexter Wallet.
+- Native MCP OAuth binds the current ChatGPT or Codex session to the user's
+  Dexter Wallet.
 - `dexter_portfolio` accepts no caller-selected identity.
 - An anonymous paid check is quote-only. Repeat the same check after OAuth to
   create one API-custodied opaque intent, then execute it once with the exact
@@ -46,6 +62,19 @@ client.
 
 The release-pinned raw machine contract is
 `skills/opendexter/references/hosted-contract.json`.
+
+## One hosted skill source
+
+`plugins/opendexter/skills/` is the canonical hosted skill source. The Claude
+package's shared skill files are generated from it; verify they have not
+drifted with:
+
+```bash
+node scripts/sync-hosted-plugin-skills.mjs --check
+```
+
+The local npm/stdio package remains separate because it exposes a different
+seven-tool proxy contract.
 
 ## OAuth identities
 

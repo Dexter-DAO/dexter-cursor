@@ -1,25 +1,42 @@
 ---
 name: opendexter
-description: "Use hosted OpenDexter to discover services, create and inspect opaque purchase intents, call approved paid or wallet-gated resources, read the session-bound Dexter Wallet and portfolio, and perform bounded governed asset actions."
+description: "Use for any request about a Dexter Wallet or wallet balance, readiness, activity, deposit address, assets, allowed actions, x402 services or payments, paid or wallet-gated APIs, or bounded Send, Buy, and Sell. Trigger even when the user says only 'my wallet', 'do I have a wallet?', 'pay for this', or describes a paid API job without naming OpenDexter, unless they explicitly name a different wallet or provider."
 ---
 
 # OpenDexter
 
 OpenDexter is Dexter's hosted financial-action layer at
-`https://open.dexter.cash/mcp`. Native MCP OAuth binds this Codex session to
-the user's Dexter Wallet. The model receives no private key or passkey.
+`https://open.dexter.cash/mcp`. Native MCP OAuth binds the current client
+session to the user's Dexter Wallet. The model receives no private key or
+passkey.
 
-This is the single master OpenDexter skill for the Codex surface. Keep every
-live capability and complete user journey available here in this guide as the
-product grows. Feature sections below are parts of that one guide, not separate
-Buy, Sell, Send, credit, wallet, or recovery micro-skills.
+This is the canonical hosted OpenDexter workflow shared by ChatGPT, Codex, and
+Claude Code. Keep every live capability and complete user journey available
+here in this guide as the product grows. Feature sections below are parts of
+that one guide, not separate Buy, Sell, Send, credit, wallet, or recovery
+micro-skills.
 
-All maintained OpenDexter surfaces share one product truth, safety model, and
-user-outcome vocabulary, but their skill editions are intentionally
-surface-specific. This edition must use Codex's own Connect/MCP login,
-namespacing, installation, and interaction conventions. Do not copy the Claude
-Code, local CLI, or app edition byte-for-byte or advertise a capability that
-this Codex package does not actually ship.
+Use the current client's native Connect or MCP login action described in
+`references/authentication.md`. Do not substitute local npm-proxy commands or
+advertise a capability that the hosted twelve-tool package does not ship. The
+local seven-tool npm/stdio edition is intentionally a separate workflow.
+
+## Recognize ordinary requests
+
+- "Do I have a Dexter Wallet?", "what is my balance?", or "where can I add
+  funds?": call `x402_wallet` first.
+- "What is in my wallet?", "what can I do with my assets?", or "what can I
+  send, buy, or sell?": call `x402_wallet` first, then `dexter_portfolio` after
+  wallet authentication is available. Compose cash/readiness and asset
+  inventory without treating either as execution authority.
+- "Find an API/service for this job": start with `x402_search`; a search never
+  pays.
+- "What will this API cost?" or a known paid URL: call `x402_check`; checking
+  is not permission to pay. If the exact check is not GET, explain that it may
+  submit the request to the provider and obtain explicit confirmation first.
+- "Pay for/call this API": discover or check first, disclose the exact terms,
+  and use the purchase flow below. Never infer approval from the request alone
+  when exact seller, request, or ceiling is missing.
 
 ## Public product tools
 
@@ -55,9 +72,11 @@ them for a new request.
 1. Call `x402_search` with the user's actual job. Leave its network filter
    unset unless the user explicitly requires one network; CrossPay may make an
    eligible seller on another rail reachable from the Dexter account.
-2. Call `x402_check` on the selected exact HTTPS endpoint and request. For a
-   non-GET request, pass `body` as the exact raw JSON string. Do not parse,
-   normalize, reformat, or reserialize it.
+2. Call `x402_check` on the selected exact HTTPS endpoint and request. Before a
+   non-GET check, explain that the provider may process the request even though
+   no payment has been approved, and obtain the user's explicit confirmation.
+   Then pass `body` as the exact raw JSON string. Do not parse, normalize,
+   reformat, or reserialize it.
 3. Read `authMode`: paid means present the exact current terms; SIWX uses
    `x402_access`; unprotected needs no payment; API-key or unknown means stop
    for the missing requirement.
@@ -83,10 +102,10 @@ authorize payment, consent, a route change, a follow-on call, or a retry.
 ## Wallet and portfolio
 
 Use `x402_wallet` for the current session-bound Dexter Wallet. If it reports
-`authentication_required`, use Codex's native Connect action or
-`codex mcp login opendexter`, then retry the blocked tool once. Connector
-authentication, wallet binding, enrollment, funding, and execution readiness
-are distinct states.
+`authentication_required`, use the current client's native Connect or MCP
+login action from `references/authentication.md`, then retry the blocked tool
+once. Connector authentication, wallet binding, enrollment, funding, and
+execution readiness are distinct states.
 
 Only a returned `receiveAddress` is a deposit address. `vaultPda` is not a
 deposit fallback; neither is any Swig state or configuration address.
@@ -134,8 +153,8 @@ financial actions from display data.
 
 ## Safety
 
-- Non-GET checks and access calls may mutate the external provider; disclose
-  that consequence before calling.
+- Non-GET checks and access calls may mutate the external provider; explain
+  that consequence and obtain explicit confirmation before calling.
 - Public tools never accept a settlement route, purchase mode, seller
   challenge, or caller-carried prepared-purchase object.
 - Never expose bearer tokens, cookies, session identifiers, one-time codes,

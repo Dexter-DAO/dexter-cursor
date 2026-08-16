@@ -40,15 +40,14 @@ preserved for an explicit read-only public-address and balance recovery view;
 they are never a payment fallback. Legacy local settings remain an explicit
 CLI record and do not govern hosted authority.
 
-The Codex manifest uses its documented inline `mcpServers` map. The separate
-Claude package uses Claude's `.mcp.json` `mcpServers` wrapper.
-Both point to the one hosted connector at `https://open.dexter.cash/mcp`;
-neither package embeds the local stdio runtime or revives hosted card tools.
-The publisher-side ChatGPT app
-binding stays separate because its current `asdk_app_...` identity is not a
-portable Codex/Claude app registration. A current `plugin_asdk_app_...`
-registration, if required by the target host, is a publisher proof rather than
-something this source candidate may fabricate.
+The combined ChatGPT/Codex package uses a path-based `.mcp.json`, packages the
+canonical hosted skill tree, and binds the verified owner-created registration
+`plugin_asdk_app_6a7557267fb88191bc336aa99bf5bf03` through `.app.json`. The
+separate Claude package uses Claude's `.mcp.json` wrapper and generated copies
+of the same hosted workflow files. Both point to the one hosted connector at
+`https://open.dexter.cash/mcp`; neither package embeds the local stdio runtime
+or revives hosted card tools. Source packaging is not proof that an existing
+app-only ChatGPT installation has been updated, submitted, or published.
 
 The local package candidate is `@dexterai/opendexter@1.23.3` on Node.js
 20 or newer. Its coordinated publication train is:

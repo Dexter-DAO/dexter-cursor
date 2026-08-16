@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "opendexter": {
+      "type": "http",
+      "url": "https://open.dexter.cash/mcp",
+      "scopes": [
+        "vault"
+      ],
+      "oauth_resource": "https://open.dexter.cash/mcp"
+    }
+  }
+}

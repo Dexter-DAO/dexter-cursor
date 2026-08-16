@@ -34,7 +34,9 @@ const codexRoot = resolve(repoRoot, "plugins/opendexter");
 const claudeRoot = resolve(repoRoot, "opendexter-plugin");
 const codexMarketplacePath = resolve(repoRoot, ".agents/plugins/marketplace.json");
 const claudeMarketplacePath = resolve(repoRoot, ".claude-plugin/marketplace.json");
-const appBindingPath = resolve(repoRoot, "chatgpt-app-binding/.app.json");
+const appBindingPath = resolve(codexRoot, ".app.json");
+const mcpBindingPath = resolve(codexRoot, ".mcp.json");
+const retiredAppBindingRoot = resolve(repoRoot, "chatgpt-app-binding");
 const contractPath = resolve(
   codexRoot,
   "skills/opendexter/references/hosted-contract.json",
@@ -788,21 +790,33 @@ test(
   },
 );
 
-test("Codex package uses one portable remote MCP and mixed-auth marketplace policy", async () => {
+test("ChatGPT and Codex share one skill-bearing app and MCP package", async () => {
   const manifest = await readJson(resolve(codexRoot, ".codex-plugin/plugin.json"));
+  const appBinding = await readJson(appBindingPath);
+  const mcpBinding = await readJson(mcpBindingPath);
   const marketplace = await readJson(codexMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "0.5.0");
-  assert.equal(Object.hasOwn(manifest, "apps"), false);
-  assert.deepEqual(manifest.mcpServers, {
-    opendexter: {
-      type: "http",
-      url: "https://open.dexter.cash/mcp",
-      scopes: ["vault"],
-      oauth_resource: "https://open.dexter.cash/mcp",
+  assert.equal(manifest.version, "0.6.0");
+  assert.equal(manifest.skills, "./skills/");
+  assert.equal(manifest.apps, "./.app.json");
+  assert.equal(manifest.mcpServers, "./.mcp.json");
+  assert.deepEqual(appBinding, {
+    apps: {
+      "dev-6a7557267fb88191bc336aa99bf5bf03": {
+        id: "asdk_app_6a7557267fb88191bc336aa99bf5bf03",
+      },
     },
   });
-  await assert.rejects(access(resolve(codexRoot, ".mcp.json")));
+  assert.deepEqual(mcpBinding, {
+    mcpServers: {
+      opendexter: {
+        type: "http",
+        url: "https://open.dexter.cash/mcp",
+        scopes: ["vault"],
+        oauth_resource: "https://open.dexter.cash/mcp",
+      },
+    },
+  });
   const entry = marketplace.plugins.find(({ name }) => name === "opendexter");
   assert.ok(entry);
   assert.equal(entry.source.path, "./plugins/opendexter");
@@ -816,7 +830,7 @@ test("Claude package is self-contained and uses the hosted remote MCP", async ()
   const mcp = await readJson(resolve(claudeRoot, ".mcp.json"));
   const marketplace = await readJson(claudeMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "2.1.0");
+  assert.equal(manifest.version, "2.1.1");
   assert.deepEqual(mcp, {
     mcpServers: {
       opendexter: {
@@ -992,7 +1006,7 @@ test("both formats expose only the three hosted-contract skills", async () => {
   }
 });
 
-test("one OpenDexter product brain has honest surface-specific skill editions", async () => {
+test("one canonical hosted skill generates ChatGPT, Codex, and Claude guidance", async () => {
   const codex = await readFile(
     resolve(codexRoot, "skills/opendexter/SKILL.md"),
     "utf8",
@@ -1005,17 +1019,32 @@ test("one OpenDexter product brain has honest surface-specific skill editions", 
     resolve(repoRoot, "packages/mcp/skills/opendexter/SKILL.md"),
     "utf8",
   );
-  for (const text of [codex, claude, local]) {
-    assert.match(text, /share one product truth, safety model, and\s+user-outcome vocabulary/i);
-    assert.match(text, /surface-specific/i);
-    assert.match(text, /byte-for-byte/i);
-  }
-  assert.match(codex, /Codex's own Connect\/MCP login/);
-  assert.match(claude, /Claude Code's own MCP login/);
-  assert.match(local, /local CLI\/MCP edition/);
-  assert.notEqual(codex, claude);
+  assert.equal(codex, claude);
+  assert.match(codex, /shared by ChatGPT, Codex, and\s+Claude Code/i);
+  assert.match(codex, /Do I have a Dexter Wallet\?/i);
+  assert.match(codex, /local seven-tool npm\/stdio edition/i);
   assert.notEqual(codex, local);
-  assert.notEqual(claude, local);
+  assert.match(local, /local CLI\/MCP edition/i);
+
+  for (const relativePath of [
+    "opendexter/SKILL.md",
+    "opendexter/references/authentication.md",
+    "opendexter/references/routing-and-safety.md",
+    "x402-debugging/SKILL.md",
+    "x402-protocol/SKILL.md",
+  ]) {
+    assert.equal(
+      await readFile(resolve(codexRoot, "skills", relativePath), "utf8"),
+      await readFile(resolve(claudeRoot, "skills", relativePath), "utf8"),
+      relativePath,
+    );
+  }
+
+  const { stdout } = await execFileAsync(process.execPath, [
+    resolve(repoRoot, "scripts/sync-hosted-plugin-skills.mjs"),
+    "--check",
+  ]);
+  assert.match(stdout, /hosted skill parity ok \(5 files\)/);
 });
 
 test("both formats route anonymous five and connected twelve without retired tools", async () => {
@@ -1073,25 +1102,25 @@ test("active package guidance contains no old local/card tool routes", async () 
   }
 });
 
-test("publisher-side app binding stays separate from portable packages", async () => {
+test("the current owner app binding is packaged once with the hosted skill", async () => {
   const binding = await readJson(appBindingPath);
   const entries = Object.entries(binding.apps ?? {});
   assert.equal(entries.length, 1);
-  assert.match(entries[0][0], /^dev-[a-z0-9]+$/i);
-  assert.match(entries[0][1].id, /^asdk_app_[a-z0-9]+$/i);
+  assert.equal(entries[0][0], "dev-6a7557267fb88191bc336aa99bf5bf03");
+  assert.equal(
+    entries[0][1].id,
+    "asdk_app_6a7557267fb88191bc336aa99bf5bf03",
+  );
   const codexEntries = (await inspectTree(codexRoot)).map(({ path }) => path);
   const claudeEntries = (await inspectTree(claudeRoot)).map(({ path }) => path);
-  assert.equal(codexEntries.includes(".app.json"), false);
+  assert.equal(codexEntries.includes(".app.json"), true);
+  assert.equal(codexEntries.includes(".mcp.json"), true);
   assert.equal(claudeEntries.includes(".app.json"), false);
-  const bindingReadme = await readFile(
-    resolve(repoRoot, "chatgpt-app-binding/README.md"),
-    "utf8",
-  );
-  assert.match(bindingReadme, /five anonymous entry tools/i);
-  assert.match(bindingReadme, /seven OAuth-promoted tools/i);
-  assert.match(bindingReadme, /exactly twelve after connection/i);
-  assert.doesNotMatch(bindingReadme, /compatibility (?:tool|endpoint|alias)/i);
-  assert.doesNotMatch(bindingReadme, /\bten tools\b|\b10 tools\b/i);
+  await assert.rejects(access(retiredAppBindingRoot));
+  const packageReadme = await readFile(resolve(codexRoot, "README.md"), "utf8");
+  assert.match(packageReadme, /ChatGPT and Codex/i);
+  assert.match(packageReadme, /plugin_asdk_app_6a7557267fb88191bc336aa99bf5bf03/);
+  assert.doesNotMatch(packageReadme, /6a615ae3385c8191b05cc4c420514022/);
 });
 
 test("disposable marketplaces discover both clean source packages", async () => {
