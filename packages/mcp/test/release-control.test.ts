@@ -225,24 +225,24 @@ describe("coordinated publish policy", () => {
     })).toEqual({ releaseChannel: "prerelease", distTag: "next" });
   });
 
-  it("allows the stable candidate only on the explicit latest tag", () => {
-    const stableAttestation = attestation();
-    stableAttestation.package = {
-      ...stableAttestation.package,
-      version: "1.23.3",
-      releaseChannel: "stable",
-      distTag: "latest",
+  it("allows the current prerelease candidate only on the explicit next tag", () => {
+    const candidateAttestation = attestation();
+    candidateAttestation.package = {
+      ...candidateAttestation.package,
+      version: "1.24.0-rc.0",
+      releaseChannel: "prerelease",
+      distTag: "next",
     };
     expect(verifyPublishPolicy({
       manifest: {
         name: "@dexterai/opendexter",
-        version: "1.23.3",
-        publishConfig: { tag: "latest" },
+        version: "1.24.0-rc.0",
+        publishConfig: { tag: "next" },
       },
-      attestation: stableAttestation,
-      npmTag: "latest",
-      explicitTag: "latest",
-    })).toEqual({ releaseChannel: "stable", distTag: "latest" });
+      attestation: candidateAttestation,
+      npmTag: "next",
+      explicitTag: "next",
+    })).toEqual({ releaseChannel: "prerelease", distTag: "next" });
   });
 
   it("protects latest and refuses implicit or conflicting tags", () => {
@@ -698,10 +698,10 @@ describe("exact package provenance", () => {
     const locked = rootLock.packages?.["packages/mcp"];
 
     const exactTrain = {
-      version: "1.23.3",
+      version: "1.24.0-rc.0",
       instructions: "2.4.1",
       core: "1.5.2",
-      tools: "0.8.2",
+      tools: "0.9.0-rc.0",
     };
     expect({
       version: candidate.version,

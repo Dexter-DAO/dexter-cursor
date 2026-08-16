@@ -1,8 +1,8 @@
 /**
  * `opendexter tab list|close|remove` — custody surface for the tab lane.
  *
- * close: hands the last seller-ACCEPTED voucher (the settle receipt the
- * lane persisted) to the facilitator's POST /tab/settle. The facilitator
+ * close: hands the last released voucher plus its exact attempted increment
+ * and V2 reservation identity to the facilitator's POST /tab/settle. The facilitator
  * submits the on-chain settle (Ed25519 precompile + settle_tab_voucher +
  * Swig transfer) and pays gas — no CLI key signs anything at close; the
  * voucher is already a bearer claim payable only to the seller. This is
@@ -105,6 +105,16 @@ export async function cliTabClose(ref: string, opts: TabCliOpts = {}): Promise<v
     return;
   }
 
+  if (!record.lastVoucherIncrementAtomic) {
+    log(
+      `This receipt predates the exact-increment settlement contract. OpenDexter ` +
+        `will not guess its amount from a mutable chain frontier. Settle or revoke ` +
+        `the historical tab through the deployment that opened it; the local ` +
+        `receipt is kept.`,
+    );
+    return;
+  }
+
   // The persisted header is base64(JSON) with hex byte fields — exactly the
   // fields /tab/settle takes, flattened (same wire shape as the SDK's
   // postSettle, recon'd from tab.ts + the facilitator contract).
@@ -117,8 +127,27 @@ export async function cliTabClose(ref: string, opts: TabCliOpts = {}): Promise<v
   try {
     decoded = JSON.parse(Buffer.from(record.lastVoucherHeader, "base64").toString("utf8"));
   } catch {
-    log(`The held voucher receipt is unreadable — clearing it. Nothing was settled.`);
-    updateTab(record.counterparty, { lastVoucherHeader: undefined, lastVoucherAt: undefined }, opts.dataDir);
+    if (record.lastVoucherVersion === 2 || record.lastFinalV2ReservationReceipt) {
+      log(
+        `The held FINAL-voucher receipt is unreadable. Its reservation may still ` +
+          `be live, so the evidence was kept for reconciliation and nothing else was paid.`,
+      );
+      updateTab(
+        record.counterparty,
+        {
+          status: "reconciliation_required",
+          deadReason: "native_tab_v2_local_voucher_unreadable",
+        },
+        opts.dataDir,
+      );
+      return;
+    }
+    log(`The held historical voucher receipt is unreadable — clearing it. Nothing was settled.`);
+    updateTab(
+      record.counterparty,
+      { lastVoucherHeader: undefined, lastVoucherAt: undefined },
+      opts.dataDir,
+    );
     return;
   }
 
@@ -128,11 +157,22 @@ export async function cliTabClose(ref: string, opts: TabCliOpts = {}): Promise<v
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       channelId: decoded.payload.channelId,
+      attemptedAmount: record.lastVoucherIncrementAtomic,
       cumulativeAmount: decoded.payload.cumulativeAmount,
       sequenceNumber: decoded.payload.sequenceNumber,
       sessionPublicKey: decoded.sessionPublicKey,
       sessionRegistration: decoded.sessionRegistration,
       sessionSignature: decoded.sessionSignature,
+      ...(record.lastFinalV2ReservationReceipt
+        ? {
+            // The reservation receipt's operationId belongs to /tab/open.
+            // /tab/settle derives a distinct lifecycle identity from the
+            // voucher, so supplying the open ID as lifecycleOperationId would
+            // correctly be rejected as an identity mismatch.
+            providerReceiptId:
+              record.lastFinalV2ReservationReceipt.providerReceiptId,
+          }
+        : {}),
       network: NETWORK,
     }),
   });
@@ -146,7 +186,20 @@ export async function cliTabClose(ref: string, opts: TabCliOpts = {}): Promise<v
 
   if (res.ok) {
     const settleTx = String(body.settleTx ?? "");
-    updateTab(record.counterparty, { lastVoucherHeader: undefined, lastVoucherAt: undefined }, opts.dataDir);
+    updateTab(
+      record.counterparty,
+      {
+        status: record.status === "reconciliation_required" ? "active" : record.status,
+        deadReason: record.status === "reconciliation_required" ? undefined : record.deadReason,
+        lastVoucherHeader: undefined,
+        lastVoucherAt: undefined,
+        lastVoucherVersion: undefined,
+        lastVoucherIncrementAtomic: undefined,
+        lastFinalV2ReservationReceipt: undefined,
+        lastFinalV2ReservationVerified: undefined,
+      },
+      opts.dataDir,
+    );
     log(`Tab settled on-chain.`);
     log(`  cumulative  $${usd(decoded.payload.cumulativeAmount)} (session lifetime)`);
     if (body.grossAmount != null) log(`  gross       $${usd(String(body.grossAmount))}`);
@@ -166,7 +219,20 @@ export async function cliTabClose(ref: string, opts: TabCliOpts = {}): Promise<v
     // The chain frontier already covers this voucher — the seller's
     // crystallize lane (or an earlier settle) beat us to it. There is
     // nothing left this receipt can move; clearing it is honest.
-    updateTab(record.counterparty, { lastVoucherHeader: undefined, lastVoucherAt: undefined }, opts.dataDir);
+    updateTab(
+      record.counterparty,
+      {
+        status: record.status === "reconciliation_required" ? "active" : record.status,
+        deadReason: record.status === "reconciliation_required" ? undefined : record.deadReason,
+        lastVoucherHeader: undefined,
+        lastVoucherAt: undefined,
+        lastVoucherVersion: undefined,
+        lastVoucherIncrementAtomic: undefined,
+        lastFinalV2ReservationReceipt: undefined,
+        lastFinalV2ReservationVerified: undefined,
+      },
+      opts.dataDir,
+    );
     log(
       `Nothing left to settle: the chain has already crystallized or settled at or beyond ` +
         `this receipt (facilitator said: ${errText}). The seller is paid; receipt cleared.`,

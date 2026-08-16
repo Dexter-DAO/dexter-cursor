@@ -125,6 +125,11 @@ const PACKAGED_GUIDANCE_PATHS = [
   ...["agents", "assets/docs", "commands", "rules", "skills"].flatMap(textFiles),
 ];
 
+const GENERIC_NATIVE_TAB_GUIDANCE = new Set([
+  "assets/docs/debugging.md",
+  "skills/x402-debugging/SKILL.md",
+]);
+
 function localTargets(text: string): string[] {
   const markdownLinks = [...text.matchAll(/\]\((\.\.?\/[^)#\s]+)(?:#[^)]*)?\)/g)]
     .map((match) => match[1]);
@@ -180,6 +185,9 @@ describe("docs resources", () => {
     for (const path of PACKAGED_GUIDANCE_PATHS) {
       const text = read(`../${path}`);
       for (const retired of RETIRED_PURCHASE_CONTRACT) {
+        if (retired === "native_tab" && GENERIC_NATIVE_TAB_GUIDANCE.has(path)) {
+          continue;
+        }
         expect(text, path).not.toContain(retired);
       }
     }
@@ -187,7 +195,7 @@ describe("docs resources", () => {
 
   it("keeps the current release acceptance on the hosted opaque-intent contract", () => {
     expect(releaseAcceptance).toMatch(
-      /stable `@dexterai\/opendexter@1\.23\.3` source candidate/i,
+      /`@dexterai\/opendexter@1\.24\.0-rc\.0` is a Node\.js 22 x402 V6 source\s+candidate/i,
     );
     expect(
       namedTools(releaseAcceptance).filter((name) => name !== "dexter_surface"),
@@ -196,7 +204,7 @@ describe("docs resources", () => {
     expect(releaseAcceptance).toContain("maxAmountAtomic");
     expect(releaseAcceptance).toMatch(/hosted governed runtime/i);
     expect(releaseAcceptance).toMatch(/never selected as a payer or fallback/i);
-    expect(releaseAcceptance).toMatch(/does not claim that `1\.23\.3` is published/i);
+    expect(releaseAcceptance).toMatch(/does not claim that `1\.24\.0-rc\.0` is published/i);
     for (const retired of RETIRED_PURCHASE_CONTRACT) {
       expect(releaseAcceptance).not.toContain(retired);
     }
@@ -255,7 +263,7 @@ describe("docs resources", () => {
 
   it("documents the pinned same-intent CLI status recovery command", () => {
     expect(packageReadme).toContain(
-      "npx @dexterai/opendexter@1.23.3 status",
+      "npx @dexterai/opendexter@1.24.0-rc.0 status",
     );
     expect(packageReadme).toContain("--intent-id \"<same-opaque-intent-id>\"");
     expect(packageReadme).toContain("`noRetry`");

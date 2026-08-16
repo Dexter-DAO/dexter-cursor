@@ -87,6 +87,13 @@ export type {
 } from "./types.js";
 export { DEFAULT_CAPABILITY_PATH } from "./types.js";
 
+// Server-side Native Tab V2 reservation transport. The provider receipt is
+// still independently verified by @dexterai/x402 through the buyer's own RPC.
+export {
+  createManagedFinalVoucherV2Reservation,
+  type ManagedFinalVoucherV2ReservationOptions,
+} from "./native-tab-v2.js";
+
 // Explicit purchase-mode contract shared by check, fetch/pay, stdio hosts,
 // and the npm CLI. Atomic amounts remain decimal strings throughout.
 export {

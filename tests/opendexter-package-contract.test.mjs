@@ -908,29 +908,45 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   const toolsPkg = await readJson(
     resolve(repoRoot, "packages/x402-mcp-tools/package.json"),
   );
+  const discoveryPkg = await readJson(
+    resolve(repoRoot, "packages/x402-discovery/package.json"),
+  );
   const instructionsPkg = await readJson(
     resolve(repoRoot, "packages/mcp-instructions/package.json"),
   );
   const mcp = await readJson(resolve(repoRoot, "mcp.json"));
   assert.equal(workspace.packageManager, "npm@10.9.3");
-  assert.equal(workspace.engines.node, ">=20");
-  assert.equal(pkg.version, "1.23.3");
-  assert.equal(pkg.engines.node, ">=20");
+  assert.equal(workspace.engines.node, ">=22");
+  assert.equal(pkg.version, "1.24.0-rc.0");
+  assert.equal(pkg.engines.node, ">=22");
   assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "1.30.0");
   assert.equal(pkg.dependencies["@modelcontextprotocol/ext-apps"], "1.7.5");
   assert.equal(pkg.dependencies.zod, "3.25.76");
   assert.equal(pkg.dependencies["@dexterai/x402-core"], "1.5.2");
-  assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.0");
+  assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.2");
   assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.1");
-  assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.8.2");
+  assert.equal(pkg.dependencies["@dexterai/x402"], "6.0.0-rc.2");
+  assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.9.0-rc.0");
+  assert.equal(pkg.publishConfig.tag, "next");
   assert.equal(instructionsPkg.version, "2.4.1");
-  assert.equal(toolsPkg.version, "0.8.2");
+  assert.equal(toolsPkg.version, "0.9.0-rc.0");
+  assert.equal(toolsPkg.engines.node, ">=22");
+  assert.equal(toolsPkg.dependencies["@dexterai/vault"], "0.43.2");
+  assert.equal(toolsPkg.dependencies["@dexterai/x402"], "6.0.0-rc.2");
   assert.equal(toolsPkg.dependencies["@dexterai/x402-core"], "1.5.2");
+  assert.equal(toolsPkg.publishConfig.tag, "next");
+  assert.equal(discoveryPkg.version, "1.1.0-rc.0");
+  assert.equal(discoveryPkg.engines.node, ">=22");
+  assert.equal(
+    discoveryPkg.dependencies["@dexterai/opendexter"],
+    "1.24.0-rc.0",
+  );
+  assert.equal(discoveryPkg.publishConfig.tag, "next");
   assert.deepEqual(mcp, {
     mcpServers: {
       opendexter: {
         command: "npx",
-        args: ["-y", "@dexterai/opendexter@1.23.3"],
+        args: ["-y", "@dexterai/opendexter@1.24.0-rc.0"],
       },
     },
   });
@@ -938,16 +954,23 @@ test("local package candidate pins its runtime and stdio discovery identity", as
 
 test("release changelog carries stable hosted and candidate local identities", async () => {
   const changelog = await readFile(resolve(repoRoot, "CHANGELOG.md"), "utf8");
-  const currentRelease = changelog.slice(0, changelog.indexOf("## 2026-08-05"));
+  const currentRelease = changelog.slice(
+    0,
+    changelog.indexOf("## 2026-08-16 — stable 1.23.3"),
+  );
   assert.match(changelog, /Codex `0\.5\.0`/);
   assert.match(changelog, /Claude Code `2\.1\.0`/);
-  assert.match(currentRelease, /`@dexterai\/opendexter@1\.23\.3`/);
-  assert.match(currentRelease, /`@dexterai\/mcp-instructions@2\.4\.1`/);
-  assert.match(currentRelease, /`@dexterai\/x402-core@1\.5\.2`/);
-  assert.match(currentRelease, /`@dexterai\/x402-mcp-tools@0\.8\.2`/);
-  assert.match(currentRelease, /Public `@dexterai\/opendexter@1\.23\.2` is immutable on npm/);
-  assert.match(currentRelease, /`@dexterai\/opendexter@1\.23\.3`[\s\S]*remains\s+unpublished/i);
-  assert.match(currentRelease, /Re-materialized the public hosted receipt/);
+  assert.match(currentRelease, /`@dexterai\/opendexter@1\.24\.0-rc\.0`/);
+  assert.match(currentRelease, /`@dexterai\/x402-mcp-tools@0\.9\.0-rc\.0`/);
+  assert.match(currentRelease, /`@dexterai\/x402@6\.0\.0-rc\.2`/);
+  assert.match(currentRelease, /`@dexterai\/vault@0\.43\.2`/);
+  assert.match(
+    currentRelease,
+    /Public `@dexterai\/opendexter@1\.23\.3` remains\s+immutable on npm/,
+  );
+  assert.match(currentRelease, /source, build, and test evidence only/i);
+  assert.match(currentRelease, /Nothing[\s\S]*publishes an npm package/i);
+  assert.match(changelog, /Re-materialized the public hosted receipt/);
 });
 
 test("release train freezes full descriptors and a post-deploy novice suite", async () => {

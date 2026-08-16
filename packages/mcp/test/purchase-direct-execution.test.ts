@@ -37,6 +37,19 @@ vi.mock("@dexterai/x402/client", () => ({
   fireImpressionBeacon: vi.fn(async () => {}),
 }));
 
+const injectedX402Client = {
+  payAndFetch: vi.fn(),
+  detectStrategy: mocks.detectStrategy,
+  buildV1PaymentHeader: mocks.buildV1PaymentHeader,
+  createKeypairWallet: vi.fn(async () => ({ kind: "solana" })),
+  createEvmKeypairWallet: vi.fn(async () => ({ kind: "evm" })),
+  createSolanaAdapter: vi.fn(() => mocks.adapter),
+  createEvmAdapter: vi.fn(() => mocks.adapter),
+  toNetworkRef: mocks.toNetworkRef,
+  getSponsoredRecommendations: vi.fn(() => null),
+  fireImpressionBeacon: vi.fn(async () => {}),
+} as unknown as typeof import("@dexterai/x402/client");
+
 import {
   registerFetchTool,
   x402Fetch,
@@ -200,6 +213,7 @@ describe("Direct Exact selected-offer execution", () => {
         maxAmountAtomic: "10000",
         purchaseAttempts: attemptStore(),
         explicitExternalFetch: fetch,
+        x402Client: injectedX402Client,
       },
     );
 
@@ -300,6 +314,7 @@ describe("Direct Exact selected-offer execution", () => {
         maxAmountAtomic: "10000",
         purchaseAttempts: attemptStore(),
         explicitExternalFetch: fetch,
+        x402Client: injectedX402Client,
       },
     );
 
@@ -406,6 +421,7 @@ describe("Direct Exact selected-offer execution", () => {
           maxAmountAtomic: "10000",
           purchaseAttempts: attemptStore(),
           explicitExternalFetch: fetch,
+          x402Client: injectedX402Client,
         },
       );
 
@@ -461,6 +477,7 @@ describe("Direct Exact selected-offer execution", () => {
         maxAmountAtomic: "10000",
         purchaseAttempts: attemptStore(),
         explicitExternalFetch: fetch,
+        x402Client: injectedX402Client,
       },
     );
 
@@ -520,6 +537,7 @@ describe("Direct Exact selected-offer execution", () => {
         maxAmountAtomic: "10000",
         purchaseAttempts: attemptStore(),
         explicitExternalFetch: fetch,
+        x402Client: injectedX402Client,
       },
     );
 

@@ -23,6 +23,7 @@ const EXPECTED_RUNTIME_EXPORTS = [
   "buildToolMetas",
   "buildUnavailablePurchaseReceipt",
   "composeAllTools",
+  "createManagedFinalVoucherV2Reservation",
   "createRemoteCardOperations",
   "evaluatePaymentRequirements",
   "preparedPurchaseSchema",

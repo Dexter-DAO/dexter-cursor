@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-08-16 — 1.24.0-rc.0 x402 V6 migration candidate
+
+- Migrated the maintained local OpenDexter packages to Node.js 22 and the
+  exact `@dexterai/x402@6.0.0-rc.2` / `@dexterai/vault@0.43.2` pair. Advanced
+  the unpublished coordinated source candidates to
+  `@dexterai/x402-mcp-tools@0.9.0-rc.0`,
+  `@dexterai/opendexter@1.24.0-rc.0`, and
+  `@dexterai/x402-discovery@1.1.0-rc.0` so no immutable public version is
+  reused for changed bytes. Public `@dexterai/opendexter@1.23.3` remains
+  immutable on npm.
+- Added the managed Native Tab V2 reservation transport and passed it into
+  x402 V6 `tabFromGrant`. The SDK independently verifies the provider receipt
+  against a Solana transaction and post-state at least at `confirmed` before
+  releasing the signed voucher to the merchant. The interactive path does not
+  wait for `finalized` commitment.
+- Made final V2 reservation and signing failures terminal. A V2 seller error
+  or uncertain response enters explicit reconciliation and never rolls the
+  tab back or falls through to a second payment rail.
+- Required explicit reapproval for historical low-bit Native Tab grants,
+  which x402 V6 cannot safely reinterpret as context-bound V2 authority.
+  Preserved `buildV1PaymentHeader` solely for intentional one-shot HTTP exact
+  payments; it is not a Native Tab V2 fallback.
+- Replaced the active client and debugging guidance for removed x402 V5 APIs
+  with V6 `payAndFetch` examples and fail-closed uncertain-outcome handling.
+- This entry records source, build, and test evidence only. Nothing in this
+  migration publishes an npm package, changes an npm dist-tag, deploys a
+  runtime, or performs a payment.
+
 ## 2026-08-16 — stable 1.23.3 governed x402 payment authority
 
 - Prepared one combined OpenDexter `0.6.1` plugin for ChatGPT and Codex with

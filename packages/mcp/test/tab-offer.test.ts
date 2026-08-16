@@ -10,8 +10,8 @@
  *  - tab:false: the lane is never consulted, no offer, and NO key is
  *    minted (custody untouched);
  *  - pending: one bounded chain read, then an honest tab_pending;
- *  - post-approval: the SAME retried call finds the grant on chain,
- *    promotes it, and pays by voucher through the REAL seller middleware;
+ *  - post-approval: the SAME retried call finds the context-bound V2 grant,
+ *    reserves its exact final claim, promotes it, and dispatches the voucher;
  *  - offer suppression: the relayable invitation shows once per process
  *    for dual-rail sellers, never suppressed for tab-only sellers;
  *  - custody: key persisted 0600 before the link leaves, pubkey-only in
@@ -25,7 +25,13 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { Keypair, PublicKey, type Connection } from "@solana/web3.js";
 import { tabMiddleware } from "@dexterai/x402/tab/seller";
-import { DEXTER_VAULT_PROGRAM_ID } from "@dexterai/x402/tab";
+import {
+  DEXTER_VAULT_PROGRAM_ID,
+  type FinalVoucherV2ReservationInput,
+  type FinalVoucherV2ReservationReceipt,
+  type SignedVoucher,
+  type Tab,
+} from "@dexterai/x402/tab";
 import { VAULT_ACCOUNT_DISCRIMINATOR } from "@dexterai/vault/constants";
 import { deriveSessionPda } from "@dexterai/vault/session";
 import type {
@@ -62,12 +68,34 @@ vi.mock("@dexterai/x402/client", () => ({
   fireImpressionBeacon: vi.fn(async () => {}),
 }));
 
+const injectedX402Client = {
+  payAndFetch: vi.fn(async () => ({
+    ok: true,
+    paid: true,
+    amountPaid: "10000",
+    network: {
+      caip2: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      bare: "solana",
+    },
+    txSignature: "EXACT_TX_SIG",
+    response: new Response(JSON.stringify({ tick: "exact" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  })),
+  createKeypairWallet: vi.fn(async () => ({})),
+  createEvmKeypairWallet: vi.fn(async () => ({})),
+  getSponsoredRecommendations: vi.fn(() => null),
+  fireImpressionBeacon: vi.fn(async () => {}),
+} as unknown as typeof import("@dexterai/x402/client");
+
 // ── Fixtures (shape-identical to tabs.test.ts; trimmed to what this file needs) ──
 
 const SELLER_URL = "https://api.dexter.cash/api/x402/tab-demo/tick";
 const COUNTERPARTY = "FKF63wLt122SLDNPBfpDgrMcQzxtdLfLyrUS1KziRR1h";
 const FAC = "https://fac.test";
 const NOW = Math.floor(Date.now() / 1000);
+const CONTEXT_BOUND_V2_NONCE = 0x8000002a;
 
 const TAB_ACCEPT = {
   scheme: "tab",
@@ -111,12 +139,89 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+type TabFromGrant = typeof import("@dexterai/x402/tab").tabFromGrant;
+type TabFromGrantOptions = Parameters<TabFromGrant>[0];
+
+function finalReceipt(
+  input: FinalVoucherV2ReservationInput,
+): FinalVoucherV2ReservationReceipt {
+  return {
+    contract: "dexter-native-tab-open-receipt/v2",
+    operationId: `lifecycle-${input.idempotencyKey}`,
+    callerOperationId: input.idempotencyKey,
+    network: input.network,
+    transaction: "FINAL_TAB_TX",
+    commitment: "confirmed",
+    confirmationSlot: 456,
+    postStateSlot: 456,
+    buyerSwigAddress: input.buyerSwigAddress,
+    vaultPda: input.vaultPda,
+    sessionPda: input.sessionPda,
+    seller: input.seller,
+    channelId: input.channelId,
+    sessionPublicKey: bs58.encode(input.voucher.sessionPublicKey),
+    voucherDigest: input.voucherDigest,
+    cumulativeAmountAtomic: input.voucher.payload.cumulativeAmount,
+    sequenceNumber: input.voucher.payload.sequenceNumber,
+    providerReceiptId: "provider-receipt-final",
+    reservationAmountAtomic: input.reservationAmountAtomic,
+    pendingVoucherCountBefore: 0,
+    pendingVoucherCountAfter: 1,
+    currentOutstandingBeforeAtomic: "0",
+    currentOutstandingAfterAtomic: input.reservationAmountAtomic,
+  };
+}
+
+const v2TabFromGrant = vi.fn(async (options: TabFromGrantOptions) => {
+  const channelId = "ab".repeat(32);
+  const tab = {
+    channelId,
+    voucherVersion: 2,
+    network: "solana:mainnet",
+    counterparty: options.params.counterparty,
+    state: { isOpen: true, spent: "0", remaining: "5", expiresInSec: 3600 },
+    signNextVoucher: vi.fn(async (incrementAtomic: string) => {
+      const voucher: SignedVoucher = {
+        payload: { channelId, cumulativeAmount: incrementAtomic, sequenceNumber: 1 },
+        sessionPublicKey: bs58.decode(options.params.sessionPubkey),
+        sessionRegistration: new Uint8Array(188).fill(3),
+        sessionSignature: new Uint8Array(64).fill(4),
+      };
+      if (!options.reserveFinalVoucherV2) {
+        throw new Error("native_tab_v2_reservation_provider_required");
+      }
+      await options.reserveFinalVoucherV2({
+        network: "solana:mainnet",
+        programId: DEXTER_VAULT_PROGRAM_ID.toBase58(),
+        buyerSwigAddress: Keypair.generate().publicKey.toBase58(),
+        vaultPda: String(options.vaultPda),
+        sessionPda: deriveSessionPda(
+          new PublicKey(options.vaultPda),
+          new PublicKey(options.params.counterparty),
+        )[0].toBase58(),
+        seller: options.params.counterparty,
+        channelId,
+        sessionNonce: options.params.nonce,
+        reservationAmountAtomic: incrementAtomic,
+        previousCumulativeAtomic: "0",
+        voucherDigest: "funnel-voucher-digest",
+        idempotencyKey: "funnel-idempotency-key",
+        voucher,
+      });
+      return voucher;
+    }),
+    stream: vi.fn(),
+    close: vi.fn(),
+  } as unknown as Tab;
+  return tab;
+}) as unknown as TabFromGrant;
+
 /** Real-layout 162-byte SessionAccount for a pending record the human just approved. */
 function sessionAccountFor(record: TabRecord, vault: PublicKey): Buffer {
   const params = {
     maxAmountAtomic: "5000000",
     expiresAtUnix: NOW + 3600,
-    nonce: 42,
+    nonce: CONTEXT_BOUND_V2_NONCE,
     maxRevolvingCapacityAtomic: "5000000",
   };
   const buf = Buffer.alloc(162);
@@ -202,7 +307,8 @@ function sellerRouter(
     if (u.startsWith(SELLER_URL)) {
       const headers = new Headers(init?.headers);
       const voucher = headers.get("x-tab-voucher");
-      if (!voucher || !mw) return jsonResponse(body(), 402);
+      if (!voucher) return jsonResponse(body(), 402);
+      if (!mw) return jsonResponse({ tick: "on-tab" });
       const req = fakeReq(voucher);
       const res = fakeRes();
       const next = vi.fn();
@@ -338,7 +444,11 @@ describe("tab offer — x402Fetch composition", () => {
     const result = await x402Fetch(
       { url: SELLER_URL, method: "POST", body: '{"q":"tick"}' },
       null,
-      { maxAmountUsdc: 5, tabLane: async () => ({ done: false, offer: STUB_OFFER }) },
+      {
+        maxAmountUsdc: 5,
+        tabLane: async () => ({ done: false, offer: STUB_OFFER }),
+        x402Client: injectedX402Client,
+      },
     );
     expect(result).toMatchObject({
       status: 402,
@@ -367,7 +477,11 @@ describe("tab offer — x402Fetch composition", () => {
     const result = await x402Fetch(
       { url: SELLER_URL, method: "GET" },
       wallet,
-      { maxAmountUsdc: 5, tabLane: async () => ({ done: false, offer: STUB_OFFER }) },
+      {
+        maxAmountUsdc: 5,
+        tabLane: async () => ({ done: false, offer: STUB_OFFER }),
+        x402Client: injectedX402Client,
+      },
     );
     // The user got their answer, paid exact…
     expect(result.status).toBe(200);
@@ -393,7 +507,11 @@ describe("tab offer — x402Fetch composition", () => {
     const result = await x402Fetch(
       { url: SELLER_URL, method: "GET" },
       null,
-      { maxAmountUsdc: 5, tabLane: async () => ({ done: false, offer: STUB_OFFER }) },
+      {
+        maxAmountUsdc: 5,
+        tabLane: async () => ({ done: false, offer: STUB_OFFER }),
+        x402Client: injectedX402Client,
+      },
     );
     expect(result.status).toBe(402);
     expect(result.mode).toBeUndefined();
@@ -427,9 +545,19 @@ describe("tab offer — the full funnel through the registered tool", () => {
     expect(findTab(COUNTERPARTY, dir)!.status).toBe("pending");
   });
 
-  it("offer → human approves → the SAME retried call finds the grant, promotes it, and rides the tab (real seller middleware)", async () => {
+  it("offer → human approves → the SAME retried call promotes the V2 grant, reserves, and rides the tab", async () => {
     const { conn, accounts, gpaBatches } = mutableConnection();
-    const lane = createTabLane({ dataDir: dir, connection: conn, facilitatorUrl: FAC, getMaxAmountUsdc: () => 5, fetchImpl: lateBoundFetch });
+    const reserveFinalVoucherV2 = vi.fn(async (input: FinalVoucherV2ReservationInput) =>
+      finalReceipt(input));
+    const lane = createTabLane({
+      dataDir: dir,
+      connection: conn,
+      facilitatorUrl: FAC,
+      getMaxAmountUsdc: () => 5,
+      fetchImpl: lateBoundFetch,
+      tabFromGrant: v2TabFromGrant,
+      reserveFinalVoucherV2,
+    });
     const handler = registerAndCapture({ getTabLane: () => lane });
 
     // ── Call 1: tab-only seller, no grant → the in-band offer, key custodied.
@@ -454,15 +582,7 @@ describe("tab offer — the full funnel through the registered tool", () => {
     gpaBatches.push([{ pubkey: sessionPda, data: sessionData }]);
 
     // ── Call 2 (the retry the instructions promised): rides the tab.
-    const mw = tabMiddleware({
-      connection: conn,
-      sellerPubkey: COUNTERPARTY,
-      perUnit: "0.01",
-      network: "solana:mainnet",
-      settle: "on-close",
-      facilitatorUrl: FAC,
-    });
-    sellerRouter(mw, tabOnlyBody);
+    sellerRouter(null, tabOnlyBody);
     const second = await handler({ url: SELLER_URL, method: "GET" });
     const paid = second.structuredContent;
     expect(paid.status).toBe(200);
@@ -471,11 +591,15 @@ describe("tab offer — the full funnel through the registered tool", () => {
       rail: "tab",
       settled: "accrued_to_tab",
       incrementAtomic: "10000",
+      voucherVersion: 2,
+      reservationCommitment: "confirmed",
     });
+    expect(reserveFinalVoucherV2).toHaveBeenCalledOnce();
     // The grant was promoted with the CHAIN's params.
     const promoted = findTab(COUNTERPARTY, dir)!;
     expect(promoted.status).toBe("active");
     expect(promoted.vaultPda).toBe(vault.toBase58());
     expect(promoted.sessionPubkey).toBe(record.sessionPubkey); // same custodied key
+    expect(promoted.lastFinalV2ReservationVerified).toBe(true);
   });
 });

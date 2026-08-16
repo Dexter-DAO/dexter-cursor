@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@dexterai/opendexter"><img src="https://img.shields.io/npm/v/@dexterai/opendexter.svg" alt="npm version"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-339933" alt="Node 20 or newer"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-339933" alt="Node 22 or newer"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-111111" alt="MIT license"></a>
 </p>
 
@@ -37,13 +37,13 @@ incomplete hosted authority fails closed.
 
 ## Start
 
-This guide belongs to `@dexterai/opendexter@1.23.3`. Its executable examples
+This guide belongs to `@dexterai/opendexter@1.24.0-rc.0`. Its executable examples
 are pinned to those exact package bytes.
 
 Install the local MCP into detected clients:
 
 ```bash
-npx @dexterai/opendexter@1.23.3 setup
+npx @dexterai/opendexter@1.24.0-rc.0 setup
 ```
 
 Setup checks existing registrations before editing a client. It does not
@@ -51,8 +51,8 @@ create, migrate, repair, or fund a wallet. After installation, connect the
 local proxy to the hosted governed runtime:
 
 ```bash
-npx @dexterai/opendexter@1.23.3 connect
-npx @dexterai/opendexter@1.23.3 connect status
+npx @dexterai/opendexter@1.24.0-rc.0 connect
+npx @dexterai/opendexter@1.24.0-rc.0 connect status
 ```
 
 The device flow stores an OAuth bearer locally. Account-bound tools send that
@@ -66,7 +66,7 @@ expiry, scopes, active role, and revocation evidence is complete.
 For side-effect-free installation diagnosis:
 
 ```bash
-npx @dexterai/opendexter@1.23.3 doctor --client codex
+npx @dexterai/opendexter@1.24.0-rc.0 doctor --client codex
 ```
 
 Doctor does not create a wallet, read a private key, check a balance, edit
@@ -77,7 +77,7 @@ configuration, or pay.
 Target one supported client:
 
 ```bash
-npx @dexterai/opendexter@1.23.3 install --client cursor
+npx @dexterai/opendexter@1.24.0-rc.0 install --client cursor
 ```
 
 Valid client names are `cursor`, `claude-code`, `codex`, `vscode`, `windsurf`,
@@ -87,7 +87,7 @@ machine.
 For Claude Code:
 
 ```bash
-claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.23.3
+claude mcp add --scope user opendexter -- npx -y @dexterai/opendexter@1.24.0-rc.0
 ```
 
 JSON-based clients can use:
@@ -97,7 +97,7 @@ JSON-based clients can use:
   "mcpServers": {
     "opendexter": {
       "command": "npx",
-      "args": ["-y", "@dexterai/opendexter@1.23.3"]
+      "args": ["-y", "@dexterai/opendexter@1.24.0-rc.0"]
     }
   }
 }
@@ -108,7 +108,7 @@ Codex uses TOML:
 ```toml
 [mcp_servers.opendexter]
 command = "npx"
-args = ["-y", "@dexterai/opendexter@1.23.3"]
+args = ["-y", "@dexterai/opendexter@1.24.0-rc.0"]
 ```
 
 Keep one OpenDexter registration in a client. An alias does not make two
@@ -153,16 +153,16 @@ not authorize a different action.
 CLI example:
 
 ```bash
-npx @dexterai/opendexter@1.23.3 check \
+npx @dexterai/opendexter@1.24.0-rc.0 check \
   "https://service.example/x402/route" \
   --method POST \
   --body '{"document_url":"https://example.com/report.pdf"}'
 
-npx @dexterai/opendexter@1.23.3 fetch \
+npx @dexterai/opendexter@1.24.0-rc.0 fetch \
   --intent-id "<opaque-intent-id-from-the-connected-check>" \
   --max-amount-atomic "<user-approved-ceiling>"
 
-npx @dexterai/opendexter@1.23.3 status \
+npx @dexterai/opendexter@1.24.0-rc.0 status \
   --intent-id "<same-opaque-intent-id>"
 ```
 
@@ -201,7 +201,7 @@ one-call request and is never automatically retried after possible dispatch.
 Use the connected wallet view by default:
 
 ```bash
-npx @dexterai/opendexter@1.23.3 wallet
+npx @dexterai/opendexter@1.24.0-rc.0 wallet
 ```
 
 The result includes hosted wallet data and `runtimeAuthority`. A bearer, wallet
@@ -212,7 +212,7 @@ An existing legacy wallet file can be inspected only through this explicit
 non-payment recovery command:
 
 ```bash
-npx @dexterai/opendexter@1.23.3 wallet --legacy-recovery
+npx @dexterai/opendexter@1.24.0-rc.0 wallet --legacy-recovery
 ```
 
 That view parses the existing JSON file, validates its public addresses, and

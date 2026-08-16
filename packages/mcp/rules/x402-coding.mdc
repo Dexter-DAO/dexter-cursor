@@ -11,7 +11,7 @@ x402-coding:
     fallback.
   - `@dexterai/x402` is an independent application SDK. Its wallet adapters or
     application-owned keys do not inherit OpenDexter identity, authority, or
-    limits and must never be substituted for a blocked OpenDexter operation.
+  limits and must never be substituted for a blocked OpenDexter operation.
 - For OpenDexter, use exactly this flow: `x402_search` → `x402_check` → review
   and approval → `x402_fetch` with only `intentId` and `maxAmountAtomic`.
 - Keep `intentId` opaque. It is server-owned and binds the exact request and
@@ -28,10 +28,15 @@ x402-coding:
   authority.
 - For a deliberately independent `@dexterai/x402` integration, import from
   subpaths, never from the root package:
-  - `import { wrapFetch } from '@dexterai/x402/client'`
+  - `import { payAndFetch } from '@dexterai/x402/client'`
   - `import { x402Middleware } from '@dexterai/x402/server'`
   - `import { useX402Payment } from '@dexterai/x402/react'`
-- Handle SDK errors with `X402Error` and its `.code` property. Do not apply SDK
-  retry guidance to an OpenDexter fetch.
+- Install the tested V6 pair together: `@dexterai/x402@6.0.0-rc.2` and
+  `@dexterai/vault@0.43.2`, on Node 22 or newer.
+- Narrow the one-shot SDK's `PayResult` on `ok`, then `paid`. A
+  `payment_unconfirmed` result may already have moved money and must not be
+  automatically retried. Do not apply SDK recovery guidance to an OpenDexter
+  fetch.
+- `wrapFetch` and `createX402Client` were removed; never generate them.
 - Solana SDK payments require `feePayer` in the accept's `extra` field. EVM
   payments do not.

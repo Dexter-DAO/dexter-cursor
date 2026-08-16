@@ -51,7 +51,15 @@ import type {
   TabOfferMaterials,
   BudgetRuntime,
 } from "@dexterai/x402-mcp-tools";
-import type { Tab, SignedVoucher } from "@dexterai/x402/tab";
+import { createManagedFinalVoucherV2Reservation } from "@dexterai/x402-mcp-tools";
+import {
+  voucherToHeader,
+  type FinalVoucherV2ReservationInput,
+  type FinalVoucherV2ReservationReceipt,
+  type ReserveFinalVoucherV2,
+  type Tab,
+  type SignedVoucher,
+} from "@dexterai/x402/tab";
 import { SOLANA_RPC_URL } from "../config.js";
 import { cliHint } from "../cli-hint.js";
 import { findTab, updateTab, type TabRecord } from "./store.js";
@@ -84,6 +92,14 @@ export interface TabLaneDeps {
   /** Facilitator override (tests). Default: the SDK's DEFAULT_FACILITATOR_URL. */
   facilitatorUrl?: string;
   fetchImpl?: typeof fetch;
+  /** Route-bound transport for the server-side reservation provider. */
+  reservationFetchImpl?: typeof fetch;
+  /** Explicit provider seam. Tests and hosted backends should inject this. */
+  reserveFinalVoucherV2?: ReserveFinalVoucherV2;
+  /** SDK constructor seam for deterministic lane tests. Production omits it. */
+  tabFromGrant?: typeof import("@dexterai/x402/tab").tabFromGrant;
+  /** Server-only facilitator credential. Never expose this through MCP output. */
+  tabOpenInternalToken?: string;
   /** Per-call USDC cap — same policy the exact path enforces. */
   getMaxAmountUsdc?: () => number;
   /** Rolling 24h budget hooks — same velocity guard as the exact path. */
@@ -100,6 +116,17 @@ export interface TabLaneDeps {
  */
 const openTabs = new Map<string, Tab>();
 
+interface FinalV2ReservationAttempt {
+  input: FinalVoucherV2ReservationInput;
+  receipt?: FinalVoucherV2ReservationReceipt;
+  independentlyVerified: boolean;
+}
+
+/** Latest exact V2 issuance attempt per seller. The callback records the
+ * voucher before provider I/O so an after-commit timeout cannot erase the
+ * obligation identity merely because signNextVoucher did not return it. */
+const finalV2ReservationAttempts = new Map<string, FinalV2ReservationAttempt>();
+
 /**
  * Sellers whose in-band tab offer was already relayed this process, keyed
  * by counterparty. In-memory and most-recent only, by design: a restart
@@ -112,6 +139,11 @@ const offeredTabs = new Set<string>();
 export function resetTabLaneCacheForTests(): void {
   openTabs.clear();
   offeredTabs.clear();
+  finalV2ReservationAttempts.clear();
+}
+
+function isContextBoundV2Nonce(nonce: number): boolean {
+  return (nonce >>> 31) === 1;
 }
 
 /** One bounded chain read while a grant is pending — never a poll loop
@@ -299,9 +331,104 @@ async function parseBody(res: Response): Promise<unknown> {
   }
 }
 
+function historicalV1ReapprovalOutcome(record: TabRecord): TabLaneOutcome {
+  return {
+    done: true,
+    result: {
+      status: 409,
+      error:
+        "This tab was approved under the retired voucher format. OpenDexter " +
+        "will not issue another claim from it. Settle or revoke the old tab " +
+        "through the wallet/deployment that opened it, then explicitly approve " +
+        `a new tab with \`${cliHint(`tab connect ${record.sellerUrl} --rekey`)}\`. ` +
+        `Use \`${cliHint(`fetch ${record.sellerUrl} --no-tab`)}\` only if you ` +
+        "intentionally want a separate one-call payment.",
+      tab: {
+        rail: "tab",
+        used: false,
+        state: "reapproval_required",
+        counterparty: record.counterparty,
+        retrySafe: true,
+      },
+    },
+  };
+}
+
+function reconciliationRequiredOutcome(record: TabRecord): TabLaneOutcome {
+  return {
+    done: true,
+    result: {
+      status: 409,
+      error:
+        "This tab has a FINAL voucher whose reservation or delivery needs " +
+        "reconciliation. OpenDexter will not pay this request on another rail " +
+        "until that exact obligation is resolved.",
+      tab: {
+        rail: "tab",
+        used: false,
+        state: "reconciliation_required",
+        reason: record.deadReason ?? "final_v2_outcome_unknown",
+        counterparty: record.counterparty,
+        retrySafe: false,
+        ...(record.lastFinalV2ReservationReceipt
+          ? {
+              reservationTransaction:
+                record.lastFinalV2ReservationReceipt.transaction,
+              reservationCommitment:
+                record.lastFinalV2ReservationReceipt.commitment,
+            }
+          : {}),
+      },
+    },
+  };
+}
+
+function persistFinalV2Attempt(
+  record: TabRecord,
+  attempt: FinalV2ReservationAttempt,
+  dir: string | undefined,
+  patch: Partial<TabRecord> = {},
+): void {
+  updateTab(
+    record.counterparty,
+    {
+      lastVoucherHeader: voucherToHeader(attempt.input.voucher),
+      lastVoucherAt: new Date().toISOString(),
+      lastVoucherVersion: 2,
+      lastVoucherIncrementAtomic: attempt.input.reservationAmountAtomic,
+      // Assign both fields on every attempt. JSON serialization drops an
+      // undefined receipt, which prevents evidence from a previous voucher
+      // being mistaken for this exact after-commit timeout.
+      lastFinalV2ReservationReceipt: attempt.receipt,
+      lastFinalV2ReservationVerified:
+        attempt.receipt ? attempt.independentlyVerified : false,
+      ...patch,
+    },
+    dir,
+  );
+}
+
 export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
   const dir = deps.dataDir;
   const fetchImpl = deps.fetchImpl ?? fetch;
+  const facilitatorUrl = deps.facilitatorUrl ?? "https://x402.dexter.cash";
+  const tabOpenInternalToken = (
+    deps.tabOpenInternalToken !== undefined
+      ? deps.tabOpenInternalToken
+      : (
+          process.env.TAB_OPEN_INTERNAL_TOKEN?.trim()
+          || process.env.DEXTER_INTERNAL_TOKEN?.trim()
+          || ""
+        )
+  ).trim();
+  const reservationProvider = deps.reserveFinalVoucherV2
+    ?? (tabOpenInternalToken
+      ? createManagedFinalVoucherV2Reservation({
+          facilitatorUrl,
+          internalToken: tabOpenInternalToken,
+          fetchImpl: deps.reservationFetchImpl ?? fetchImpl,
+        })
+      : undefined);
   let connection: Connection | null = deps.connection ?? null;
   const getConnection = () => {
     if (!connection) connection = new Connection(SOLANA_RPC_URL, "confirmed");
@@ -350,6 +477,14 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
       return offerOutcome("tab_available", minted, priceUsdc, requirements);
     }
 
+    if (record.status === "reapproval_required") {
+      return historicalV1ReapprovalOutcome(record);
+    }
+
+    if (record.status === "reconciliation_required") {
+      return reconciliationRequiredOutcome(record);
+    }
+
     // ── Dead grant: fall through to exact, loudly — and no auto re-offer.
     // The chain said this session is gone; it may have been deliberately
     // revoked, and re-inviting after a revocation is spam. Reconnecting
@@ -383,6 +518,22 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
         found = null;
       }
       if (found && found.live) {
+        if (!isContextBoundV2Nonce(found.params.nonce)) {
+          const deadReason =
+            "native_tab_v1_migration_required: historical low-bit grant must be explicitly reapproved";
+          updateTab(
+            record.counterparty,
+            { status: "reapproval_required", deadReason },
+            dir,
+          );
+          return historicalV1ReapprovalOutcome({
+            ...record,
+            status: "reapproval_required",
+            deadReason,
+            params: found.params,
+            vaultPda: found.vaultPda,
+          });
+        }
         const patch = {
           status: "active" as const,
           vaultPda: found.vaultPda,
@@ -412,6 +563,24 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
       }
     }
 
+    // Records written by pre-v6 OpenDexter already say `active`. Detect their
+    // low-bit nonce before constructing a Tab so the SDK never sees them as a
+    // generic runtime failure and the owner gets one explicit migration path.
+    if (record.params && !isContextBoundV2Nonce(record.params.nonce)) {
+      const deadReason =
+        "native_tab_v1_migration_required: historical low-bit grant must be explicitly reapproved";
+      updateTab(
+        record.counterparty,
+        { status: "reapproval_required", deadReason },
+        dir,
+      );
+      return historicalV1ReapprovalOutcome({
+        ...record,
+        status: "reapproval_required",
+        deadReason,
+      });
+    }
+
     // ── Construct (or reuse) the tab ───────────────────────────────────
     let tab = openTabs.get(record.counterparty);
     if (!tab) {
@@ -426,9 +595,78 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
           },
         };
       }
+      if (!reservationProvider) {
+        if (
+          record.lastVoucherVersion === 2
+          && record.lastVoucherHeader
+        ) {
+          const reconciled: TabRecord = {
+            ...record,
+            status: "reconciliation_required",
+            deadReason:
+              record.deadReason ?? "native_tab_v2_persisted_obligation_requires_reconciliation",
+          };
+          updateTab(
+            record.counterparty,
+            {
+              status: reconciled.status,
+              deadReason: reconciled.deadReason,
+            },
+            dir,
+          );
+          return reconciliationRequiredOutcome(reconciled);
+        }
+        return {
+          done: false,
+          note: {
+            rail: "tab",
+            used: false,
+            reason:
+              "tab skipped before any voucher was signed: this server has no " +
+              "FINAL-voucher reservation provider configured — paid exact instead",
+          },
+        };
+      }
       try {
-        const { tabFromGrant } = await import("@dexterai/x402/tab");
+        const tabFromGrant = deps.tabFromGrant
+          ?? (await import("@dexterai/x402/tab")).tabFromGrant;
+        const reserveAndTrack: ReserveFinalVoucherV2 = async (input) => {
+          if (input.seller !== record.counterparty) {
+            throw new Error("native_tab_v2_reservation_counterparty_mismatch");
+          }
+          let attempt: FinalV2ReservationAttempt = {
+            input,
+            independentlyVerified: false,
+          };
+          finalV2ReservationAttempts.set(record.counterparty, attempt);
+          // Durable before provider I/O: a hard process exit after the
+          // facilitator commits must still leave the exact voucher bytes and
+          // a cross-process no-fallback fence on disk.
+          persistFinalV2Attempt(record, attempt, dir, {
+            status: "reconciliation_required",
+            deadReason: "native_tab_v2_reservation_in_flight",
+          });
+          const receipt = await reservationProvider(input);
+          attempt = {
+            input,
+            receipt,
+            independentlyVerified: false,
+          };
+          finalV2ReservationAttempts.set(record.counterparty, attempt);
+          // The provider response is evidence, not proof. Persist it while
+          // retaining the reconciliation fence; tabFromGrant now performs
+          // its independent confirmed transaction/post-state verification.
+          persistFinalV2Attempt(record, attempt, dir, {
+            status: "reconciliation_required",
+            deadReason: "native_tab_v2_independent_verification_pending",
+          });
+          return receipt;
+        };
         tab = await tabFromGrant({
+          // This grant carries a bounded Ed25519 session key, not a root P-256
+          // passkey signer. V6's resolveAuthorizationContext migration applies
+          // to node passkey authorization paths; inventing one here would
+          // broaden the grant beyond what the user approved.
           sessionSecretKey: bs58.decode(record.sessionSecretKey),
           params: {
             counterparty: record.counterparty,
@@ -445,11 +683,33 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
               : tabAccept.amountAtomic,
           ),
           sellerUrl: record.sellerUrl,
-          ...(deps.facilitatorUrl ? { facilitatorUrl: deps.facilitatorUrl } : {}),
+          facilitatorUrl,
+          reserveFinalVoucherV2: reserveAndTrack,
         });
         openTabs.set(record.counterparty, tab);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
+        if (msg.startsWith("native_tab_v2_reservation_pending")) {
+          // A previous process can crash after the exact V2 reservation was
+          // finalized and persisted, but before merchant dispatch completed.
+          // `tabFromGrant` exposes that durable currentOutstanding fence at
+          // construction. It is an existing FINAL obligation, not a pre-sign
+          // availability failure, so another rail must remain blocked.
+          const reconciled: TabRecord = {
+            ...record,
+            status: "reconciliation_required",
+            deadReason: msg,
+          };
+          updateTab(
+            record.counterparty,
+            {
+              status: reconciled.status,
+              deadReason: reconciled.deadReason,
+            },
+            dir,
+          );
+          return reconciliationRequiredOutcome(reconciled);
+        }
         const definitive = DEAD_GRANT_ERRORS.find((code) => msg.startsWith(code));
         if (definitive) {
           // The chain says this grant is gone/drifted — remember that so
@@ -469,16 +729,86 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
       }
     }
 
+    if (tab.voucherVersion !== 1 && tab.voucherVersion !== 2) {
+      openTabs.delete(record.counterparty);
+      return {
+        done: true,
+        result: {
+          status: 500,
+          error:
+            "The tab runtime did not identify its voucher contract. " +
+            "OpenDexter stopped before signing and will not guess that this " +
+            "is a rollback-safe V1 tab.",
+          tab: {
+            rail: "tab",
+            used: false,
+            state: "runtime_contract_invalid",
+            retrySafe: false,
+            counterparty: record.counterparty,
+          },
+        },
+      };
+    }
+
     // ── Sign the voucher and re-issue the request ──────────────────────
+    // Never let evidence captured for an earlier call masquerade as the
+    // current issuance attempt if signing fails before the provider callback.
+    if (tab.voucherVersion === 2) {
+      finalV2ReservationAttempts.delete(record.counterparty);
+    }
     let signed: SignedVoucher;
     try {
       signed = await tab.signNextVoucher(tabAccept.amountAtomic);
     } catch (err: unknown) {
-      // Signing refused client-side (scope exceeded / expired / closed) —
-      // no voucher exists, exact is safe. Drop the tab so the next call
-      // reconstructs against a fresh frontier.
       openTabs.delete(record.counterparty);
       const msg = err instanceof Error ? err.message : String(err);
+      if (tab.voucherVersion === 2) {
+        // A V2 throw can be an after-commit timeout: the provider may have
+        // confirmed the exact reservation even though its response or the
+        // independent readback failed. Preserve every voucher byte captured at
+        // the callback boundary, block this tab, and never try Exact.
+        const attempt = finalV2ReservationAttempts.get(record.counterparty);
+        if (attempt) {
+          persistFinalV2Attempt(record, attempt, dir, {
+            status: "reconciliation_required",
+            deadReason: `native_tab_v2_issuance_indeterminate: ${msg}`,
+          });
+        } else {
+          updateTab(
+            record.counterparty,
+            {
+              status: "reconciliation_required",
+              deadReason: `native_tab_v2_issuance_indeterminate: ${msg}`,
+            },
+            dir,
+          );
+        }
+        return {
+          done: true,
+          result: {
+            status: 409,
+            error:
+              "The FINAL tab voucher was not safely released. Its reservation " +
+              "may already exist, so OpenDexter will not pay this request on " +
+              `another rail (${msg}). Reconcile this exact tab first.`,
+            tab: {
+              rail: "tab",
+              used: false,
+              state: "reconciliation_required",
+              retrySafe: false,
+              counterparty: record.counterparty,
+              ...(attempt?.receipt
+                ? {
+                    reservationTransaction: attempt.receipt.transaction,
+                    reservationCommitment: attempt.receipt.commitment,
+                  }
+                : {}),
+            },
+          },
+        };
+      }
+      // Historical V1 only: a client-side refusal occurs before any durable
+      // reservation. Exact can safely handle the call after the tab is dropped.
       return {
         done: false,
         note: {
@@ -489,7 +819,51 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
       };
     }
 
-    const { voucherToHeader } = await import("@dexterai/x402/tab");
+    let finalV2Attempt: FinalV2ReservationAttempt | undefined;
+    if (tab.voucherVersion === 2) {
+      finalV2Attempt = finalV2ReservationAttempts.get(record.counterparty);
+      if (
+        !finalV2Attempt
+        || voucherToHeader(finalV2Attempt.input.voucher) !== voucherToHeader(signed)
+      ) {
+        openTabs.delete(record.counterparty);
+        updateTab(
+          record.counterparty,
+          {
+            status: "reconciliation_required",
+            deadReason: "native_tab_v2_verified_reservation_identity_missing",
+          },
+          dir,
+        );
+        return {
+          done: true,
+          result: {
+            status: 409,
+            error:
+              "The SDK released a FINAL voucher without the matching local " +
+              "reservation identity. OpenDexter stopped before merchant " +
+              "dispatch and will not use another payment rail.",
+            tab: {
+              rail: "tab",
+              used: false,
+              state: "reconciliation_required",
+              retrySafe: false,
+              counterparty: record.counterparty,
+            },
+          },
+        };
+      }
+      // signNextVoucher returning is the proof boundary: x402 has validated the
+      // provider receipt and independently verified the transaction at least
+      // at confirmed commitment
+      // plus post-state on getConnection(). Persist before merchant dispatch.
+      finalV2Attempt.independentlyVerified = true;
+      persistFinalV2Attempt(record, finalV2Attempt, dir, {
+        status: "reconciliation_required",
+        deadReason: "native_tab_v2_merchant_dispatch_pending",
+      });
+    }
+
     const headers: Record<string, string> = {
       ...(request.headers ?? {}),
       [tabAccept.voucherHeader]: voucherToHeader(signed),
@@ -511,6 +885,16 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
       // payWithTab). Final, loud, do-not-blind-retry.
       openTabs.delete(record.counterparty);
       const msg = err instanceof Error ? err.message : String(err);
+      if (tab.voucherVersion === 2) {
+        updateTab(
+          record.counterparty,
+          {
+            status: "reconciliation_required",
+            deadReason: `native_tab_v2_dispatch_indeterminate: ${msg}`,
+          },
+          dir,
+        );
+      }
       return {
         done: true,
         result: {
@@ -518,11 +902,21 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
           error:
             `Tab voucher dispatched but the request failed in flight (${msg}). ` +
             `The signed voucher may have reached the seller; do not blind-retry ` +
-            `with --no-tab (that can pay twice). Call again — the next call ` +
-            `re-reads the on-chain frontier and stays monotonic.`,
+            `with --no-tab (that can pay twice). ` +
+            (tab.voucherVersion === 2
+              ? `Reconcile the recorded FINAL reservation before another payment attempt.`
+              : `Call again only after reviewing the outcome; a fresh tab reconstructs from the on-chain frontier.`),
           tab: {
             rail: "tab",
             used: false,
+            ...(tab.voucherVersion === 2
+              ? {
+                  state: "reconciliation_required",
+                  retrySafe: false,
+                  reservationTransaction: finalV2Attempt?.receipt?.transaction,
+                  reservationCommitment: finalV2Attempt?.receipt?.commitment,
+                }
+              : {}),
             counterparty: record.counterparty,
             cumulativeAtomic: signed.payload.cumulativeAmount,
           },
@@ -531,13 +925,23 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
     }
 
     if (res.status === 402) {
-      // The seller refused the voucher. Roll the counter back (TabImpl
-      // internal, duck-typed — same honest-refusal optimization the SDK's
-      // own payWithTab uses) and surface the reason table. FINAL: never a
-      // silent exact fallback for a refusal.
-      const rollback = (tab as Tab & { rollbackVoucher?: (v: SignedVoucher) => boolean })
-        .rollbackVoucher;
-      rollback?.call(tab, signed);
+      // V2 vouchers are already durably reserved and irrevocable: never consult
+      // a rollback hook. Historical V1 alone may use the private rollback
+      // optimization, although V6 will not construct a new V1 grant tab.
+      if (tab.voucherVersion === 1) {
+        const rollback = (tab as Tab & { rollbackVoucher?: (v: SignedVoucher) => boolean })
+          .rollbackVoucher;
+        rollback?.call(tab, signed);
+      } else {
+        updateTab(
+          record.counterparty,
+          {
+            status: "reconciliation_required",
+            deadReason: "native_tab_v2_seller_refused_final_voucher",
+          },
+          dir,
+        );
+      }
       openTabs.delete(record.counterparty);
 
       const body = (await parseBody(res)) as Record<string, unknown> | null;
@@ -547,15 +951,31 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
         done: true,
         result: {
           status: 402,
-          error: explainRefusal(reason, detail, record.sellerUrl),
+          error: tab.voucherVersion === 2
+            ? (
+                "The seller refused a FINAL tab voucher, but its exact on-chain " +
+                "reservation is already confirmed. The seller still holds that " +
+                "claim; reconcile it before any other payment rail is used" +
+                (detail ? ` (${reason}: ${detail})` : ` (${reason})`) + "."
+              )
+            : explainRefusal(reason, detail, record.sellerUrl),
           tab: {
             rail: "tab",
-            used: false,
+            used: tab.voucherVersion === 2,
             refused: true,
             refusalReason: reason,
             ...(detail ? { refusalDetail: detail } : {}),
             counterparty: record.counterparty,
             cumulativeAtomic: signed.payload.cumulativeAmount,
+            voucherVersion: tab.voucherVersion,
+            ...(tab.voucherVersion === 2
+              ? {
+                  state: "reconciliation_required",
+                  retrySafe: false,
+                  reservationTransaction: finalV2Attempt?.receipt?.transaction,
+                  reservationCommitment: finalV2Attempt?.receipt?.commitment,
+                }
+              : {}),
           },
           requirements,
         },
@@ -567,6 +987,17 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
       // middleware, etc). The voucher stands (monotonic counter advanced);
       // report it — the unused budget carries forward to the next voucher.
       const body = await parseBody(res);
+      if (tab.voucherVersion === 2) {
+        // A concrete non-402 response proves merchant dispatch completed; the
+        // reservation remains the known payment for this call, but there is no
+        // outcome-unknown window left that could justify blocking all future
+        // calls on the tab.
+        updateTab(
+          record.counterparty,
+          { status: "active", deadReason: undefined },
+          dir,
+        );
+      }
       return {
         done: true,
         result: {
@@ -587,8 +1018,13 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
     updateTab(
       record.counterparty,
       {
+        ...(tab.voucherVersion === 2
+          ? { status: "active" as const, deadReason: undefined }
+          : {}),
         lastVoucherHeader: voucherToHeader(signed),
         lastVoucherAt: new Date().toISOString(),
+        lastVoucherVersion: tab.voucherVersion,
+        lastVoucherIncrementAtomic: tabAccept.amountAtomic,
       },
       dir,
     );
@@ -618,6 +1054,14 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
           // matching on-chain cumulative semantics — NOT this process's spend.
           cumulativeAtomic: signed.payload.cumulativeAmount,
           sequenceNumber: signed.payload.sequenceNumber,
+          voucherVersion: tab.voucherVersion,
+          ...(tab.voucherVersion === 2
+            ? {
+                reservationTransaction: finalV2Attempt?.receipt?.transaction,
+                reservationCommitment: finalV2Attempt?.receipt?.commitment,
+                reservationReceiptId: finalV2Attempt?.receipt?.providerReceiptId,
+              }
+            : {}),
           close: cliHint(`tab close ${record.sellerUrl}`),
         },
       },
