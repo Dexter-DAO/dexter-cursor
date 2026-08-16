@@ -3,7 +3,7 @@
 ## 2026-08-16 — 1.24.0-rc.0 x402 V6 migration candidate
 
 - Migrated the maintained local OpenDexter packages to Node.js 22 and the
-  exact `@dexterai/x402@6.0.0-rc.0` / `@dexterai/vault@0.43.1` pair. Advanced
+  exact `@dexterai/x402@6.0.0-rc.2` / `@dexterai/vault@0.43.2` pair. Advanced
   the unpublished coordinated source candidates to
   `@dexterai/x402-mcp-tools@0.9.0-rc.0`,
   `@dexterai/opendexter@1.24.0-rc.0`, and
@@ -12,8 +12,9 @@
   immutable on npm.
 - Added the managed Native Tab V2 reservation transport and passed it into
   x402 V6 `tabFromGrant`. The SDK independently verifies the provider receipt
-  against a finalized Solana transaction and post-state before releasing the
-  signed voucher to the merchant.
+  against a Solana transaction and post-state at least at `confirmed` before
+  releasing the signed voucher to the merchant. The interactive path does not
+  wait for `finalized` commitment.
 - Made final V2 reservation and signing failures terminal. A V2 seller error
   or uncertain response enters explicit reconciliation and never rolls the
   tab back or falls through to a second payment rail.

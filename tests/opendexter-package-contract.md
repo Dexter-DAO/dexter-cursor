@@ -16,8 +16,8 @@ OPENDXTER_HOSTED_SOURCE_ROOT=../dexter-mcp \
 
 The `@dexterai/opendexter@1.24.0-rc.0` source candidate pins
 `@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`,
-`@dexterai/x402-mcp-tools@0.9.0-rc.0`, `@dexterai/x402@6.0.0-rc.0`, and
-`@dexterai/vault@0.43.1` through one canonical Node.js 22 root lock. Public
+`@dexterai/x402-mcp-tools@0.9.0-rc.0`, `@dexterai/x402@6.0.0-rc.2`, and
+`@dexterai/vault@0.43.2` through one canonical Node.js 22 root lock. Public
 `1.23.3` is immutable on npm; neither the OpenDexter nor x402 MCP tools RC is
 published. The maintained discovery alias is also advanced to
 `@dexterai/x402-discovery@1.1.0-rc.0` and pins this exact OpenDexter candidate.

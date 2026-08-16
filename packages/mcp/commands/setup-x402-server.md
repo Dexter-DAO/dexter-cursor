@@ -17,7 +17,7 @@ account-bound operation.
 1. Install the SDK:
 
 ```bash
-npm install @dexterai/x402@6.0.0-rc.0 @dexterai/vault@0.43.1
+npm install @dexterai/x402@6.0.0-rc.2 @dexterai/vault@0.43.2
 ```
 
 2. Add the middleware to any Express route:

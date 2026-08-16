@@ -151,7 +151,7 @@ function finalReceipt(
     callerOperationId: input.idempotencyKey,
     network: input.network,
     transaction: "FINAL_TAB_TX",
-    commitment: "finalized",
+    commitment: "confirmed",
     confirmationSlot: 456,
     postStateSlot: 456,
     buyerSwigAddress: input.buyerSwigAddress,
@@ -592,7 +592,7 @@ describe("tab offer — the full funnel through the registered tool", () => {
       settled: "accrued_to_tab",
       incrementAtomic: "10000",
       voucherVersion: 2,
-      reservationCommitment: "finalized",
+      reservationCommitment: "confirmed",
     });
     expect(reserveFinalVoucherV2).toHaveBeenCalledOnce();
     // The grant was promoted with the CHAIN's params.

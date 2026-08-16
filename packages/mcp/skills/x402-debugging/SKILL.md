@@ -15,7 +15,7 @@ view and query `x402_status` with the same opaque intent.
 
 1. Confirm Node 22 or newer.
 2. Confirm the tested pair is installed together:
-   `@dexterai/x402@6.0.0-rc.0` and `@dexterai/vault@0.43.1`.
+   `@dexterai/x402@6.0.0-rc.2` and `@dexterai/vault@0.43.2`.
 3. Check facilitator health: `curl https://x402.dexter.cash/healthz`.
 4. Check advertised networks: `curl https://x402.dexter.cash/supported`.
 5. Inspect the merchant's original `402`, including `PAYMENT-REQUIRED` and its
@@ -107,9 +107,10 @@ V6 buyer tabs are a separate contract under `@dexterai/x402/tab`:
   new context-bound V2 grant.
 - `Tab.voucherVersion` is required. Missing or invalid values fail closed.
 - `reserveFinalVoucherV2` must receive the exact signed claim and return a
-  complete voucher-bound receipt at Solana `finalized` commitment.
-- The SDK then independently reads the finalized transaction and coherent
-  post-state through its own connection. A provider receipt alone is not proof.
+  complete voucher-bound receipt at Solana `confirmed` or stronger commitment.
+- The SDK then independently reads the transaction and coherent post-state at
+  least at `confirmed` through its own connection. A provider receipt alone is
+  not proof, and the interactive request does not wait for `finalized`.
 - Once V2 issuance may have started, signing, provider, merchant-timeout, and
   merchant-402 failures are terminal for that call. Do not roll back the claim
   or fall through to exact.
@@ -122,8 +123,8 @@ Useful failure prefixes include:
 |---|---|
 | `native_tab_v2_reservation_fence_required` | Reservation callback or independent verifier is absent |
 | `native_tab_v2_reservation_receipt_invalid` | Receipt does not match the exact claim/session/economic identity |
-| `native_tab_v2_solana_reservation_invalid:*` | Finalized transaction does not prove the required Vault instruction and binding memo |
-| `native_tab_v2_reservation_post_state_*` | Finalized Vault/Session state does not prove the exact reservation |
+| `native_tab_v2_solana_reservation_invalid:*` | Confirmed transaction does not prove the required Vault instruction and binding memo |
+| `native_tab_v2_reservation_post_state_*` | Confirmed Vault/Session state does not prove the exact reservation |
 | `native_tab_v1_migration_required` | Historical buyer grant cannot be reconstructed in V6 |
 | `tab_operation_in_flight` | The application used one tab concurrently |
 

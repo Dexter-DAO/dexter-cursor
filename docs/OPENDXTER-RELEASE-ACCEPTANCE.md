@@ -56,8 +56,8 @@ The local package candidate is `@dexterai/opendexter@1.24.0-rc.0` on Node.js
 
 - `@dexterai/mcp-instructions@2.4.1` — published and reconciled;
 - `@dexterai/x402-core@1.5.2` — published and reconciled;
-- `@dexterai/x402@6.0.0-rc.0` — published on the `next` dist-tag;
-- `@dexterai/vault@0.43.1` — published and required as x402's exact peer;
+- `@dexterai/x402@6.0.0-rc.2` — published on the `next` dist-tag;
+- `@dexterai/vault@0.43.2` — published and required as x402's exact peer;
 - `@dexterai/x402-mcp-tools@0.9.0-rc.0` — source candidate, not published;
 - `@dexterai/opendexter@1.23.3` — published and immutable;
 - `@dexterai/opendexter@1.24.0-rc.0` — source candidate, not published;

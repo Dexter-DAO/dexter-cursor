@@ -207,7 +207,7 @@ function reservationReceipt(
     callerOperationId: input.idempotencyKey,
     network: input.network,
     transaction: `FINAL_TX_${input.voucher.payload.sequenceNumber}`,
-    commitment: "finalized",
+    commitment: "confirmed",
     confirmationSlot: 123,
     postStateSlot: 123,
     buyerSwigAddress: input.buyerSwigAddress,
@@ -795,7 +795,7 @@ describe("tabs/lane — tab-first payment", () => {
       counterparty: g.record.counterparty,
       incrementAtomic: "10000",
       voucherVersion: 2,
-      reservationCommitment: "finalized",
+      reservationCommitment: "confirmed",
       // Frontier max(250000, 100000) + 10000: the odometer resumes over the chain.
       cumulativeAtomic: "260000",
     });
@@ -809,7 +809,7 @@ describe("tabs/lane — tab-first payment", () => {
     expect(rec.lastVoucherVersion).toBe(2);
     expect(rec.lastVoucherIncrementAtomic).toBe("10000");
     expect(rec.lastFinalV2ReservationReceipt).toMatchObject({
-      commitment: "finalized",
+      commitment: "confirmed",
       cumulativeAmountAtomic: "260000",
     });
     expect(rec.lastFinalV2ReservationVerified).toBe(true);
@@ -828,7 +828,7 @@ describe("tabs/lane — tab-first payment", () => {
     const reservationFetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) =>
       jsonResponse({
         receipt: {
-          commitment: "finalized",
+          commitment: "confirmed",
           transaction: "FINAL_TX",
           providerReceiptId: "provider-receipt",
         },
@@ -890,7 +890,7 @@ describe("tabs/lane — tab-first payment", () => {
     const result = (out as { result: Record<string, any> }).result;
     expect(result.status).toBe(402);
     expect(result.error).toMatch(/FINAL tab voucher/i);
-    expect(result.error).toMatch(/reservation already finalized/i);
+    expect(result.error).toMatch(/reservation is already confirmed/i);
     expect(result.tab).toMatchObject({
       rail: "tab",
       used: true,
@@ -898,7 +898,7 @@ describe("tabs/lane — tab-first payment", () => {
       voucherVersion: 2,
       state: "reconciliation_required",
       retrySafe: false,
-      reservationCommitment: "finalized",
+      reservationCommitment: "confirmed",
     });
     expect(runtime.rollbackVoucher).not.toHaveBeenCalled();
     const persisted = findTab(g.record.counterparty, dir)!;
@@ -932,7 +932,7 @@ describe("tabs/lane — tab-first payment", () => {
     expect(result.tab).toMatchObject({
       state: "reconciliation_required",
       retrySafe: false,
-      reservationCommitment: "finalized",
+      reservationCommitment: "confirmed",
     });
     expect(runtime.rollbackVoucher).not.toHaveBeenCalled();
     expect(findTab(g.record.counterparty, dir)).toMatchObject({
@@ -947,7 +947,7 @@ describe("tabs/lane — tab-first payment", () => {
     const conn = chainFor(g, sessionAccountData(g));
     const merchant = acceptingSellerRouter();
     const runtime = fakeTabFromGrant({
-      afterReservationError: "independent finalized readback timed out",
+      afterReservationError: "independent confirmed readback timed out",
     });
     const lane = createTabLane({
       ...laneDeps(conn),
@@ -962,7 +962,7 @@ describe("tabs/lane — tab-first payment", () => {
       tab: {
         state: "reconciliation_required",
         retrySafe: false,
-        reservationCommitment: "finalized",
+        reservationCommitment: "confirmed",
       },
     });
     expect(merchant).not.toHaveBeenCalled();

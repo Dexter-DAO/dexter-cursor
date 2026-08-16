@@ -24,7 +24,7 @@ package and its exact SDK/Vault pair:
 
 ```bash
 npm install @dexterai/x402-mcp-tools@0.9.0-rc.0 \
-  @dexterai/x402@6.0.0-rc.0 @dexterai/vault@0.43.1
+  @dexterai/x402@6.0.0-rc.2 @dexterai/vault@0.43.2
 ```
 
 The RC is `next`-only; it is not a `latest` release until separate publication
@@ -140,8 +140,10 @@ V6 grant tabs require a context-bound high-bit grant and a
 `reserveFinalVoucherV2` provider. Server consumers can construct that provider
 with `createManagedFinalVoucherV2Reservation`, using the facilitator's internal
 actuator credential only on the server. The helper obtains the provider
-receipt; `tabFromGrant` then validates it and independently reads the finalized
-Solana transaction and coherent post-state before releasing the signed claim.
+receipt; `tabFromGrant` then validates it and independently reads the submitted
+Solana transaction and coherent post-state at `confirmed` or stronger before
+releasing the signed claim. The interactive request does not wait for
+`finalized` commitment.
 A provider receipt by itself is not proof.
 
 Historical low-bit grants require explicit owner reapproval. V2 reservation,

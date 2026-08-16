@@ -655,7 +655,7 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
           finalV2ReservationAttempts.set(record.counterparty, attempt);
           // The provider response is evidence, not proof. Persist it while
           // retaining the reconciliation fence; tabFromGrant now performs
-          // its independent finalized transaction/post-state verification.
+          // its independent confirmed transaction/post-state verification.
           persistFinalV2Attempt(record, attempt, dir, {
             status: "reconciliation_required",
             deadReason: "native_tab_v2_independent_verification_pending",
@@ -764,7 +764,7 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
       const msg = err instanceof Error ? err.message : String(err);
       if (tab.voucherVersion === 2) {
         // A V2 throw can be an after-commit timeout: the provider may have
-        // finalized the exact reservation even though its response or the
+        // confirmed the exact reservation even though its response or the
         // independent readback failed. Preserve every voucher byte captured at
         // the callback boundary, block this tab, and never try Exact.
         const attempt = finalV2ReservationAttempts.get(record.counterparty);
@@ -854,7 +854,8 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
         };
       }
       // signNextVoucher returning is the proof boundary: x402 has validated the
-      // provider receipt and independently verified the finalized transaction
+      // provider receipt and independently verified the transaction at least
+      // at confirmed commitment
       // plus post-state on getConnection(). Persist before merchant dispatch.
       finalV2Attempt.independentlyVerified = true;
       persistFinalV2Attempt(record, finalV2Attempt, dir, {
@@ -953,7 +954,7 @@ export function createTabLane(deps: TabLaneDeps = {}): TabLaneHook {
           error: tab.voucherVersion === 2
             ? (
                 "The seller refused a FINAL tab voucher, but its exact on-chain " +
-                "reservation already finalized. The seller still holds that " +
+                "reservation is already confirmed. The seller still holds that " +
                 "claim; reconcile it before any other payment rail is used" +
                 (detail ? ` (${reason}: ${detail})` : ` (${reason})`) + "."
               )

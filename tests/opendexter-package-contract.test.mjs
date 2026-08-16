@@ -923,16 +923,16 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   assert.equal(pkg.dependencies["@modelcontextprotocol/ext-apps"], "1.7.5");
   assert.equal(pkg.dependencies.zod, "3.25.76");
   assert.equal(pkg.dependencies["@dexterai/x402-core"], "1.5.2");
-  assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.1");
+  assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.2");
   assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.1");
-  assert.equal(pkg.dependencies["@dexterai/x402"], "6.0.0-rc.0");
+  assert.equal(pkg.dependencies["@dexterai/x402"], "6.0.0-rc.2");
   assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.9.0-rc.0");
   assert.equal(pkg.publishConfig.tag, "next");
   assert.equal(instructionsPkg.version, "2.4.1");
   assert.equal(toolsPkg.version, "0.9.0-rc.0");
   assert.equal(toolsPkg.engines.node, ">=22");
-  assert.equal(toolsPkg.dependencies["@dexterai/vault"], "0.43.1");
-  assert.equal(toolsPkg.dependencies["@dexterai/x402"], "6.0.0-rc.0");
+  assert.equal(toolsPkg.dependencies["@dexterai/vault"], "0.43.2");
+  assert.equal(toolsPkg.dependencies["@dexterai/x402"], "6.0.0-rc.2");
   assert.equal(toolsPkg.dependencies["@dexterai/x402-core"], "1.5.2");
   assert.equal(toolsPkg.publishConfig.tag, "next");
   assert.equal(discoveryPkg.version, "1.1.0-rc.0");
@@ -962,8 +962,8 @@ test("release changelog carries stable hosted and candidate local identities", a
   assert.match(changelog, /Claude Code `2\.1\.0`/);
   assert.match(currentRelease, /`@dexterai\/opendexter@1\.24\.0-rc\.0`/);
   assert.match(currentRelease, /`@dexterai\/x402-mcp-tools@0\.9\.0-rc\.0`/);
-  assert.match(currentRelease, /`@dexterai\/x402@6\.0\.0-rc\.0`/);
-  assert.match(currentRelease, /`@dexterai\/vault@0\.43\.1`/);
+  assert.match(currentRelease, /`@dexterai\/x402@6\.0\.0-rc\.2`/);
+  assert.match(currentRelease, /`@dexterai\/vault@0\.43\.2`/);
   assert.match(
     currentRelease,
     /Public `@dexterai\/opendexter@1\.23\.3` remains\s+immutable on npm/,

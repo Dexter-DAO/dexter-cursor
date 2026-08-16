@@ -23,7 +23,7 @@ export interface ManagedFinalVoucherV2ReservationOptions {
   internalToken: string;
   /** Test/server transport seam. Defaults to global fetch. */
   fetchImpl?: typeof fetch;
-  /** Overall lifecycle deadline, including finalized readback retries. */
+  /** Overall lifecycle deadline, including confirmed readback retries. */
   timeoutMs?: number;
   /** Maximum duration of one HTTP attempt. */
   requestTimeoutMs?: number;
@@ -158,8 +158,8 @@ async function responsePayload(response: Response): Promise<TabOpenResponse> {
  *
  * This function obtains a provider receipt; it does not declare that receipt
  * true. `tabFromGrant` validates the receipt fields and then independently
- * reads the finalized Solana transaction and post-state through its own
- * `Connection` before `signNextVoucher` can return the FINAL voucher.
+ * reads the Solana transaction and post-state at least at `confirmed` through
+ * its own `Connection` before `signNextVoucher` can return the FINAL voucher.
  */
 export function createManagedFinalVoucherV2Reservation(
   options: ManagedFinalVoucherV2ReservationOptions,
@@ -233,8 +233,11 @@ export function createManagedFinalVoucherV2Reservation(
       });
       const payload = await responsePayload(response);
       if (response.ok && payload.receipt) {
-        if (payload.receipt.commitment !== "finalized") {
-          throw new Error("native_tab_v2_provider_receipt_not_finalized");
+        if (
+          payload.receipt.commitment !== "confirmed"
+          && payload.receipt.commitment !== "finalized"
+        ) {
+          throw new Error("native_tab_v2_provider_receipt_commitment_invalid");
         }
         return payload.receipt;
       }

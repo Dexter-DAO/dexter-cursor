@@ -42,8 +42,8 @@ function receipt(overrides: Partial<FinalVoucherV2ReservationReceipt> = {}): Fin
     operationId: "d".repeat(64),
     callerOperationId: ROOT_OPERATION,
     network: "solana:mainnet",
-    transaction: "FINALIZED_TRANSACTION",
-    commitment: "finalized",
+    transaction: "CONFIRMED_TRANSACTION",
+    commitment: "confirmed",
     confirmationSlot: 100,
     postStateSlot: 101,
     buyerSwigAddress: input().buyerSwigAddress,
@@ -80,7 +80,7 @@ describe("managed FINAL V2 reservation transport", () => {
     })).toThrow("native_tab_v2_internal_token_required");
   });
 
-  it("posts the exact voucher identity, waits through provider recovery, and returns only finalized evidence", async () => {
+  it("posts the exact voucher identity, waits through provider recovery, and returns confirmed evidence", async () => {
     const calls: Array<{ url: string; init: RequestInit; body: Record<string, unknown> }> = [];
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({
@@ -182,16 +182,29 @@ describe("managed FINAL V2 reservation transport", () => {
     expect(String(calls[1].body.predecessor_release_digest)).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("rejects a provider receipt that has not reached finalized commitment", async () => {
+  it("also accepts stronger finalized provider evidence", async () => {
     const reserve = createManagedFinalVoucherV2Reservation({
       facilitatorUrl: "https://facilitator.example",
       internalToken: "server-secret",
       fetchImpl: (async () => json({
-        receipt: receipt({ commitment: "confirmed" as "finalized" }),
+        receipt: receipt({ commitment: "finalized" }),
+      }, 200)) as typeof fetch,
+    });
+    await expect(reserve(input())).resolves.toMatchObject({
+      commitment: "finalized",
+    });
+  });
+
+  it("rejects a provider receipt that has reached only processed commitment", async () => {
+    const reserve = createManagedFinalVoucherV2Reservation({
+      facilitatorUrl: "https://facilitator.example",
+      internalToken: "server-secret",
+      fetchImpl: (async () => json({
+        receipt: receipt({ commitment: "processed" as "confirmed" }),
       }, 200)) as typeof fetch,
     });
     await expect(reserve(input())).rejects.toThrow(
-      "native_tab_v2_provider_receipt_not_finalized",
+      "native_tab_v2_provider_receipt_commitment_invalid",
     );
   });
 });

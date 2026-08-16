@@ -18,7 +18,7 @@ keys out of prompts, logs, tool output, and source control.
 Use Node 22 or newer and install the exact Vault peer with the SDK:
 
 ```bash
-npm install @dexterai/x402@6.0.0-rc.0 @dexterai/vault@0.43.1
+npm install @dexterai/x402@6.0.0-rc.2 @dexterai/vault@0.43.2
 ```
 
 ## Canonical one-shot payment
@@ -181,8 +181,10 @@ tabs require all of the following:
 
 - a context-bound high-bit V2 session grant;
 - `Tab.voucherVersion === 2`;
-- a `reserveFinalVoucherV2` backend that returns a complete finalized receipt;
-- the SDK adapter's independent finalized transaction and post-state check;
+- a `reserveFinalVoucherV2` backend that returns a complete receipt at
+  `confirmed` or stronger commitment;
+- the SDK adapter's independent transaction and post-state check at least at
+  `confirmed`, without waiting for `finalized` on the interactive path;
 - serialized access to one live tab per buyer/seller pair.
 
 Never return a boolean acknowledgement from the reservation callback, never
