@@ -222,6 +222,11 @@ function assertToolDescriptors(tools, expectedRoster, label) {
     const actual = byName[name];
     const expected = expectedTool(name);
     assert.deepEqual(
+      actual,
+      expected,
+      `${name} complete advertised descriptor drifted`,
+    );
+    assert.deepEqual(
       actual.securitySchemes,
       expected.securitySchemes,
       `${name} top-level securitySchemes drifted`,
@@ -265,7 +270,7 @@ function assertCurrentInputSchemas(byName) {
     x402_check: ["url", "method", "body"],
     x402_fetch: ["intentId", "maxAmountAtomic"],
     x402_status: ["intentId"],
-    x402_access: ["url", "method", "body", "sessionToken", "sessionKey", "network"],
+    x402_access: ["url", "method", "body", "network"],
     x402_wallet: [],
     dexter_portfolio: [],
   };
@@ -402,8 +407,8 @@ function assertCurrentInputSchemas(byName) {
 }
 
 function validatePinnedContract() {
-  assert.equal(contract.schemaVersion, 1);
-  assert.equal(contract.contractId, "opendexter-hosted-twelve-tool-v1");
+  assert.equal(contract.schemaVersion, 2);
+  assert.equal(contract.contractId, "opendexter-hosted-full-descriptor-v2");
   assert.equal(new URL(contract.mcp.url).protocol, "https:");
   assert.equal(contract.mcp.resource, contract.mcp.url);
   assert.equal(contract.anonymousToolNames.length, 5);

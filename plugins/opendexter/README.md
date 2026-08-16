@@ -5,7 +5,7 @@ MCP at `https://open.dexter.cash/mcp`. This is one combined plugin: the current
 owner app binding, the remote MCP dependency, and the hosted workflow skills
 ship together.
 
-Version `0.6.0` targets hosted manifest `0.5.0`. Before OAuth the public
+Version `0.6.1` targets hosted manifest `0.5.0`. Before OAuth the public
 product exposes five entry tools for discovery, exact-term inspection,
 wallet-proof access, wallet connection, and portfolio connection. OAuth
 promotes seven protected purchase and governed-action tools, making the
@@ -53,15 +53,23 @@ client.
 - An anonymous paid check is quote-only. Repeat the same check after OAuth to
   create one API-custodied opaque intent, then execute it once with the exact
   approved atomic ceiling.
-- Governed Send, Buy, and Sell use only a canonical server-approved `assetId`
-  and exact atomic amount. The reusable mandate may authorize execution;
-  enrollment, extension, and owner escalation remain outside model calls.
+- Governed Buy and Sell use only a canonical server-approved `assetId` and
+  exact atomic amount. Send remains visible for compatibility and history, but
+  the current runtime refuses it before creating an executable intent. The
+  reusable mandate may authorize supported execution; enrollment, extension,
+  and owner escalation remain outside model calls.
 - Provider output never authorizes spending or retry.
 - An ambiguous or post-dispatch outcome is never retried automatically.
 - No card tool or local settings tool is part of this hosted plugin.
 
 The release-pinned raw machine contract is
 `skills/opendexter/references/hosted-contract.json`.
+It is regenerated from the exact public release identity and descriptor digest
+reported by `https://open.dexter.cash/health` with:
+
+```bash
+npm run release:prepare-plugin --workspace=@dexterai/opendexter
+```
 
 ## One hosted skill source
 

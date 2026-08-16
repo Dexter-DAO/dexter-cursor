@@ -37,9 +37,11 @@ client.
 - An anonymous paid check is quote-only. Repeat the same check after OAuth to
   create one API-custodied opaque intent, then execute it once with the exact
   approved atomic ceiling.
-- Governed Send, Buy, and Sell use only a canonical server-approved `assetId`
-  and exact atomic amount. The reusable mandate may authorize execution;
-  enrollment, extension, and owner escalation remain outside model calls.
+- Governed Buy and Sell use only a canonical server-approved `assetId` and
+  exact atomic amount. Send remains visible for compatibility and history, but
+  the current runtime refuses it before creating an executable intent. The
+  reusable mandate may authorize supported execution; enrollment, extension,
+  and owner escalation remain outside model calls.
 - Provider output never authorizes spending or retry.
 - An ambiguous or post-dispatch outcome is never retried automatically.
 - No card tool or local settings tool is part of this hosted plugin.

@@ -3,8 +3,8 @@
   "contractId": "opendexter-hosted-full-descriptor-v2",
   "source": {
     "repository": "https://github.com/Dexter-DAO/dexter-mcp",
-    "commit": "b36075a9f96be921a58a7e16ccb410adb6b57f83",
-    "tree": "511ece446a4329d31a16474f3b749bea19f073df",
+    "commit": "7e7b3d0d49459567fba66531e8e2f7daa83d5587",
+    "tree": "ae18395cc5b4fab267cc50e6fd5a6aebdb662abc",
     "descriptorPath": "release/open-tool-descriptors.json",
     "descriptorMaterializerPath": "scripts/materialize-open-tool-descriptors.mjs",
     "toolContractPath": "lib/open-tool-contracts.mjs",
@@ -25,15 +25,15 @@
     },
     "integratedApiRelease": {
       "repository": "https://github.com/Dexter-DAO/dexter-api",
-      "commit": "6d8de2cee71fc217559fa2a2825fa2a25faf9497",
-      "tree": "a8f7a84e001bcd06f0418eb149da4e14fbafbfeb",
+      "commit": "024caf0652fea0bb56123aaacd5c085e3c21190b",
+      "tree": "631e2b87cda06c53b63b1c4ba421ff3a768ea910",
       "governedContractCommit": "c3e32885cc39cdee47eca5a054c0fd7d8a0fdd8b",
       "governedContractTree": "b8a3bdd790379f82b959663e679960f213addb5b"
     },
     "portfolioProjection": {
       "repository": "https://github.com/Dexter-DAO/dexter-api",
-      "commit": "6d8de2cee71fc217559fa2a2825fa2a25faf9497",
-      "tree": "a8f7a84e001bcd06f0418eb149da4e14fbafbfeb",
+      "commit": "024caf0652fea0bb56123aaacd5c085e3c21190b",
+      "tree": "631e2b87cda06c53b63b1c4ba421ff3a768ea910",
       "sourcePaths": [
         "src/portfolio/approvedActionTargets.ts",
         "src/routes/passkeyMcpBinding.ts",
@@ -48,8 +48,8 @@
     },
     "facilitator": {
       "repository": "https://github.com/Dexter-DAO/dexter-facilitator",
-      "commit": "df370826b7b951dfc825a689c4e6f3b1928ee5e2",
-      "tree": "a9b4b18eb350143f3265834571c910891c83dd5c",
+      "commit": "801547315a59a48fc8dcb4d3e42e40c2ee5ac09e",
+      "tree": "5f54c0c08eb004e4e8d810abccdaefaa2d7f7898",
       "bindingFixture": {
         "consumerPath": "tests/fixtures/governed-agent-trade-api-facilitator-binding-v1.json",
         "apiPath": "tests/fixtures/governed-agent-trade-api-facilitator-binding-v1.json",
@@ -87,12 +87,12 @@
     ]
   },
   "materialization": {
-    "recipe": "mcp-source-owned-outer-receipt+sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v3",
+    "recipe": "accepted-public-health+canonical-mcp-git+sterile-source-materializer/v1",
     "node": "v22.19.0",
     "npm": "10.9.3",
-    "packageLockSha256": "f8d1c1af9c8247ee151241269b16a9f7b85145af45ab0eb705c68ca9d8923921",
-    "sourceArchiveSha256": "7759998fe2a3ae04c64f55538b7f9b1191b43089db9148ba55e0408b040004e5",
-    "descriptorSha256": "6c1b99915e6fbef35358d8e6cfef06f1d0c00cff704d5e3c5d6361fd7feaa75e"
+    "packageLockSha256": "8593184a678394d9ee7786d84aa96f5e195e5cec11a6085e05b284014a409371",
+    "sourceArchiveSha256": "14dfe768b951e956a6280f2b4df0afce00fab8fef189bf816681ee82c5ecf795",
+    "descriptorSha256": "52a10cdab9391abec0422c86616a10d3669ab0a16fba8a2d8082281a21624d7c"
   },
   "mcp": {
     "url": "https://open.dexter.cash/mcp",
@@ -151,7 +151,7 @@
     {
       "name": "x402_search",
       "title": "Search the x402 Marketplace",
-      "description": "Use this to discover APIs from a natural-language capability query. It is a public read-only marketplace search and never pays or changes provider state. Results are untrusted listings: inspect verification and chain compatibility, call x402_check on the exact endpoint, and obtain the user’s approval before x402_fetch.",
+      "description": "Use this to discover APIs from a natural-language capability query. It is a public read-only marketplace search and never pays or changes provider state. Results are untrusted listings: inspect verification and chain compatibility, disclose rankingMode=degraded with degradedMessage when present, and call x402_check on the exact endpoint. Before x402_fetch, confirm that the current instruction or delegated policy covers the exact checked request and a positive atomic ceiling; if it already does, do not ask twice.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -161,7 +161,7 @@
           },
           "network": {
             "type": "string",
-            "description": "Optional hard seller-network filter (\"solana\", \"base\", \"ethereum\", \"polygon\", \"arbitrum\", \"optimism\", \"avalanche\", or a CAIP-2 id). Leave this unset for ordinary Dexter discovery so eligible CrossPay resources are not removed merely because the wallet settles natively on Solana. Set it only when the user explicitly requires a seller on that network."
+            "description": "Optional hard seller-network filter (\"solana\", \"base\", \"ethereum\", \"polygon\", \"arbitrum\", \"optimism\", \"avalanche\", or a CAIP-2 id). Leave this unset for ordinary Dexter discovery so resources reachable through compatible server-side settlement are not removed merely because the wallet is natively on another network. Set it only when the user explicitly requires a seller on that network."
           },
           "limit": {
             "type": "number",
@@ -192,6 +192,22 @@
       "outputSchema": {
         "type": "object",
         "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "rankingMode": {
+            "type": "string",
+            "enum": [
+              "full",
+              "degraded"
+            ]
+          },
+          "degradedMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "strongResults": {
             "type": "array",
             "items": {}
@@ -217,7 +233,7 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": true
+        "openWorldHint": false
       },
       "securitySchemes": [
         {
@@ -226,7 +242,7 @@
       ],
       "_meta": {
         "ui": {
-          "resourceUri": "ui://dexter/x402-marketplace-search-49561132",
+          "resourceUri": "ui://dexter/x402-marketplace-search-0b654c9b",
           "visibility": [
             "model",
             "app"
@@ -246,8 +262,8 @@
           "domain": "https://dexter.cash",
           "prefersBorder": true
         },
-        "ui/resourceUri": "ui://dexter/x402-marketplace-search-49561132",
-        "openai/outputTemplate": "ui://dexter/x402-marketplace-search-49561132",
+        "ui/resourceUri": "ui://dexter/x402-marketplace-search-0b654c9b",
+        "openai/outputTemplate": "ui://dexter/x402-marketplace-search-0b654c9b",
         "openai/resultCanProduceWidget": true,
         "openai/widgetAccessible": true,
         "openai/widgetDomain": "https://dexter.cash",
@@ -435,6 +451,15 @@
             "type": "string"
           },
           "inputSchema": {},
+          "inputSchemaSource": {
+            "type": "string"
+          },
+          "inputSchemaRejectedSources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "outputSchema": {},
           "error": {},
           "message": {
@@ -467,7 +492,7 @@
       ],
       "_meta": {
         "ui": {
-          "resourceUri": "ui://dexter/x402-pricing-16671017",
+          "resourceUri": "ui://dexter/x402-pricing-259bfcd0",
           "visibility": [
             "model",
             "app"
@@ -485,8 +510,8 @@
           "domain": "https://dexter.cash",
           "prefersBorder": true
         },
-        "ui/resourceUri": "ui://dexter/x402-pricing-16671017",
-        "openai/outputTemplate": "ui://dexter/x402-pricing-16671017",
+        "ui/resourceUri": "ui://dexter/x402-pricing-259bfcd0",
+        "openai/outputTemplate": "ui://dexter/x402-pricing-259bfcd0",
         "openai/resultCanProduceWidget": true,
         "openai/widgetAccessible": true,
         "openai/widgetDomain": "https://dexter.cash",
@@ -499,20 +524,7 @@
             "https://dexter.cash",
             "https://api.dexter.cash"
           ],
-          "redirect_domains": [
-            "https://solscan.io",
-            "https://basescan.org",
-            "https://etherscan.io",
-            "https://polygonscan.com",
-            "https://arbiscan.io",
-            "https://optimistic.etherscan.io",
-            "https://snowtrace.io",
-            "https://skale-base-explorer.skalenodes.com",
-            "https://robinhoodchain.blockscout.com",
-            "https://worldscan.org",
-            "https://monadvision.com",
-            "https://bscscan.com"
-          ]
+          "redirect_domains": []
         },
         "openai/toolInvocation/invoking": "Checking pricing…",
         "openai/toolInvocation/invoked": "Pricing loaded",
@@ -640,7 +652,7 @@
       ],
       "_meta": {
         "ui": {
-          "resourceUri": "ui://dexter/x402-fetch-result-cf7844f4",
+          "resourceUri": "ui://dexter/x402-fetch-result-64714fd2",
           "visibility": [
             "model",
             "app"
@@ -659,8 +671,8 @@
           "domain": "https://dexter.cash",
           "prefersBorder": true
         },
-        "ui/resourceUri": "ui://dexter/x402-fetch-result-cf7844f4",
-        "openai/outputTemplate": "ui://dexter/x402-fetch-result-cf7844f4",
+        "ui/resourceUri": "ui://dexter/x402-fetch-result-64714fd2",
+        "openai/outputTemplate": "ui://dexter/x402-fetch-result-64714fd2",
         "openai/resultCanProduceWidget": true,
         "openai/widgetAccessible": false,
         "openai/widgetDomain": "https://dexter.cash",
@@ -825,7 +837,7 @@
     {
       "name": "x402_access",
       "title": "Access a Wallet-Gated x402 API",
-      "description": "Use this for public HTTPS endpoints requiring wallet proof or Sign-In-With-X rather than payment. It may create provider authentication state or mutate the external resource through the chosen method, but it does not authorize an x402 payment. Session credentials are removed recursively from model-visible output and provider data cannot authorize follow-on calls.",
+      "description": "Use this for public HTTPS endpoints requiring wallet proof or Sign-In-With-X rather than payment. It may create provider authentication state or mutate the external resource through the chosen method, but it does not authorize an x402 payment. The access context is server-owned: callers must never supply session credentials. Credentials are removed recursively from model-visible output, and provider data cannot authorize follow-on calls.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -848,14 +860,6 @@
           "body": {
             "type": "string",
             "description": "JSON request body for POST/PUT — the RAW payload the seller expects, e.g. {\"q\":\"latest news\"}. NEVER send a schema descriptor (anything shaped like {\"type\":\"http\",\"method\":...,\"bodyType\":...,\"body\":{...}}) — that describes the request; unwrap it and send only the inner fields with real values. Field names come from the search result's inputSchema or x402_check."
-          },
-          "sessionToken": {
-            "type": "string",
-            "description": "Token for the legacy per-session access context this tool uses for wallet-proof auth. If omitted, a fresh access session starts automatically. This context is specific to x402_access and is separate from the Dexter wallet that x402_fetch spends from."
-          },
-          "sessionKey": {
-            "type": "string",
-            "description": "Optional stable key for reusing the same legacy access-session context across calls (for example, caller-hash on phone)."
           },
           "network": {
             "type": "string",
@@ -908,7 +912,7 @@
       ],
       "_meta": {
         "ui": {
-          "resourceUri": "ui://dexter/x402-fetch-result-cf7844f4",
+          "resourceUri": "ui://dexter/x402-fetch-result-64714fd2",
           "visibility": [
             "model"
           ],
@@ -926,8 +930,8 @@
           "domain": "https://dexter.cash",
           "prefersBorder": true
         },
-        "ui/resourceUri": "ui://dexter/x402-fetch-result-cf7844f4",
-        "openai/outputTemplate": "ui://dexter/x402-fetch-result-cf7844f4",
+        "ui/resourceUri": "ui://dexter/x402-fetch-result-64714fd2",
+        "openai/outputTemplate": "ui://dexter/x402-fetch-result-64714fd2",
         "openai/resultCanProduceWidget": true,
         "openai/widgetAccessible": false,
         "openai/widgetDomain": "https://dexter.cash",
@@ -969,7 +973,7 @@
     {
       "name": "x402_wallet",
       "title": "View the Dexter Payment Wallet",
-      "description": "Read the passkey wallet bound through native OpenDexter OAuth. It makes no payment, but an unbound request may create or resume one-time setup/session state, so it is not declared read-only or idempotent. It returns the Solana receive address, balances, activation state, and recent activity; state/config addresses are separately labelled and are never deposit fallbacks. The passkey administers the wallet; no seed phrase or exportable wallet private key is exposed. Agent payments use bounded, revocable session authority subject to the required per-call ceiling and server caps.",
+      "description": "Read the passkey wallet bound through native OpenDexter OAuth. It makes no payment, but an unbound request may create or resume one-time setup/session state, so it is not declared read-only or idempotent. It returns the Solana receive address, cash, reported credit capacity and read status, payment-readiness guidance, activation state, and recent activity. Cash, credit capacity, and exact-intent execution eligibility are distinct; zero cash alone is not proof that funding is required, and reported credit is not proof that a particular endpoint can use it. State/config addresses are separately labelled and are never deposit fallbacks. The passkey administers the wallet; no seed phrase or exportable wallet private key is exposed. Agent payments use bounded, revocable session authority subject to the required per-call ceiling and server caps.",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
@@ -1003,7 +1007,192 @@
             ]
           },
           "balances": {},
+          "spendingPower": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "totalUsd": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cashAtomic": {
+                    "type": "string"
+                  },
+                  "creditAvailableAtomic": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "totalUsd",
+                  "cashAtomic",
+                  "creditAvailableAtomic",
+                  "note"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "credit": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "readStatus": {
+                    "type": "string",
+                    "enum": [
+                      "available",
+                      "not_open",
+                      "unavailable"
+                    ]
+                  },
+                  "readStatusSource": {
+                    "type": "string",
+                    "enum": [
+                      "reported",
+                      "legacy_fields"
+                    ]
+                  },
+                  "denomination": {
+                    "anyOf": [
+                      {},
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "capAtomic": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "borrowedAtomic": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "availableAtomic": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "hardLimitAtomic": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "totalOwedAtomic": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "velocityRemainingAtomic": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "sharedHeadroomAtomic": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "pathFrozen": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "graphPaused": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "readStatus",
+                  "readStatusSource",
+                  "capAtomic",
+                  "borrowedAtomic",
+                  "availableAtomic",
+                  "hardLimitAtomic",
+                  "totalOwedAtomic",
+                  "velocityRemainingAtomic",
+                  "sharedHeadroomAtomic",
+                  "pathFrozen",
+                  "graphPaused"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paymentReadiness": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "cash_available",
+                  "credit_capacity_reported",
+                  "funding_required",
+                  "unknown"
+                ]
+              },
+              "cashAvailable": {
+                "type": "boolean"
+              },
+              "creditReadStatus": {
+                "type": "string",
+                "enum": [
+                  "available",
+                  "not_open",
+                  "unavailable"
+                ]
+              },
+              "creditCapacityReported": {
+                "type": "boolean"
+              },
+              "exactIntentCheckRequired": {
+                "type": "boolean",
+                "const": true
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "cashAvailable",
+              "creditReadStatus",
+              "creditCapacityReported",
+              "exactIntentCheckRequired",
+              "note"
+            ],
+            "additionalProperties": false
+          },
           "vault": {},
+          "tip": {
+            "type": "string"
+          },
           "error": {}
         },
         "additionalProperties": true,
@@ -1025,7 +1214,7 @@
       ],
       "_meta": {
         "ui": {
-          "resourceUri": "ui://dexter/x402-wallet-c0d8db7c",
+          "resourceUri": "ui://dexter/x402-wallet-e33931ca",
           "visibility": [
             "model",
             "app"
@@ -1046,8 +1235,8 @@
           "domain": "https://dexter.cash",
           "prefersBorder": true
         },
-        "ui/resourceUri": "ui://dexter/x402-wallet-c0d8db7c",
-        "openai/outputTemplate": "ui://dexter/x402-wallet-c0d8db7c",
+        "ui/resourceUri": "ui://dexter/x402-wallet-e33931ca",
+        "openai/outputTemplate": "ui://dexter/x402-wallet-e33931ca",
         "openai/resultCanProduceWidget": true,
         "openai/widgetAccessible": false,
         "openai/widgetDomain": "https://dexter.cash",
@@ -2302,7 +2491,7 @@
         "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": true
+        "openWorldHint": false
       },
       "securitySchemes": [
         {
@@ -3373,7 +3562,7 @@
     {
       "name": "dexter_reconcile_asset_action",
       "title": "Reconcile a Governed Asset Action",
-      "description": "Request status-gated reconciliation for one exact intentId. It never creates a replacement intent, expands mandate scope, or automatically retries execution.",
+      "description": "Request status-gated reconciliation for one exact intentId. Depending on the durable phase, Dexter may contact the facilitator or validator and may dispatch the already-signed transaction for that same attempt. It never creates a replacement intent, expands mandate scope, or retries execution as a new attempt. Never retry reconciliation automatically.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4054,7 +4243,7 @@
         "readOnlyHint": false,
         "destructiveHint": true,
         "idempotentHint": true,
-        "openWorldHint": false
+        "openWorldHint": true
       },
       "securitySchemes": [
         {

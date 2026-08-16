@@ -24,6 +24,7 @@ import {
   listCanonicalRemoteRefs,
   validateHostedDescriptor,
   verifyHostedRepositoryIdentity,
+  verifyEquivalentHostedContracts,
   verifyMaterializedHostedDescriptor,
   verifyHostedSource,
 } from "../packages/mcp/scripts/verify-hosted-source.mjs";
@@ -363,6 +364,13 @@ test("hosted source identity is fixed to the Dexter MCP repository", () => {
   );
 });
 
+test("only the accepted public path may write the pinned skill contract", async () => {
+  await assert.rejects(
+    verifyHostedSource({ mode: "write" }),
+    /check-only; use release:prepare-plugin/,
+  );
+});
+
 test("hosted source verifier refuses a nested path before source contact", async (t) => {
   const root = await mkdtemp(resolve(tmpdir(), "opendexter-nested-source-"));
   const nested = resolve(root, "nested");
@@ -622,6 +630,7 @@ test("hosted contract writer preserves the full descriptor and deny lists", () =
     commit: "4".repeat(40),
     tree: "5".repeat(40),
     materialization,
+    manifestVersion: "0.5.0",
   });
   assert.equal(contract.schemaVersion, 2);
   assert.equal(contract.contractId, "opendexter-hosted-full-descriptor-v2");
@@ -638,13 +647,61 @@ test("hosted contract writer preserves the full descriptor and deny lists", () =
   ]);
 });
 
+test("private source verification accepts only an equivalent public receipt", () => {
+  const descriptor = hostedDescriptorFixture();
+  const shared = {
+    node: "v22.19.0",
+    npm: "10.9.3",
+    packageLockSha256: "1".repeat(64),
+    sourceArchiveSha256: "2".repeat(64),
+    descriptorSha256: "3".repeat(64),
+  };
+  const pinned = buildHostedContract({
+    descriptor,
+    commit: "4".repeat(40),
+    tree: "5".repeat(40),
+    materialization: {
+      recipe: "accepted-public-health+canonical-mcp-git+sterile-source-materializer/v1",
+      ...shared,
+    },
+    manifestVersion: "0.5.0",
+  });
+  const privatelyVerified = buildHostedContract({
+    descriptor,
+    commit: "4".repeat(40),
+    tree: "5".repeat(40),
+    materialization: {
+      recipe:
+        "mcp-source-owned-outer-receipt+sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v3",
+      ...shared,
+    },
+    manifestVersion: "0.5.0",
+  });
+  assert.equal(
+    verifyEquivalentHostedContracts(pinned, privatelyVerified),
+    pinned,
+  );
+  const mismatched = structuredClone(privatelyVerified);
+  mismatched.materialization.descriptorSha256 = "6".repeat(64);
+  assert.throws(
+    () => verifyEquivalentHostedContracts(pinned, mismatched),
+    /publicly pinned and privately verified hosted contracts differs/,
+  );
+  const untrustedRecipe = structuredClone(pinned);
+  untrustedRecipe.materialization.recipe = "unreviewed";
+  assert.throws(
+    () => verifyEquivalentHostedContracts(untrustedRecipe, privatelyVerified),
+    /accepted public materialization receipt/,
+  );
+});
+
 test("release fixture is source-pinned to the exact hosted twelve", async () => {
   const contract = await readJson(contractPath);
   assert.equal(contract.contractId, "opendexter-hosted-full-descriptor-v2");
   assert.deepEqual(contract.source, {
     repository: "https://github.com/Dexter-DAO/dexter-mcp",
-    commit: "b36075a9f96be921a58a7e16ccb410adb6b57f83",
-    tree: "511ece446a4329d31a16474f3b749bea19f073df",
+    commit: "7e7b3d0d49459567fba66531e8e2f7daa83d5587",
+    tree: "ae18395cc5b4fab267cc50e6fd5a6aebdb662abc",
     descriptorPath: "release/open-tool-descriptors.json",
     descriptorMaterializerPath: "scripts/materialize-open-tool-descriptors.mjs",
     toolContractPath: "lib/open-tool-contracts.mjs",
@@ -653,11 +710,11 @@ test("release fixture is source-pinned to the exact hosted twelve", async () => 
   assert.equal(contract.sourceContracts.schemaVersion, 3);
   assert.equal(
     contract.sourceContracts.integratedApiRelease.commit,
-    "6d8de2cee71fc217559fa2a2825fa2a25faf9497",
+    "024caf0652fea0bb56123aaacd5c085e3c21190b",
   );
   assert.equal(
     contract.sourceContracts.facilitator.commit,
-    "df370826b7b951dfc825a689c4e6f3b1928ee5e2",
+    "801547315a59a48fc8dcb4d3e42e40c2ee5ac09e",
   );
   assert.equal(contract.mcp.url, "https://open.dexter.cash/mcp");
   assert.equal(contract.mcp.manifestVersion, "0.5.0");
@@ -723,7 +780,7 @@ test("release fixture is source-pinned to the exact hosted twelve", async () => 
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: true,
-      openWorldHint: false,
+      openWorldHint: true,
     },
   );
   const portfolio = contract.tools.find(({ name }) => name === "dexter_portfolio");
@@ -796,7 +853,7 @@ test("ChatGPT and Codex share one skill-bearing app and MCP package", async () =
   const mcpBinding = await readJson(mcpBindingPath);
   const marketplace = await readJson(codexMarketplacePath);
   assert.equal(manifest.name, "opendexter");
-  assert.equal(manifest.version, "0.6.0");
+  assert.equal(manifest.version, "0.6.1");
   assert.equal(manifest.skills, "./skills/");
   assert.equal(manifest.apps, "./.app.json");
   assert.equal(manifest.mcpServers, "./.mcp.json");
@@ -961,6 +1018,48 @@ test("release train freezes full descriptors and a post-deploy novice suite", as
   const check = suite.cases.find(({ id }) => id === "hosted-check-known-endpoint");
   assert.equal(check.expectedConsequence, "durable-quote-intent");
   assert.deepEqual(check.forbiddenTools, ["x402_fetch"]);
+  const unavailableSend = suite.cases.find(
+    ({ id }) => id === "hosted-send-currently-unavailable",
+  );
+  assert.deepEqual(unavailableSend.requiredTools, [
+    "dexter_portfolio",
+    "dexter_prepare_asset_action",
+  ]);
+  assert.deepEqual(unavailableSend.forbiddenTools, [
+    "dexter_execute_asset_action",
+    "dexter_asset_action_status",
+    "dexter_reconcile_asset_action",
+  ]);
+  assert.equal(unavailableSend.expectedConsequence, "runtime-unavailable");
+  const nonGetCheck = suite.cases.find(
+    ({ id }) => id === "hosted-non-get-check-waits-for-confirmation",
+  );
+  assert.deepEqual(nonGetCheck.requiredTools, []);
+  assert.deepEqual(nonGetCheck.forbiddenTools, ["x402_check", "x402_fetch"]);
+  const walletProof = suite.cases.find(
+    ({ id }) => id === "hosted-wallet-proof-access",
+  );
+  assert.deepEqual(walletProof.requiredTools, ["x402_access"]);
+  assert.deepEqual(walletProof.forbiddenTools, ["x402_check", "x402_fetch"]);
+  const mutatingAccess = suite.cases.find(
+    ({ id }) => id === "hosted-mutating-access-waits-for-confirmation",
+  );
+  assert.deepEqual(mutatingAccess.requiredTools, []);
+  assert.deepEqual(mutatingAccess.forbiddenTools, [
+    "x402_access",
+    "x402_check",
+    "x402_fetch",
+  ]);
+  const statusGatedReconciliation = suite.cases.find(
+    ({ id }) => id === "hosted-reconciliation-is-status-gated",
+  );
+  assert.deepEqual(statusGatedReconciliation.requiredTools, [
+    "dexter_asset_action_status",
+  ]);
+  assert.deepEqual(statusGatedReconciliation.forbiddenTools, [
+    "dexter_execute_asset_action",
+    "dexter_reconcile_asset_action",
+  ]);
 
   const { stdout } = await execFileAsync(
     process.execPath,
@@ -1063,7 +1162,11 @@ test("both formats route anonymous five and connected twelve without retired too
     assert.match(routing, /Before OAuth[\s\S]*exactly five entry tools/i);
     assert.match(routing, /OAuth adds exactly seven tools[\s\S]*connected roster twelve/i);
     assert.match(routing, /Buy[\s\S]*USDC input budget[\s\S]*6-decimal atomic units/i);
-    assert.match(routing, /Sell and Send[\s\S]*selected-asset input/i);
+    assert.match(routing, /Sell amount[\s\S]*selected-asset input/i);
+    assert.match(
+      routing,
+      /Send[\s\S]*protected_agent_send_sdk_required[\s\S]*no executable intent/i,
+    );
     assert.match(routing, /Execute receives only[\s\S]*`operationId`[\s\S]*`intentId`/i);
     for (const retired of RETIRED_HOSTED_TOOLS) {
       assert.doesNotMatch(umbrella, new RegExp(`\\b${retired}\\b`), retired);

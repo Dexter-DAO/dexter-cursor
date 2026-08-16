@@ -15,11 +15,14 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   EXPECTED_HOSTED_SOURCE_REPOSITORY,
+  buildHostedContract,
   cloneCanonicalHostedSourceAt,
   inspectArchivedHostedSourceEvidence,
   inspectHostedSourceCheckout,
   materializeArchivedPublicHostedSource,
+  PUBLIC_HOSTED_MATERIALIZATION_RECIPE,
   validatePublicHostedDescriptor,
+  verifyMaterializedHostedDescriptor,
 } from "./verify-hosted-source.mjs";
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
@@ -30,9 +33,14 @@ export const PUBLIC_HOSTED_CONTRACT_PATH = resolve(
   repositoryRoot,
   PUBLIC_HOSTED_CONTRACT_RELATIVE_PATH,
 );
+export const PUBLIC_HOSTED_PLUGIN_CONTRACT_RELATIVE_PATH =
+  "plugins/opendexter/skills/opendexter/references/hosted-contract.json";
+export const PUBLIC_HOSTED_PLUGIN_CONTRACT_PATH = resolve(
+  repositoryRoot,
+  PUBLIC_HOSTED_PLUGIN_CONTRACT_RELATIVE_PATH,
+);
 export const EXPECTED_PUBLIC_HOSTED_REPOSITORY = EXPECTED_HOSTED_SOURCE_REPOSITORY;
-const PUBLIC_MATERIALIZATION_RECIPE =
-  "accepted-public-health+canonical-mcp-git+sterile-source-materializer/v1";
+const PUBLIC_MATERIALIZATION_RECIPE = PUBLIC_HOSTED_MATERIALIZATION_RECIPE;
 const DESCRIPTOR_PATH = "release/open-tool-descriptors.json";
 const DESCRIPTOR_MATERIALIZER_PATH = "scripts/materialize-open-tool-descriptors.mjs";
 const WIDGET_SOURCE_PATH = "public/apps-sdk";
@@ -210,7 +218,7 @@ export function validatePublicHostedContract(contract) {
   return contract;
 }
 
-async function inspectPublicHostedSource({
+async function inspectAcceptedPublicHostedSource({
   sourceRoot,
   release,
   verifyCanonicalAdvertisement = true,
@@ -230,10 +238,9 @@ async function inspectPublicHostedSource({
       recipe: PUBLIC_MATERIALIZATION_RECIPE,
     });
   if (reconstructDescriptor) {
-    same(
+    verifyMaterializedHostedDescriptor(
       archived.committedDescriptor,
       archived.materializedDescriptor,
-      "committed public descriptor and source materialization",
     );
   }
   if (archived.materialization.descriptorSha256 !== release.descriptorSha256) {
@@ -242,10 +249,29 @@ async function inspectPublicHostedSource({
   if (readJson(resolve(checkout.root, "package.json")).version !== release.packageVersion) {
     fail("public MCP package version differs from the accepted release");
   }
+  return { checkout, archived, descriptor: archived.committedDescriptor };
+}
+
+async function inspectPublicHostedSource(options) {
+  const { archived, descriptor } = await inspectAcceptedPublicHostedSource(options);
   return buildPublicHostedContract({
-    release,
-    descriptor: archived.committedDescriptor,
+    release: options.release,
+    descriptor,
     materialization: archived.materialization,
+  });
+}
+
+async function inspectPublicHostedPluginSource(options) {
+  const { checkout, archived, descriptor } = await inspectAcceptedPublicHostedSource({
+    ...options,
+    reconstructDescriptor: true,
+  });
+  return buildHostedContract({
+    descriptor,
+    commit: checkout.commit,
+    tree: checkout.tree,
+    materialization: archived.materialization,
+    manifestVersion: options.release.packageVersion,
   });
 }
 
@@ -290,13 +316,14 @@ function writeContract(path, contract) {
   }
 }
 
-export async function preparePublicHostedContract({
+async function prepareAcceptedHostedContract({
   sourceRoot,
-  outputPath = PUBLIC_HOSTED_CONTRACT_PATH,
+  outputPath,
   fetchImpl = globalThis.fetch,
-  inspectSource = inspectPublicHostedSource,
+  inspectSource,
+  releaseIdentity,
   writeOutput = writeContract,
-} = {}) {
+}) {
   if (!isAbsolute(outputPath)) fail("public hosted contract output must be absolute");
   const release = await fetchPublicHostedHealth(fetchImpl);
   const workspace = sourceRoot
@@ -307,6 +334,10 @@ export async function preparePublicHostedContract({
       ? realpathSync(sourceRoot)
       : cloneCanonicalHostedSourceAt({ commit: release.commit, workspace });
     const contract = await inspectSource({ sourceRoot: exactRoot, release });
+    const identity = releaseIdentity(contract);
+    if (identity?.commit !== release.commit || identity?.tree !== release.tree) {
+      fail("prepared hosted contract differs from the accepted release identity");
+    }
     writeOutput(outputPath, contract);
     return { outputPath, sourceRoot: exactRoot, contract };
   } finally {
@@ -314,9 +345,31 @@ export async function preparePublicHostedContract({
   }
 }
 
+export async function preparePublicHostedContract(options = {}) {
+  return prepareAcceptedHostedContract({
+    ...options,
+    outputPath: options.outputPath ?? PUBLIC_HOSTED_CONTRACT_PATH,
+    inspectSource: options.inspectSource ?? inspectPublicHostedSource,
+    releaseIdentity: (contract) => contract?.release,
+  });
+}
+
+export async function preparePublicHostedPluginContract(options = {}) {
+  return prepareAcceptedHostedContract({
+    ...options,
+    outputPath: options.outputPath ?? PUBLIC_HOSTED_PLUGIN_CONTRACT_PATH,
+    inspectSource: options.inspectSource ?? inspectPublicHostedPluginSource,
+    releaseIdentity: (contract) => contract?.source,
+  });
+}
+
 function parseArgs(argv) {
-  if (argv.shift() !== "prepare") {
-    fail("Usage: public-hosted-release.mjs prepare [--mcp-root /absolute/path]");
+  const command = argv.shift();
+  if (!["prepare", "prepare-plugin"].includes(command)) {
+    fail(
+      "Usage: public-hosted-release.mjs <prepare|prepare-plugin> "
+        + "[--mcp-root /absolute/path] [--output /absolute/path]",
+    );
   }
   const values = {};
   while (argv.length > 0) {
@@ -328,19 +381,25 @@ function parseArgs(argv) {
     if (!isAbsolute(value)) fail(`${key} must be absolute`);
     values[key.slice(2)] = value;
   }
-  return values;
+  return { command, ...values };
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const values = parseArgs(process.argv.slice(2));
-    const result = await preparePublicHostedContract({
+    const prepare = values.command === "prepare-plugin"
+      ? preparePublicHostedPluginContract
+      : preparePublicHostedContract;
+    const result = await prepare({
       sourceRoot: values["mcp-root"],
-      outputPath: values.output ?? PUBLIC_HOSTED_CONTRACT_PATH,
+      outputPath: values.output,
     });
+    const identity = values.command === "prepare-plugin"
+      ? result.contract.source
+      : result.contract.release;
     process.stdout.write(
       `Prepared ${result.outputPath} from accepted hosted MCP `
-        + `${result.contract.release.commit}/${result.contract.release.tree}.\n`,
+        + `${identity.commit}/${identity.tree}.\n`,
     );
   } catch (error) {
     process.stderr.write(`OpenDexter hosted preparation refused: ${error.message}\n`);

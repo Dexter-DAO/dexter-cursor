@@ -33,6 +33,7 @@
     "release": "node scripts/refuse-direct-release.mjs",
     "release:hosted-source": "node scripts/verify-hosted-source.mjs",
     "release:prepare-hosted": "node scripts/public-hosted-release.mjs prepare",
+    "release:prepare-plugin": "node scripts/public-hosted-release.mjs prepare-plugin",
     "inspect:tarball": "bash scripts/inspect-package-tarball.sh",
     "test:fresh-install": "bash scripts/test-registry-install.sh"
   },
