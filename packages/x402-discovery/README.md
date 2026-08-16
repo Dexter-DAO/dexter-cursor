@@ -2,7 +2,7 @@
 
 `@dexterai/x402-discovery` is the descriptive install alias for `@dexterai/opendexter`.
 The `1.1.0-rc.0` source candidate requires Node.js 22 or newer and pins the
-exact `@dexterai/opendexter@1.24.0-rc.0` candidate. Both RCs are `next`-only;
+exact `@dexterai/opendexter@1.24.0-rc.1` candidate. Both RCs are `next`-only;
 source readiness is not npm publication.
 
 Use it when you want the package name itself to tell developers exactly what it does:

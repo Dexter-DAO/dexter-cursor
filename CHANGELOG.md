@@ -1,15 +1,19 @@
 # Changelog
 
-## 2026-08-16 — 1.24.0-rc.0 x402 V6 migration candidate
+## 2026-08-16 — 1.24.0-rc.1 x402 V6 migration candidate
 
 - Migrated the maintained local OpenDexter packages to Node.js 22 and the
   exact `@dexterai/x402@6.0.0-rc.2` / `@dexterai/vault@0.43.2` pair. Advanced
-  the unpublished coordinated source candidates to
+  the coordinated release train to published-next
   `@dexterai/x402-mcp-tools@0.9.0-rc.0`,
-  `@dexterai/opendexter@1.24.0-rc.0`, and
+  `@dexterai/opendexter@1.24.0-rc.1`, and
   `@dexterai/x402-discovery@1.1.0-rc.0` so no immutable public version is
   reused for changed bytes. Public `@dexterai/opendexter@1.23.3` remains
   immutable on npm.
+- Preserved the failed `opendexter-v1.24.0-rc.0` tag as an immutable receipt
+  after its workflow caught a stale `latest` release-policy pin before build or
+  publication. Advanced OpenDexter to `1.24.0-rc.1` and made the reviewed
+  prerelease workflow accept only the explicit `next` channel.
 - Added the managed Native Tab V2 reservation transport and passed it into
   x402 V6 `tabFromGrant`. The SDK independently verifies the provider receipt
   against a Solana transaction and post-state at least at `confirmed` before

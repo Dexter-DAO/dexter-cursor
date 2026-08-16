@@ -5,7 +5,7 @@
   "package": {
     "name": "@dexterai/opendexter",
     "root": "packages/mcp",
-    "distTag": "latest",
+    "distTag": "next",
     "tagPrefix": "opendexter-v"
   },
   "runner": {

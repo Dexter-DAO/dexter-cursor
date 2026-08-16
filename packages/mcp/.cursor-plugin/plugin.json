@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
   "displayName": "OpenDexter",
-  "version": "1.24.0-rc.0",
+  "version": "1.24.0-rc.1",
   "description": "Run the local proxy for OpenDexter's hosted governed x402 runtime: search, check, execute and reconcile OAuth-bound intents, and read wallet authority or portfolio state. No local payment fallback.",
   "author": {
     "name": "Dexter",
