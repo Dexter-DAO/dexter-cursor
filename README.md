@@ -35,8 +35,9 @@ the passkey-controlled Dexter Wallet and the same hosted governed executor.
 | Setup | Add the MCP URL; the client handles OAuth | Install the proxy, then run `connect` |
 | Authority | Server-verified grant limits, capacity, expiry, role, and revocation | The same live server-verified authority; no local signer fallback |
 
-The Codex and Claude Code plugins connect directly to the hosted service. The
-npm package runs a local stdio proxy for clients that need one, but it does not
+The combined ChatGPT/Codex plugin and the Claude Code plugin connect directly
+to the hosted service. They share one generated hosted workflow. The npm
+package runs a local stdio proxy for clients that need one, but it does not
 create or select a second payment wallet.
 
 ### Local: start in one command
@@ -117,6 +118,12 @@ interchangeable:
 - access-token issuer: `https://dexter.cash`
 
 ### Install the hosted plugins
+
+ChatGPT and Codex use the combined package under `plugins/opendexter`: it binds
+the current owner-created ChatGPT app, the hosted MCP, and the hosted skill
+tree in one installable plugin. Updating source does not automatically replace
+an already installed app-only ChatGPT package; install or submit the combined
+package as one new plugin version, then test it in a fresh chat.
 
 Codex:
 
@@ -232,9 +239,8 @@ connection and authority boundary.
 | Path | Audience |
 |---|---|
 | [`packages/mcp`](./packages/mcp) | Published local CLI and stdio MCP package |
-| [`plugins/opendexter`](./plugins/opendexter) | Developer-distributed Codex package for the hosted MCP |
-| [`opendexter-plugin`](./opendexter-plugin) | Developer-distributed Claude Code package for the hosted MCP |
-| [`chatgpt-app-binding`](./chatgpt-app-binding) | Publisher-side ChatGPT app identity; not a portable plugin |
+| [`plugins/opendexter`](./plugins/opendexter) | Combined ChatGPT/Codex app, MCP, and canonical hosted skill package |
+| [`opendexter-plugin`](./opendexter-plugin) | Claude Code package generated from the canonical hosted skill |
 | [`packages/x402-mcp-tools`](./packages/x402-mcp-tools) | Shared MCP tool implementations |
 | [`packages/mcp-instructions`](./packages/mcp-instructions) | Roster-aware agent instructions |
 

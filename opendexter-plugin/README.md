@@ -3,7 +3,7 @@
 OpenDexter gives Claude Code a governed Dexter Wallet through the hosted MCP at
 `https://open.dexter.cash/mcp`.
 
-Version `2.1.0` targets hosted manifest `0.5.0`. Before OAuth the public
+Version `2.1.1` targets hosted manifest `0.5.0`. Before OAuth the public
 product exposes five entry tools for discovery, exact-term inspection,
 wallet-proof access, wallet connection, and portfolio connection. OAuth
 promotes seven protected purchase and governed-action tools, making the
@@ -52,3 +52,15 @@ client.
 
 Connector authentication, wallet binding, passkey enrollment, funding, and
 transaction readiness are separate states.
+
+## Skill source
+
+The shared hosted workflow files in this Claude package are generated from
+`plugins/opendexter/skills/`, the same canonical source used by ChatGPT and
+Codex. Check parity with:
+
+```bash
+node scripts/sync-hosted-plugin-skills.mjs --check
+```
+
+Claude's manifest and MCP connection remain Claude-specific package metadata.

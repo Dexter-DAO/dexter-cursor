@@ -52,11 +52,14 @@ It checks:
 
 - the source-pinned exact twelve-tool contract, including the anonymous five
   and seven OAuth-promoted tools;
-- Codex and Claude manifest/MCP/marketplace shapes;
+- combined ChatGPT/Codex and Claude manifest/MCP/marketplace shapes;
 - the three hosted-contract skills in both packages;
 - absence of old card, local-wallet, pairing, and npm-latest routes from active
   skill and manifest content;
-- separation of the publisher-side `.app.json` from the portable Codex package;
+- the exact current owner app binding packaged once with the hosted skill and
+  absence of the retired conflicting top-level binding;
+- byte parity between the canonical ChatGPT/Codex hosted skill and the
+  generated Claude shared files;
 - clean staging into a temporary marketplace root, discovery of both package
   manifests/MCPs/skills through their marketplace entries, and absence of
   symlinks or special files.

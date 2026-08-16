@@ -1,33 +1,52 @@
 # Authentication and wallet state
 
-Diagnose three independent states:
+Keep three states separate:
 
-1. Claude Code connector OAuth for protected OpenDexter tools.
-2. The MCP session's durable binding to a stored Dexter Wallet identity.
-3. Passkey wallet enrollment and readiness.
+1. **Connector OAuth**: whether this client may invoke protected OpenDexter
+   tools.
+2. **MCP session binding**: whether the authenticated MCP session is durably
+   linked to a stored Dexter Wallet identity.
+3. **Wallet enrollment and readiness**: whether the user has completed their
+   passkey ceremony and the wallet can perform the requested operation.
 
-OAuth success does not prove either wallet state.
+Success in one state does not prove either of the others. In particular, OAuth
+success does not mean the wallet is enrolled, bound, funded, active, or ready.
 
 ## OAuth identity
 
-- Resource and audience: `https://open.dexter.cash/mcp`
+- MCP resource and audience: `https://open.dexter.cash/mcp`
 - Protected-resource metadata:
   `https://open.dexter.cash/.well-known/oauth-protected-resource/mcp`
 - Authorization-server issuer: `https://mcp.dexter.cash/mcp`
 - Authorization-server metadata:
   `https://mcp.dexter.cash/.well-known/oauth-authorization-server/mcp`
 - Access-token issuer: `https://dexter.cash`
-- Scope: `vault`
+- Protected scope: `vault`
 
-Protected tools advertise both canonical `securitySchemes` and the
-compatibility `_meta.securitySchemes` mirror. Runtime authentication errors set
-`isError: true` and `_meta["mcp/www_authenticate"]`; their Bearer challenge
-includes `resource_metadata`, `scope`, `error`, and `error_description`.
+The authorization-server issuer and access-token issuer are deliberately
+different identities. Do not rewrite either one.
 
-Use `/mcp` or `claude mcp login opendexter`. After the user completes native
-OAuth, retry the same blocked tool once. If it still challenges, stop and
-report connector OAuth as the failed layer.
+Each protected tool advertises canonical `securitySchemes` and the
+back-compatibility `_meta.securitySchemes` mirror. A runtime challenge is an
+error result with `isError: true` and `_meta["mcp/www_authenticate"]`; the
+Bearer challenge includes `resource_metadata`, `scope`, `error`, and
+`error_description`.
 
-Never route authentication through a local npm wallet, pasted token,
-personalized MCP URL, pairing URL, or enrollment-link relay. Use `x402_wallet`
-for a valid OAuth session whose wallet is not yet ready.
+## Native client action
+
+Use the client action already surfaced for the configured MCP:
+
+- ChatGPT or Codex Desktop: **Connect**.
+- Codex CLI: `codex mcp login opendexter`.
+- Claude Code: `/mcp` or `claude mcp login opendexter`.
+
+Never relay a personalized MCP URL, pairing URL, enrollment link, bearer token,
+or one-time credential through the conversation.
+
+After the user completes native OAuth, retry the blocked protected tool once.
+If it still challenges, stop and report connector OAuth as the failed layer.
+Do not switch to enrollment or create a second connector.
+
+For a valid OAuth session whose wallet is not ready, use `x402_wallet` and the
+hosted wallet UI. The user completes the passkey ceremony on Dexter's secure
+surface; the model never handles passkey material.

@@ -26,7 +26,11 @@
 
 # HALF 1 — DASHBOARD PASTE PACK
 
-Everything in this half is pasted by hand into OpenAI's UI (the app registration `asdk_app_6a615ae3385c8191b05cc4c420514022` / `dev-6a615ae3385c8191b05cc4c420514022`, plus the submission portal when going public). No repo carries these fields `[VERIFIED — fact-map: "Testing" metadata exists in no repo]`.
+This dated section originally targeted a retired July app registration. The
+current owner-created registration is now source-bound in
+`plugins/opendexter/.app.json`, and current listing fields are owned by
+`plugins/opendexter/.codex-plugin/plugin.json`. Do not paste this historical
+draft over that package. Publisher submission remains a separate action.
 
 The observed manifest fields are: `description`, `shortDescription`, `longDescription`, `defaultPrompt`, `capabilities` — all placeholders or empty today; there is no `skills` field and no `skills/` directory `[VERIFIED — requisition's cache inspection; corrected per C3]`. Which UI surface renders which description field is `[UNVERIFIED]`; copy is supplied for all three so every field is final-quality regardless of where it shows.
 

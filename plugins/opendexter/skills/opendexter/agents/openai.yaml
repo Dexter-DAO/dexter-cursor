@@ -2,7 +2,15 @@ interface:
   display_name: "OpenDexter"
   short_description: "Route hosted x402 and governed wallet actions safely"
   brand_color: "#E67C3E"
-  default_prompt: "Use $opendexter to inspect my wallet, x402 purchase, or governed asset action safely."
+  default_prompt: "Use $opendexter to check whether I have a Dexter Wallet and show what it can do safely."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "opendexter"
+      description: "Read the connected Dexter Wallet and use hosted x402 and governed-action tools"
+      transport: "streamable_http"
+      url: "https://open.dexter.cash/mcp"
 
 policy:
   allow_implicit_invocation: true
