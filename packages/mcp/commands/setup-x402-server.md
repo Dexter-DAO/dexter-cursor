@@ -17,7 +17,7 @@ account-bound operation.
 1. Install the SDK:
 
 ```bash
-npm install @dexterai/x402
+npm install @dexterai/x402@6.0.0-rc.0 @dexterai/vault@0.43.1
 ```
 
 2. Add the middleware to any Express route:
@@ -57,24 +57,31 @@ curl -i http://localhost:3000/api/premium-data
 4. Test with a funded x402 client:
 
 ```typescript
-import { wrapFetch } from '@dexterai/x402/client';
+import { createKeypairWallet, payAndFetch } from '@dexterai/x402/client';
 
-const x402Fetch = wrapFetch(fetch, {
-  walletPrivateKey: process.env.SOLANA_PRIVATE_KEY!,
-});
+const solana = await createKeypairWallet(process.env.SOLANA_PRIVATE_KEY!);
 
-const res = await x402Fetch('http://localhost:3000/api/premium-data');
+const paid = await payAndFetch(
+  'http://localhost:3000/api/premium-data',
+  { method: 'GET' },
+  { solana },
+  { maxAmountAtomic: '10000', solanaRpcUrl: process.env.SOLANA_RPC_URL },
+);
+if (!paid.ok) throw new Error(`${paid.reason}: ${paid.detail ?? ''}`);
+if (!paid.response) throw new Error('Payment settled without a merchant response');
+const res = paid.response;
 console.log(await res.json());
 // { data: "premium content", payer: "2SB3V...", transaction: "5xK9..." }
 ```
 
 ## Options
 
-- **Stripe settlement**: Use `stripePayTo(process.env.STRIPE_SECRET_KEY)` as the `payTo` value to settle payments into Stripe.
 - **Dynamic pricing**: Use `getAmount: (req) => calculatePrice(req.body)` for request-dependent pricing.
 - **EVM chains**: Set `network: 'eip155:8453'` for Base instead of Solana.
-- **Access passes**: Use `x402AccessPass()` for time-limited unlimited access.
+- **Multi-chain**: Pass a network array and a per-network `payTo` map.
 
 ## List on Marketplace
 
-Once your endpoint is live, register it on the Dexter Marketplace at https://dexter.cash/onboard so agents can discover it via `x402_search`.
+Endpoints paid through Dexter's facilitator are discovered and quality-tested
+for the Dexter marketplace. Add `bazaarExtension()` plus a matching discovery
+declaration when you want to publish richer route metadata.

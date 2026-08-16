@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import * as defaultX402Client from "@dexterai/x402/client";
 import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
 import {
@@ -478,6 +479,8 @@ interface RuntimeFetchOpts {
    * use x402-core's DNS-pinned public-HTTPS transport with redirects disabled.
    */
   explicitExternalFetch?: typeof fetch;
+  /** Test seam for the SDK client namespace. Production uses the pinned V6 package. */
+  x402Client?: typeof import("@dexterai/x402/client");
 }
 
 function paymentResponseTransaction(response: Response): string | undefined {
@@ -1199,7 +1202,9 @@ export async function x402Fetch(
   // never silent. An `offer` is the in-band tab invitation: for a
   // dual-rail seller it rides the exact result under `tab_offer` (the
   // call is never blocked on consent); for a tab-only seller it IS the
-  // response. A lane crash must never take down the paid path.
+  // response. An unexpected lane throw is outcome-unknown: V2 may already
+  // have reserved a FINAL voucher, so it is terminal and never permission to
+  // fall through to Exact. Expected pre-sign skips use `done:false` instead.
   let tabNote: Record<string, unknown> | undefined;
   let tabOffer: TabOfferMaterials | undefined;
   const strictNativeTab = validatedPurchase?.mode === "native_tab";
@@ -1288,11 +1293,23 @@ export async function x402Fetch(
           requirements: selectedRequirements,
         });
       }
-      tabNote = {
-        rail: "tab",
-        used: false,
-        error: `tab lane failed: ${err?.message ?? String(err)}`,
-      };
+      return withPurchase({
+        status: 502,
+        mode: "tab_error",
+        phase: "dispatch_unknown",
+        retryable: false,
+        error: "tab_lane_failed",
+        message:
+          "The Tab lane failed without a typed outcome. A FINAL voucher may " +
+          "already be reserved; reconcile the Tab and do not retry or pay " +
+          `Exact. (${err?.message ?? String(err)})`,
+        payment: {
+          dispatched: "unknown",
+          settled: "unknown",
+          retrySafe: false,
+        },
+        requirements: selectedRequirements,
+      });
     }
   }
   if (tabOffer && isTabOnly(selectedRequirements)) {
@@ -1356,7 +1373,7 @@ export async function x402Fetch(
       // Direct Exact calls use a route-pinned adapter: v1 consumes one
       // filtered parsed option; v2 builds the selected raw accept directly
       // and never performs the SDK's network-only second probe.
-      const x402Client = await import("@dexterai/x402/client");
+      const x402Client = runtime.x402Client ?? defaultX402Client;
       const {
         payAndFetch,
         createKeypairWallet,

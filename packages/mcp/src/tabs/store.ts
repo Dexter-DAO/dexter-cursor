@@ -31,6 +31,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import type { FinalVoucherV2ReservationReceipt } from "@dexterai/x402/tab";
 import { DATA_DIR } from "../config.js";
 
 export const TABS_FILE_NAME = "tabs.json";
@@ -46,12 +47,23 @@ export interface TabGrantParams {
 
 export interface TabRecord {
   /**
-   * pending — key minted, consent link issued, human has not approved yet.
-   * active  — SessionAccount observed live on chain; params/vaultPda filled.
-   * dead    — chain says the session is gone (revoked / expired / replaced);
-   *           kept for visibility until removed or re-connected.
+   * pending                 — key minted; human has not approved yet.
+   * active                  — context-bound V2 SessionAccount is live.
+   * reapproval_required     — historical low-bit V1 grant; never reconstructed
+   *                           by x402 v6. The owner must settle/revoke it, then
+   *                           explicitly approve a fresh V2 grant.
+   * reconciliation_required — V2 reservation/signing/dispatch became
+   *                           indeterminate. No other rail may pay until the
+   *                           exact voucher obligation is reconciled.
+   * dead                    — chain says the session is gone (revoked / expired
+   *                           / replaced); kept for visibility.
    */
-  status: "pending" | "active" | "dead";
+  status:
+    | "pending"
+    | "active"
+    | "reapproval_required"
+    | "reconciliation_required"
+    | "dead";
   /** The URL the tab was connected for (display + channel derivation). */
   sellerUrl: string;
   /** Seller settlement pubkey (base58) from the 402's tab accept payTo. */
@@ -69,14 +81,33 @@ export interface TabRecord {
   createdAt: string;
   activatedAt?: string;
   deadReason?: string;
-  /** Last seller-ACCEPTED voucher header (base64) — the settle receipt. */
+  /** Last released voucher header (base64). V1 is written after seller
+   * acceptance; V2 is written after reservation and before merchant dispatch. */
   lastVoucherHeader?: string;
   lastVoucherAt?: string;
+  /** Voucher generation and exact increment needed by current settle/recovery. */
+  lastVoucherVersion?: 1 | 2;
+  lastVoucherIncrementAtomic?: string;
+  /** V2 provider lifecycle evidence plus whether the SDK's independent
+   * transaction/post-state verification completed before release. */
+  lastFinalV2ReservationReceipt?: FinalVoucherV2ReservationReceipt;
+  lastFinalV2ReservationVerified?: boolean;
 }
 
 interface TabsFile {
   version: 1;
   tabs: TabRecord[];
+}
+
+export class TabCustodyStoreError extends Error {
+  constructor(path: string, cause?: unknown) {
+    super(
+      `tab_custody_store_unreadable: ${path}; refusing to treat unknown ` +
+        "voucher obligations as an empty store",
+      { cause },
+    );
+    this.name = "TabCustodyStoreError";
+  }
 }
 
 function fileFor(dir?: string): string {
@@ -88,12 +119,16 @@ export function loadTabs(dir?: string): TabRecord[] {
   if (!existsSync(file)) return [];
   try {
     const parsed = JSON.parse(readFileSync(file, "utf-8")) as Partial<TabsFile>;
-    return Array.isArray(parsed.tabs) ? (parsed.tabs as TabRecord[]) : [];
-  } catch {
-    // A corrupt custody file must not crash the paid path; the lane simply
-    // sees no tabs. (The file only becomes corrupt via external edits — we
-    // always write whole-file JSON.)
-    return [];
+    if (parsed.version !== 1 || !Array.isArray(parsed.tabs)) {
+      throw new Error("tab_custody_store_shape_invalid");
+    }
+    return parsed.tabs as TabRecord[];
+  } catch (cause) {
+    // An unreadable store can contain a reserved FINAL voucher. Treating it
+    // as empty would permit a second rail and could overwrite the only local
+    // reconciliation evidence. The shared fetch wrapper turns this failure
+    // into a terminal outcome; the original file remains untouched.
+    throw new TabCustodyStoreError(file, cause);
   }
 }
 
@@ -104,8 +139,8 @@ export function saveTabs(tabs: TabRecord[], dir?: string): void {
   const file = fileFor(dir);
   // Atomic write: this file holds custodied session SECRETS + unsettled
   // settle receipts. A torn writeFileSync (crash / disk-full mid-write)
-  // would leave truncated JSON that loadTabs' corrupt-file branch silently
-  // discards — losing every key at once. Write a temp file, then rename:
+  // would leave truncated JSON that a future load must refuse. Write a temp
+  // file, then rename:
   // rename is atomic on POSIX, so a reader sees either the whole old file or
   // the whole new one, never a half. 0600 is set at temp creation AND
   // re-asserted after (a pre-existing temp could carry looser perms).

@@ -20,7 +20,15 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { Keypair, PublicKey, type Connection } from "@solana/web3.js";
 import { tabMiddleware } from "@dexterai/x402/tab/seller";
-import { DEXTER_VAULT_PROGRAM_ID } from "@dexterai/x402/tab";
+import {
+  DEXTER_VAULT_PROGRAM_ID,
+  tabFromGrant as sdkTabFromGrant,
+  voucherToHeader,
+  type FinalVoucherV2ReservationInput,
+  type FinalVoucherV2ReservationReceipt,
+  type SignedVoucher,
+  type Tab,
+} from "@dexterai/x402/tab";
 import { VAULT_ACCOUNT_DISCRIMINATOR } from "@dexterai/vault/constants";
 import type {
   Request as ExpressRequest,
@@ -49,6 +57,7 @@ const SELLER_URL = "https://api.dexter.cash/api/x402/tab-demo/tick";
 const COUNTERPARTY = "FKF63wLt122SLDNPBfpDgrMcQzxtdLfLyrUS1KziRR1h";
 const FAC = "https://fac.test";
 const NOW = Math.floor(Date.now() / 1000);
+const CONTEXT_BOUND_V2_NONCE = 0x8000002a;
 
 /** The LIVE customer-zero 402 body (captured 2026-07-05). */
 function live402Body(overrides: { payTo?: string } = {}) {
@@ -107,7 +116,7 @@ function makeGrant(over: Partial<TabRecord> = {}, counterparty?: PublicKey): Gra
     params: {
       maxAmountAtomic: "5000000", // $5.00 cap
       expiresAtUnix: NOW + 3600,
-      nonce: 42,
+      nonce: CONTEXT_BOUND_V2_NONCE,
       maxRevolvingCapacityAtomic: "5000000",
     },
     createdAt: new Date().toISOString(),
@@ -184,6 +193,136 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+type TabFromGrant = typeof import("@dexterai/x402/tab").tabFromGrant;
+type TabFromGrantOptions = Parameters<TabFromGrant>[0];
+
+function reservationReceipt(
+  input: FinalVoucherV2ReservationInput,
+): FinalVoucherV2ReservationReceipt {
+  return {
+    contract: "dexter-native-tab-open-receipt/v2",
+    operationId: `lifecycle-${input.idempotencyKey}`,
+    callerOperationId: input.idempotencyKey,
+    network: input.network,
+    transaction: `FINAL_TX_${input.voucher.payload.sequenceNumber}`,
+    commitment: "finalized",
+    confirmationSlot: 123,
+    postStateSlot: 123,
+    buyerSwigAddress: input.buyerSwigAddress,
+    vaultPda: input.vaultPda,
+    sessionPda: input.sessionPda,
+    seller: input.seller,
+    channelId: input.channelId,
+    sessionPublicKey: bs58.encode(input.voucher.sessionPublicKey),
+    voucherDigest: input.voucherDigest,
+    cumulativeAmountAtomic: input.voucher.payload.cumulativeAmount,
+    sequenceNumber: input.voucher.payload.sequenceNumber,
+    providerReceiptId: `receipt-${input.idempotencyKey}`,
+    reservationAmountAtomic: input.reservationAmountAtomic,
+    pendingVoucherCountBefore: input.voucher.payload.sequenceNumber - 1,
+    pendingVoucherCountAfter: input.voucher.payload.sequenceNumber,
+    currentOutstandingBeforeAtomic: "0",
+    currentOutstandingAfterAtomic: input.reservationAmountAtomic,
+  };
+}
+
+interface FakeTabSpec {
+  voucherVersion?: 1 | 2;
+  frontierAtomic?: bigint;
+  beforeReservationError?: string;
+  afterReservationError?: string;
+}
+
+function fakeTabFromGrant(spec: FakeTabSpec = {}): {
+  implementation: TabFromGrant;
+  rollbackVoucher: ReturnType<typeof vi.fn>;
+} {
+  const rollbackVoucher = vi.fn(() => true);
+  const implementation = vi.fn(async (options: TabFromGrantOptions) => {
+    const voucherVersion = spec.voucherVersion ?? 2;
+    const channelId = "ab".repeat(32);
+    let cumulative = spec.frontierAtomic ?? 0n;
+    let sequenceNumber = 0;
+    const tab = {
+      channelId,
+      voucherVersion,
+      network: "solana:mainnet",
+      counterparty: options.params.counterparty,
+      state: {
+        isOpen: true,
+        spent: "0",
+        remaining: "5",
+        expiresInSec: 3600,
+      },
+      rollbackVoucher,
+      signNextVoucher: vi.fn(async (incrementAtomic: string) => {
+        if (spec.beforeReservationError) {
+          throw new Error(spec.beforeReservationError);
+        }
+        const previousCumulative = cumulative;
+        cumulative += BigInt(incrementAtomic);
+        sequenceNumber += 1;
+        const voucher: SignedVoucher = {
+          payload: {
+            channelId,
+            cumulativeAmount: cumulative.toString(),
+            sequenceNumber,
+          },
+          sessionPublicKey: bs58.decode(options.params.sessionPubkey),
+          sessionRegistration: new Uint8Array(188).fill(3),
+          sessionSignature: new Uint8Array(64).fill(sequenceNumber),
+        };
+        if (voucherVersion === 2) {
+          if (!options.reserveFinalVoucherV2) {
+            throw new Error("native_tab_v2_reservation_provider_required");
+          }
+          await options.reserveFinalVoucherV2({
+            network: "solana:mainnet",
+            programId: DEXTER_VAULT_PROGRAM_ID.toBase58(),
+            buyerSwigAddress: Keypair.generate().publicKey.toBase58(),
+            vaultPda: String(options.vaultPda),
+            sessionPda: deriveSessionPda(
+              new PublicKey(options.vaultPda),
+              new PublicKey(options.params.counterparty),
+            )[0].toBase58(),
+            seller: options.params.counterparty,
+            channelId,
+            sessionNonce: options.params.nonce,
+            reservationAmountAtomic: incrementAtomic,
+            previousCumulativeAtomic: previousCumulative.toString(),
+            voucherDigest: `digest-${sequenceNumber}`,
+            idempotencyKey: `idempotency-${sequenceNumber}`,
+            voucher,
+          });
+          if (spec.afterReservationError) {
+            throw new Error(spec.afterReservationError);
+          }
+        }
+        return voucher;
+      }),
+      stream: vi.fn(),
+      close: vi.fn(),
+    } as unknown as Tab;
+    return tab;
+  }) as unknown as TabFromGrant;
+  return { implementation, rollbackVoucher };
+}
+
+function acceptingSellerRouter(
+  body: unknown = { tick: true },
+  status = 200,
+): ReturnType<typeof vi.fn> {
+  const router = vi.fn(async (url: unknown, init?: RequestInit) => {
+    if (String(url).startsWith(SELLER_URL)) {
+      const voucher = new Headers(init?.headers).get("x-tab-voucher");
+      return voucher ? jsonResponse(body, status) : live402Response();
+    }
+    return jsonResponse({}, 404);
+  });
+  vi.stubGlobal("fetch", router);
+  return router;
 }
 
 /** A wire-faithful 402: body AND the PAYMENT-REQUIRED header (base64 of the
@@ -271,6 +410,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* noop */ }
 });
@@ -301,11 +441,12 @@ describe("tabs/store — custody file", () => {
     expect(loadTabs(dir)).toHaveLength(0);
   });
 
-  it("survives a corrupt file without throwing (returns empty)", () => {
+  it("fails closed on a corrupt store instead of treating unknown obligations as empty", () => {
     upsertTab(makeGrant().record, dir);
     const file = join(dir, "tabs.json");
     require("node:fs").writeFileSync(file, "{corrupt", { mode: 0o600 });
-    expect(loadTabs(dir)).toEqual([]);
+    expect(() => loadTabs(dir)).toThrow(/tab_custody_store_unreadable/);
+    expect(readFileSync(file, "utf8")).toBe("{corrupt");
   });
 
   it("writes atomically: 0600, no lingering temp file, whole-file replace", () => {
@@ -411,7 +552,7 @@ describe("tabs/connect — consent handoff", () => {
         params: {
           maxAmountAtomic: "1000000",
           expiresAtUnix: NOW + 7 * 86400,
-          nonce: 7,
+          nonce: CONTEXT_BOUND_V2_NONCE,
           maxRevolvingCapacityAtomic: "1000000",
         },
       },
@@ -436,6 +577,52 @@ describe("tabs/connect — consent handoff", () => {
     expect(active.vaultPda).toBe(g.vault.toBase58());
     expect(active.params).toEqual(g.record.params);
     expect(active.sessionPubkey).toBe(pending.sessionPubkey); // same custodied key
+  });
+
+  it("does not activate a historical low-bit grant and requires an explicit V2 reapproval", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => live402Response()));
+    const lines: string[] = [];
+    await cliTabConnect(SELLER_URL, {
+      wait: false,
+      dataDir: dir,
+      connection: fakeConnection(new Map(), [[]]) as unknown as Connection,
+      log: (s: string) => lines.push(s),
+    });
+    const pending = findTab(COUNTERPARTY, dir)!;
+    const grant: GrantFixture = {
+      kp: {
+        publicKey: bs58.decode(pending.sessionPubkey),
+        secretKey: bs58.decode(pending.sessionSecretKey),
+      } as nacl.SignKeyPair,
+      record: {
+        ...pending,
+        params: {
+          maxAmountAtomic: "1000000",
+          expiresAtUnix: NOW + 3600,
+          nonce: 42,
+          maxRevolvingCapacityAtomic: "1000000",
+        },
+      },
+      vault: Keypair.generate().publicKey,
+      counterparty: new PublicKey(COUNTERPARTY),
+    };
+    const pda = deriveSessionPda(grant.vault, grant.counterparty)[0];
+    const conn = fakeConnection(new Map(), [
+      [{ pubkey: pda, data: sessionAccountData(grant) }],
+    ]);
+
+    await cliTabConnect(SELLER_URL, {
+      wait: true,
+      pollIntervalMs: 1,
+      timeoutMs: 100,
+      dataDir: dir,
+      connection: conn as unknown as Connection,
+      log: (s: string) => lines.push(s),
+    });
+
+    expect(findTab(COUNTERPARTY, dir)!.status).toBe("reapproval_required");
+    expect(lines.join("\n")).toMatch(/retired voucher format/i);
+    expect(lines.join("\n")).toContain(`opendexter tab connect ${SELLER_URL} --rekey`);
   });
 
   it("an ACTIVE tab is left untouched on a plain re-run, and the recovery hint names --rekey", async () => {
@@ -503,12 +690,18 @@ describe("tabs/connect — consent handoff", () => {
 });
 
 describe("tabs/lane — tab-first payment", () => {
-  const laneDeps = (conn: Connection) => ({
-    dataDir: dir,
-    connection: conn,
-    facilitatorUrl: FAC,
-    getMaxAmountUsdc: () => 5,
-  });
+  const laneDeps = (conn: Connection, spec: FakeTabSpec = {}) => {
+    const runtime = fakeTabFromGrant(spec);
+    return {
+      dataDir: dir,
+      connection: conn,
+      facilitatorUrl: FAC,
+      getMaxAmountUsdc: () => 5,
+      tabFromGrant: runtime.implementation,
+      reserveFinalVoucherV2: vi.fn(async (input: FinalVoucherV2ReservationInput) =>
+        reservationReceipt(input)),
+    };
+  };
 
   it("no tab accept in the 402 → pure fall-through (done:false, no note)", async () => {
     const lane = createTabLane(laneDeps(fakeConnection() as unknown as Connection));
@@ -517,6 +710,38 @@ describe("tabs/lane — tab-first payment", () => {
       { accepts: [{ scheme: "exact", network: "solana:mainnet", payTo: COUNTERPARTY, amount: "10000" }] },
     );
     expect(out).toEqual({ done: false });
+  });
+
+  it("the pinned V6 SDK rejects a low-bit grant before any chain or provider I/O", async () => {
+    const g = makeGrant({
+      params: {
+        maxAmountAtomic: "5000000",
+        expiresAtUnix: NOW + 3600,
+        nonce: 42,
+        maxRevolvingCapacityAtomic: "5000000",
+      },
+    });
+    const connection = {
+      getAccountInfo: vi.fn(async () => {
+        throw new Error("unexpected chain read");
+      }),
+    } as unknown as Connection;
+    const reserveFinalVoucherV2 = vi.fn();
+
+    await expect(sdkTabFromGrant({
+      sessionSecretKey: bs58.decode(g.record.sessionSecretKey),
+      params: {
+        counterparty: g.record.counterparty,
+        sessionPubkey: g.record.sessionPubkey,
+        ...g.record.params!,
+      },
+      vaultPda: g.record.vaultPda!,
+      connection,
+      perUnitCapAtomic: "10000",
+      reserveFinalVoucherV2,
+    })).rejects.toThrow(/native_tab_v1_migration_required/);
+    expect(connection.getAccountInfo).not.toHaveBeenCalled();
+    expect(reserveFinalVoucherV2).not.toHaveBeenCalled();
   });
 
   it("tab accept + no stored grant → mints a pending key (custody 0600 FIRST) and returns the in-band offer", async () => {
@@ -552,21 +777,13 @@ describe("tabs/lane — tab-first payment", () => {
     expect(findTab(COUNTERPARTY, dir)!.sessionPubkey).toBe(g.record.sessionPubkey);
   });
 
-  it("ACTIVE grant: pays by voucher through the REAL seller middleware, resumes over the chain frontier, persists the settle receipt", async () => {
+  it("ACTIVE V2 grant reserves the exact final claim before dispatch and persists independently-verified evidence", async () => {
     const g = makeGrant();
     upsertTab(g.record, dir);
     const conn = chainFor(g, sessionAccountData(g, { spent: 250000n, crystallized: 100000n }));
-    const mw = tabMiddleware({
-      connection: conn,
-      sellerPubkey: g.record.counterparty,
-      perUnit: "0.01",
-      network: "solana:mainnet",
-      settle: "on-close",
-      facilitatorUrl: FAC,
-    });
-    sellerRouter(mw, () => ({ tick: 1, slot: 12345 }));
+    acceptingSellerRouter({ tick: 1, slot: 12345 });
 
-    const lane = createTabLane(laneDeps(conn));
+    const lane = createTabLane(laneDeps(conn, { frontierAtomic: 250000n }));
     const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
 
     expect(out.done).toBe(true);
@@ -577,6 +794,8 @@ describe("tabs/lane — tab-first payment", () => {
       rail: "tab",
       counterparty: g.record.counterparty,
       incrementAtomic: "10000",
+      voucherVersion: 2,
+      reservationCommitment: "finalized",
       // Frontier max(250000, 100000) + 10000: the odometer resumes over the chain.
       cumulativeAtomic: "260000",
     });
@@ -584,8 +803,16 @@ describe("tabs/lane — tab-first payment", () => {
     // Settle receipt (the exact accepted voucher header) persisted for `tab close`.
     const rec = findTab(g.record.counterparty, dir)!;
     expect(rec.lastVoucherHeader).toBeTruthy();
+    expect(rec.status).toBe("active");
     const decoded = JSON.parse(Buffer.from(rec.lastVoucherHeader!, "base64").toString("utf8"));
     expect(decoded.payload.cumulativeAmount).toBe("260000");
+    expect(rec.lastVoucherVersion).toBe(2);
+    expect(rec.lastVoucherIncrementAtomic).toBe("10000");
+    expect(rec.lastFinalV2ReservationReceipt).toMatchObject({
+      commitment: "finalized",
+      cumulativeAmountAtomic: "260000",
+    });
+    expect(rec.lastFinalV2ReservationVerified).toBe(true);
 
     // Second call in the same process: cached tab, next voucher, same channel.
     const out2 = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
@@ -593,15 +820,45 @@ describe("tabs/lane — tab-first payment", () => {
     expect((out2 as { result: Record<string, any> }).result.payment.cumulativeAtomic).toBe("270000");
   });
 
+  it("uses the facilitator's canonical DEXTER_INTERNAL_TOKEN for the managed reservation boundary", async () => {
+    vi.stubEnv("TAB_OPEN_INTERNAL_TOKEN", "");
+    vi.stubEnv("DEXTER_INTERNAL_TOKEN", "canonical-internal-token");
+    const g = makeGrant();
+    upsertTab(g.record, dir);
+    const reservationFetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) =>
+      jsonResponse({
+        receipt: {
+          commitment: "finalized",
+          transaction: "FINAL_TX",
+          providerReceiptId: "provider-receipt",
+        },
+      })) as typeof fetch;
+    const runtime = fakeTabFromGrant();
+    acceptingSellerRouter();
+    const lane = createTabLane({
+      dataDir: dir,
+      connection: chainFor(g, sessionAccountData(g)),
+      facilitatorUrl: FAC,
+      getMaxAmountUsdc: () => 5,
+      tabFromGrant: runtime.implementation,
+      reservationFetchImpl,
+    });
+
+    const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
+
+    expect(out.done).toBe(true);
+    expect(reservationFetchImpl).toHaveBeenCalledOnce();
+    const init = reservationFetchImpl.mock.calls[0]?.[1];
+    expect(new Headers(init?.headers).get("x-internal-token"))
+      .toBe("canonical-internal-token");
+    expect(init?.redirect).toBe("error");
+  });
+
   it("records witnessed spend through the budget runtime on a tab-paid call", async () => {
     const g = makeGrant();
     upsertTab(g.record, dir);
     const conn = chainFor(g, sessionAccountData(g));
-    const mw = tabMiddleware({
-      connection: conn, sellerPubkey: g.record.counterparty, perUnit: "0.01",
-      network: "solana:mainnet", settle: "on-close", facilitatorUrl: FAC,
-    });
-    sellerRouter(mw);
+    acceptingSellerRouter();
     const spends: Array<[number, string]> = [];
     const lane = createTabLane({
       ...laneDeps(conn),
@@ -616,49 +873,279 @@ describe("tabs/lane — tab-first payment", () => {
     expect(spends).toEqual([[0.01, SELLER_URL]]);
   });
 
-  it("ITEM 5 — a resume whose first cumulative exceeds the seller's per-voucher bound surfaces cumulative_exceeds_cap as a CLEAR error, never a blind retry or silent exact fallback", async () => {
-    // Session lifetime spend $2.00 of a $5.00 cap. A fresh process opens a
-    // fresh channel, so its first voucher presents cumulative $2.01 as ONE
-    // increment; the seller bounds per-voucher delivery at perUnit×100 =
-    // $1.00 (its over-delivery guard) and refuses cumulative_exceeds_cap.
+  it("a seller 402 after a V2 reservation is terminal, retains the claim, and never rolls it back", async () => {
     const g = makeGrant();
     upsertTab(g.record, dir);
-    const conn = chainFor(g, sessionAccountData(g, { spent: 2000000n }));
-    const mw = tabMiddleware({
-      connection: conn, sellerPubkey: g.record.counterparty, perUnit: "0.01",
-      network: "solana:mainnet", settle: "on-close", facilitatorUrl: FAC,
-    });
-    sellerRouter(mw);
+    const conn = chainFor(g, sessionAccountData(g));
+    acceptingSellerRouter({ reason: "seller_policy_refused", detail: "not delivered" }, 402);
+    const runtime = fakeTabFromGrant();
 
-    const lane = createTabLane(laneDeps(conn));
+    const lane = createTabLane({
+      ...laneDeps(conn),
+      tabFromGrant: runtime.implementation,
+    });
     const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
 
     expect(out.done).toBe(true); // final — NOT a fall-through to exact
     const result = (out as { result: Record<string, any> }).result;
     expect(result.status).toBe(402);
-    expect(result.error).toMatch(/cumulative_exceeds_cap/);
-    expect(result.error).toMatch(/resume/i); // names the resume nuance
-    expect(result.error).toMatch(/do not.*retry/i);
-    // The remediation command must actually RECOVER: --rekey (or remove +
-    // connect), never the old close+connect no-op loop that bricked the tab.
-    expect(result.error).toMatch(/--rekey/);
-    expect(result.error).not.toMatch(/tab close .* then .*tab connect/);
-    expect(result.tab).toMatchObject({ rail: "tab", used: false, refusalReason: "cumulative_exceeds_cap" });
-    // The grant is NOT marked dead — its cap has headroom; only the seller's
-    // per-voucher resume bound was hit.
-    expect(findTab(g.record.counterparty, dir)!.status).toBe("active");
+    expect(result.error).toMatch(/FINAL tab voucher/i);
+    expect(result.error).toMatch(/reservation already finalized/i);
+    expect(result.tab).toMatchObject({
+      rail: "tab",
+      used: true,
+      refused: true,
+      voucherVersion: 2,
+      state: "reconciliation_required",
+      retrySafe: false,
+      reservationCommitment: "finalized",
+    });
+    expect(runtime.rollbackVoucher).not.toHaveBeenCalled();
+    const persisted = findTab(g.record.counterparty, dir)!;
+    expect(persisted.status).toBe("reconciliation_required");
+    expect(persisted.lastFinalV2ReservationVerified).toBe(true);
+  });
+
+  it("a V2 response loss blocks the next payment and directs reconciliation instead of retry", async () => {
+    const g = makeGrant();
+    upsertTab(g.record, dir);
+    const conn = chainFor(g, sessionAccountData(g));
+    const runtime = fakeTabFromGrant();
+    const lane = createTabLane({
+      ...laneDeps(conn),
+      tabFromGrant: runtime.implementation,
+    });
+
+    const out = await lane({
+      url: SELLER_URL,
+      method: "GET",
+      externalFetch: vi.fn(async () => {
+        throw new Error("merchant response lost");
+      }) as typeof fetch,
+    }, live402Body());
+
+    expect(out.done).toBe(true);
+    const result = (out as { result: Record<string, any> }).result;
+    expect(result.status).toBe(0);
+    expect(result.error).toMatch(/reconcile the recorded FINAL reservation/i);
+    expect(result.error).not.toMatch(/call again/i);
+    expect(result.tab).toMatchObject({
+      state: "reconciliation_required",
+      retrySafe: false,
+      reservationCommitment: "finalized",
+    });
+    expect(runtime.rollbackVoucher).not.toHaveBeenCalled();
+    expect(findTab(g.record.counterparty, dir)).toMatchObject({
+      status: "reconciliation_required",
+      lastFinalV2ReservationVerified: true,
+    });
+  });
+
+  it("an after-reservation V2 signing error is terminal and preserves the exact obligation for reconciliation", async () => {
+    const g = makeGrant();
+    upsertTab(g.record, dir);
+    const conn = chainFor(g, sessionAccountData(g));
+    const merchant = acceptingSellerRouter();
+    const runtime = fakeTabFromGrant({
+      afterReservationError: "independent finalized readback timed out",
+    });
+    const lane = createTabLane({
+      ...laneDeps(conn),
+      tabFromGrant: runtime.implementation,
+    });
+
+    const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
+
+    expect(out.done).toBe(true);
+    expect((out as { result: Record<string, any> }).result).toMatchObject({
+      status: 409,
+      tab: {
+        state: "reconciliation_required",
+        retrySafe: false,
+        reservationCommitment: "finalized",
+      },
+    });
+    expect(merchant).not.toHaveBeenCalled();
+    const persisted = findTab(g.record.counterparty, dir)!;
+    expect(persisted.status).toBe("reconciliation_required");
+    expect(persisted.lastVoucherVersion).toBe(2);
+    expect(persisted.lastVoucherIncrementAtomic).toBe("10000");
+    expect(persisted.lastFinalV2ReservationVerified).toBe(false);
+  });
+
+  it("a provider timeout replaces stale receipt identity with the current voucher and an unverified marker", async () => {
+    const g = makeGrant();
+    upsertTab({
+      ...g.record,
+      lastFinalV2ReservationReceipt: {
+        providerReceiptId: "stale-receipt",
+        transaction: "STALE_TX",
+      } as FinalVoucherV2ReservationReceipt,
+      lastFinalV2ReservationVerified: true,
+    }, dir);
+    const conn = chainFor(g, sessionAccountData(g));
+    const merchant = acceptingSellerRouter();
+    const deps = laneDeps(conn);
+    const lane = createTabLane({
+      ...deps,
+      reserveFinalVoucherV2: vi.fn(async () => {
+        throw new Error("provider response lost after dispatch");
+      }),
+    });
+
+    const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
+
+    expect(out.done).toBe(true);
+    expect(merchant).not.toHaveBeenCalled();
+    const persisted = findTab(g.record.counterparty, dir)!;
+    expect(persisted.status).toBe("reconciliation_required");
+    expect(persisted.lastVoucherHeader).toBeTruthy();
+    expect(persisted.lastFinalV2ReservationReceipt).toBeUndefined();
+    expect(persisted.lastFinalV2ReservationVerified).toBe(false);
+  });
+
+  it("an outstanding V2 reservation recovered at construction is terminal and never permits Exact fallback", async () => {
+    const g = makeGrant();
+    upsertTab({
+      ...g.record,
+      lastVoucherHeader: "persisted-final-v2-voucher",
+      lastVoucherVersion: 2,
+      lastVoucherIncrementAtomic: "10000",
+    }, dir);
+    const tabFromGrant = vi.fn(async () => {
+      throw new Error(
+        "native_tab_v2_reservation_pending: the session already has an exact outstanding reservation of 10000",
+      );
+    }) as unknown as TabFromGrant;
+    const lane = createTabLane({
+      ...laneDeps(chainFor(g, sessionAccountData(g))),
+      tabFromGrant,
+    });
+
+    const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
+
+    expect(out.done).toBe(true);
+    expect((out as { result: Record<string, any> }).result).toMatchObject({
+      status: 409,
+      tab: {
+        state: "reconciliation_required",
+        retrySafe: false,
+      },
+    });
+    expect(findTab(g.record.counterparty, dir)).toMatchObject({
+      status: "reconciliation_required",
+      lastVoucherHeader: "persisted-final-v2-voucher",
+      lastVoucherVersion: 2,
+    });
+  });
+
+  it("persisted V2 evidence blocks Exact even when this process has no reservation provider", async () => {
+    const g = makeGrant();
+    upsertTab({
+      ...g.record,
+      lastVoucherHeader: "persisted-final-v2-voucher",
+      lastVoucherVersion: 2,
+      lastVoucherIncrementAtomic: "10000",
+    }, dir);
+    const tabFromGrant = vi.fn() as unknown as TabFromGrant;
+    const lane = createTabLane({
+      dataDir: dir,
+      connection: chainFor(g, sessionAccountData(g)),
+      facilitatorUrl: FAC,
+      getMaxAmountUsdc: () => 5,
+      tabFromGrant,
+      tabOpenInternalToken: "",
+    });
+
+    const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
+
+    expect(out.done).toBe(true);
+    expect((out as { result: Record<string, any> }).result).toMatchObject({
+      status: 409,
+      tab: { state: "reconciliation_required", retrySafe: false },
+    });
+    expect(tabFromGrant).not.toHaveBeenCalled();
+    expect(findTab(g.record.counterparty, dir)).toMatchObject({
+      status: "reconciliation_required",
+      lastVoucherHeader: "persisted-final-v2-voucher",
+      lastVoucherVersion: 2,
+    });
+  });
+
+  it("an unidentified runtime voucher contract fails closed before signing", async () => {
+    const g = makeGrant();
+    upsertTab(g.record, dir);
+    const conn = chainFor(g, sessionAccountData(g));
+    const runtime = fakeTabFromGrant();
+    const invalidTabFromGrant = vi.fn(async (options: TabFromGrantOptions) => {
+      const tab = await runtime.implementation(options);
+      return Object.assign(tab, { voucherVersion: undefined }) as unknown as Tab;
+    }) as unknown as TabFromGrant;
+    const merchant = acceptingSellerRouter();
+    const lane = createTabLane({
+      ...laneDeps(conn),
+      tabFromGrant: invalidTabFromGrant,
+    });
+
+    const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
+
+    expect(out.done).toBe(true);
+    expect((out as { result: Record<string, any> }).result).toMatchObject({
+      status: 500,
+      tab: { state: "runtime_contract_invalid", retrySafe: false },
+    });
+    expect(merchant).not.toHaveBeenCalled();
+  });
+
+  it("a historical V1 active record blocks automatic payment and demands explicit reapproval", async () => {
+    const g = makeGrant({
+      params: {
+        maxAmountAtomic: "5000000",
+        expiresAtUnix: NOW + 3600,
+        nonce: 42,
+        maxRevolvingCapacityAtomic: "5000000",
+      },
+    });
+    upsertTab(g.record, dir);
+    const lane = createTabLane(laneDeps(chainFor(g, sessionAccountData(g))));
+
+    const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
+
+    expect(out.done).toBe(true);
+    expect((out as { result: Record<string, any> }).result).toMatchObject({
+      status: 409,
+      tab: { state: "reapproval_required", used: false },
+    });
+    expect(String((out as { result: Record<string, any> }).result.error)).toContain("--rekey");
+    expect(findTab(g.record.counterparty, dir)!.status).toBe("reapproval_required");
+  });
+
+  it("a pre-reservation V1 signing refusal remains eligible for the exact one-shot path", async () => {
+    const g = makeGrant();
+    upsertTab(g.record, dir);
+    const runtime = fakeTabFromGrant({
+      voucherVersion: 1,
+      beforeReservationError: "historical_v1_local_refusal",
+    });
+    const lane = createTabLane({
+      ...laneDeps(chainFor(g, sessionAccountData(g))),
+      tabFromGrant: runtime.implementation,
+    });
+
+    const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
+
+    expect(out.done).toBe(false);
+    expect(String((out as { note: Record<string, unknown> }).note.reason)).toMatch(/paid exact instead/i);
   });
 
   it("a DEAD on-chain session (revoked/expired) marks the record dead and falls through to exact with a loud note", async () => {
     const g = makeGrant();
     upsertTab(g.record, dir);
     const conn = chainFor(g, sessionAccountData(g, { version: 0 }));
-    sellerRouter(tabMiddleware({
-      connection: conn, sellerPubkey: g.record.counterparty, perUnit: "0.01",
-      network: "solana:mainnet", settle: "on-close", facilitatorUrl: FAC,
-    }));
-
-    const lane = createTabLane(laneDeps(conn));
+    const tabFromGrant = vi.fn(async () => {
+      throw new Error("tab_session_not_live");
+    }) as unknown as TabFromGrant;
+    const lane = createTabLane({ ...laneDeps(conn), tabFromGrant });
     const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
 
     expect(out.done).toBe(false);
@@ -677,7 +1164,10 @@ describe("tabs/lane — tab-first payment", () => {
     const other = makeGrant();
     upsertTab({ ...g.record, sessionSecretKey: other.record.sessionSecretKey }, dir);
     const conn = chainFor(g, sessionAccountData(g));
-    const lane = createTabLane(laneDeps(conn));
+    const tabFromGrant = vi.fn(async () => {
+      throw new Error("tab_session_key_mismatch");
+    }) as unknown as TabFromGrant;
+    const lane = createTabLane({ ...laneDeps(conn), tabFromGrant });
     const out = await lane({ url: SELLER_URL, method: "GET" }, live402Body());
     expect(out.done).toBe(false);
     const rec = findTab(g.record.counterparty, dir)!;
@@ -724,8 +1214,9 @@ describe("x402Fetch seam — tab lane hook", () => {
     expect(result.tab).toMatchObject({ rail: "tab", used: false });
   });
 
-  it("a lane crash never breaks the paid path — loud note, exact continues", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => live402Response()));
+  it("an untyped lane crash is terminal because a V2 FINAL reservation may already exist", async () => {
+    const probe = vi.fn(async () => live402Response());
+    vi.stubGlobal("fetch", probe);
     const result = await x402Fetch(
       { url: SELLER_URL, method: "GET" },
       null,
@@ -734,8 +1225,49 @@ describe("x402Fetch seam — tab lane hook", () => {
         tabLane: async () => { throw new Error("lane exploded"); },
       },
     );
-    expect(result.status).toBe(402);
-    expect(String((result.tab as Record<string, unknown>).error)).toMatch(/lane exploded/);
+    expect(result).toMatchObject({
+      status: 502,
+      mode: "tab_error",
+      phase: "dispatch_unknown",
+      retryable: false,
+      error: "tab_lane_failed",
+      payment: {
+        dispatched: "unknown",
+        settled: "unknown",
+        retrySafe: false,
+      },
+    });
+    expect(String(result.message)).toMatch(/reconcile.*do not retry.*Exact/i);
+    expect(String(result.message)).toMatch(/lane exploded/i);
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
+  it("a corrupt custody store fails the paid path closed and is never overwritten", async () => {
+    upsertTab(makeGrant().record, dir);
+    const file = join(dir, "tabs.json");
+    require("node:fs").writeFileSync(file, "{corrupt", { mode: 0o600 });
+    const probe = vi.fn(async () => live402Response());
+    vi.stubGlobal("fetch", probe);
+
+    const result = await x402Fetch(
+      { url: SELLER_URL, method: "GET" },
+      null,
+      {
+        maxAmountUsdc: 5,
+        tabLane: createTabLane({ dataDir: dir }),
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: 502,
+      mode: "tab_error",
+      phase: "dispatch_unknown",
+      retryable: false,
+      error: "tab_lane_failed",
+    });
+    expect(String(result.message)).toMatch(/tab_custody_store_unreadable/);
+    expect(readFileSync(file, "utf8")).toBe("{corrupt");
+    expect(probe).toHaveBeenCalledTimes(1);
   });
 
   it("without a lane the behavior is byte-identical to before (no tab key)", async () => {
@@ -788,16 +1320,41 @@ describe("x402_fetch tool — per-call tab opt-out (the real escape hatch)", () 
 });
 
 describe("tabs/cli — close (settle the held receipt)", () => {
-  it("POSTs the persisted voucher to /tab/settle, prints the tx, clears the receipt", async () => {
+  it("POSTs the exact V2 increment and provider identity to /tab/settle, then clears the evidence", async () => {
     const g = makeGrant();
-    // A previously accepted voucher header (shape is all the facilitator needs).
-    const header = Buffer.from(JSON.stringify({
-      payload: { channelId: "ab".repeat(32), cumulativeAmount: "260000", sequenceNumber: 1 },
-      sessionPublicKey: Buffer.from(g.kp.publicKey).toString("hex"),
-      sessionRegistration: "cd".repeat(188),
-      sessionSignature: "ef".repeat(64),
-    })).toString("base64");
-    upsertTab({ ...g.record, lastVoucherHeader: header }, dir);
+    const voucher: SignedVoucher = {
+      payload: {
+        channelId: "ab".repeat(32),
+        cumulativeAmount: "260000",
+        sequenceNumber: 1,
+      },
+      sessionPublicKey: g.kp.publicKey,
+      sessionRegistration: new Uint8Array(188).fill(0xcd),
+      sessionSignature: new Uint8Array(64).fill(0xef),
+    };
+    const receipt = reservationReceipt({
+      network: "solana:mainnet",
+      programId: DEXTER_VAULT_PROGRAM_ID.toBase58(),
+      buyerSwigAddress: Keypair.generate().publicKey.toBase58(),
+      vaultPda: g.vault.toBase58(),
+      sessionPda: deriveSessionPda(g.vault, g.counterparty)[0].toBase58(),
+      seller: g.counterparty.toBase58(),
+      channelId: voucher.payload.channelId,
+      sessionNonce: CONTEXT_BOUND_V2_NONCE,
+      reservationAmountAtomic: "10000",
+      previousCumulativeAtomic: "250000",
+      voucherDigest: "close-digest",
+      idempotencyKey: "close-idempotency",
+      voucher,
+    });
+    upsertTab({
+      ...g.record,
+      lastVoucherHeader: voucherToHeader(voucher),
+      lastVoucherVersion: 2,
+      lastVoucherIncrementAtomic: "10000",
+      lastFinalV2ReservationReceipt: receipt,
+      lastFinalV2ReservationVerified: true,
+    }, dir);
 
     const calls: Array<{ url: string; body: any }> = [];
     vi.stubGlobal("fetch", vi.fn(async (url: unknown, init?: RequestInit) => {
@@ -812,12 +1369,16 @@ describe("tabs/cli — close (settle the held receipt)", () => {
     expect(settle).toBeDefined();
     expect(settle!.body).toMatchObject({
       channelId: "ab".repeat(32),
+      attemptedAmount: "10000",
       cumulativeAmount: "260000",
       sequenceNumber: 1,
+      providerReceiptId: receipt.providerReceiptId,
       network: "solana:mainnet",
     });
+    expect(settle!.body.lifecycleOperationId).toBeUndefined();
     expect(lines.join("\n")).toContain("SETTLE_TX_123");
     expect(findTab(g.record.counterparty, dir)!.lastVoucherHeader).toBeUndefined();
+    expect(findTab(g.record.counterparty, dir)!.lastFinalV2ReservationReceipt).toBeUndefined();
     // K-T4 atomic-replace copy: settle does not end the session, and the model
     // is atomic-replace — never the old "go manually revoke it" abandonment step.
     const out = lines.join("\n");
@@ -834,7 +1395,12 @@ describe("tabs/cli — close (settle the held receipt)", () => {
       sessionRegistration: "cd".repeat(188),
       sessionSignature: "ef".repeat(64),
     })).toString("base64");
-    upsertTab({ ...g.record, lastVoucherHeader: header }, dir);
+    upsertTab({
+      ...g.record,
+      lastVoucherHeader: header,
+      lastVoucherVersion: 1,
+      lastVoucherIncrementAtomic: "10000",
+    }, dir);
     vi.stubGlobal("fetch", vi.fn(async () =>
       jsonResponse({ error: "non_monotonic_cumulative" }, 409)));
 
@@ -842,6 +1408,30 @@ describe("tabs/cli — close (settle the held receipt)", () => {
     await cliTabClose(SELLER_URL, { dataDir: dir, facilitatorUrl: FAC, log: (s: string) => lines.push(s) });
     expect(lines.join("\n")).toMatch(/already/i);
     expect(findTab(g.record.counterparty, dir)!.lastVoucherHeader).toBeUndefined();
+  });
+
+  it("keeps a historical receipt when its exact increment is unknown instead of guessing from chain state", async () => {
+    const g = makeGrant();
+    const header = Buffer.from(JSON.stringify({
+      payload: { channelId: "ab".repeat(32), cumulativeAmount: "260000", sequenceNumber: 1 },
+      sessionPublicKey: Buffer.from(g.kp.publicKey).toString("hex"),
+      sessionRegistration: "cd".repeat(188),
+      sessionSignature: "ef".repeat(64),
+    })).toString("base64");
+    upsertTab({ ...g.record, lastVoucherHeader: header }, dir);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const lines: string[] = [];
+    await cliTabClose(SELLER_URL, {
+      dataDir: dir,
+      facilitatorUrl: FAC,
+      log: (s: string) => lines.push(s),
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(lines.join("\n")).toMatch(/will not guess/i);
+    expect(findTab(g.record.counterparty, dir)!.lastVoucherHeader).toBe(header);
   });
 
   it("with no held voucher there is nothing to settle — says so, changes nothing", async () => {

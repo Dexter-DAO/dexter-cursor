@@ -245,8 +245,9 @@ export type TabLaneOutcome =
  * A consumer-supplied tab lane. Receives the request and the parsed 402
  * requirements (`{ accepts, x402Version, resource }` — null when the 402
  * body carried no accepts) and decides per the TabLaneOutcome contract.
- * Expected failures must come back as outcomes, not throws; a throw is
- * caught and surfaced as a loud note while the exact path continues.
+ * Expected pre-sign failures must come back as outcomes, not throws. A throw
+ * has unknown phase: a V2 FINAL voucher may already be reserved, so x402Fetch
+ * treats it as terminal reconciliation and never falls through to Exact.
  */
 export type TabLaneHook = (
   request: TabLaneRequest,

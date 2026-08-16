@@ -30,7 +30,7 @@ the paywall first, then come back here).
 ## The one command
 
 ```bash
-npx @dexterai/opendexter@1.23.3 audition <server-url> --json
+npx @dexterai/opendexter@1.24.0-rc.0 audition <server-url> --json
 ```
 
 - Pass a **server origin** to audition every paid route on the server.

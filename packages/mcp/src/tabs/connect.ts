@@ -156,7 +156,23 @@ export async function cliTabConnect(url: string, opts: TabConnectOpts = {}): Pro
   const existing = findTab(counterparty, dir);
 
   let record: TabRecord;
-  if (existing && existing.status === "active" && !opts.rekey) {
+  if (existing?.status === "reconciliation_required") {
+    log(
+      `This tab has a FINAL voucher that still needs reconciliation. Opening a ` +
+        `replacement could hide or strand that obligation, so OpenDexter will ` +
+        `not re-key it yet. Run \`opendexter tab close ${url}\` or reconcile the ` +
+        `recorded reservation first.`,
+    );
+    return;
+  } else if (existing?.status === "reapproval_required" && !opts.rekey) {
+    log(
+      `This tab uses the retired voucher format. Settle or revoke it through ` +
+        `the wallet/deployment that opened it, then explicitly approve a new ` +
+        `V2 grant with:`,
+    );
+    log(`  opendexter tab connect ${url} --rekey`);
+    return;
+  } else if (existing && existing.status === "active" && !opts.rekey) {
     log(`A tab with this seller is already open (cap $${usd(existing.params!.maxAmountAtomic)}, `);
     log(`expires ${new Date(existing.params!.expiresAtUnix * 1000).toISOString()}).`);
     log(`Paid calls to it already ride the tab. \`opendexter tab list\` shows its state.`);
@@ -223,6 +239,28 @@ export async function cliTabConnect(url: string, opts: TabConnectOpts = {}): Pro
       continue;
     }
     if (found && found.live) {
+      if ((found.params.nonce >>> 31) !== 1) {
+        updateTab(
+          counterparty,
+          {
+            status: "reapproval_required",
+            vaultPda: found.vaultPda,
+            params: found.params,
+            sessionPda: found.sessionPda,
+            deadReason:
+              "native_tab_v1_migration_required: historical low-bit grant must be explicitly reapproved",
+          },
+          dir,
+        );
+        log("");
+        log(
+          `The approval found on chain uses the retired voucher format, so ` +
+            `OpenDexter did not activate it. Settle or revoke that historical ` +
+            `session, then run \`opendexter tab connect ${url} --rekey\` and ` +
+            `approve the new grant.`,
+        );
+        return;
+      }
       updateTab(
         counterparty,
         {

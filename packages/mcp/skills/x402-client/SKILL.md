@@ -1,126 +1,131 @@
 ---
 name: x402-client
-description: "Integrate x402 payments into any Node.js or browser application using @dexterai/x402/client. Trigger when the user wants to add x402 payment handling to their code, wrap fetch for automatic payments, create keypair wallets, build an x402 client, set up budget accounts for autonomous agents, or handle sponsored access recommendations."
+description: "Integrate one-shot x402 payments into a Node.js or browser application with @dexterai/x402/client. Trigger when the user wants to call a paid API, use payAndFetch, create application-owned wallets, set spending limits, inspect receipts, or handle sponsored recommendations."
 ---
 
 # @dexterai/x402 Client SDK
 
-Add automatic x402 payment handling to any application. The client detects 402 responses, signs a USDC payment, and retries, all transparently.
+Use the V6 one-shot client to probe an endpoint once, detect its x402 version,
+sign an accepted USDC payment, and send the paid request.
 
-This skill builds an independent application-owned SDK executor. It is not the
-OpenDexter MCP runtime, does not inherit an OpenDexter OAuth bearer or governed
-grant, and must never be used as a fallback for a disconnected or unavailable
-OpenDexter account-bound tool. Keep its wallet material out of agent-visible
-text.
+This is an independent application-owned executor. It is not the OpenDexter
+MCP runtime, does not inherit an OpenDexter OAuth bearer or governed grant, and
+must never become a fallback for a blocked OpenDexter operation. Keep private
+keys out of prompts, logs, tool output, and source control.
+
+## Install the tested V6 pair
+
+Use Node 22 or newer and install the exact Vault peer with the SDK:
 
 ```bash
-npm install @dexterai/x402
+npm install @dexterai/x402@6.0.0-rc.0 @dexterai/vault@0.43.1
 ```
 
-## Pattern 1: wrapFetch (simplest, recommended for Node.js)
-
-One function, wraps `fetch`, handles everything:
+## Canonical one-shot payment
 
 ```typescript
-import { wrapFetch } from '@dexterai/x402/client';
+import {
+  createEvmKeypairWallet,
+  createKeypairWallet,
+  payAndFetch,
+} from '@dexterai/x402/client';
 
-const x402Fetch = wrapFetch(fetch, {
-  walletPrivateKey: process.env.SOLANA_PRIVATE_KEY!,
-});
+const wallets = {
+  solana: await createKeypairWallet(process.env.SOLANA_PRIVATE_KEY!),
+  evm: await createEvmKeypairWallet(process.env.EVM_PRIVATE_KEY!),
+};
 
-const response = await x402Fetch('https://x402-api.example.com/data');
-const data = await response.json();
-```
-
-### Dual-chain support
-
-Pass both keys to pay on Solana or EVM chains automatically:
-
-```typescript
-const x402Fetch = wrapFetch(fetch, {
-  walletPrivateKey: process.env.SOLANA_PRIVATE_KEY!,
-  evmPrivateKey: process.env.EVM_PRIVATE_KEY,
-  preferredNetwork: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
-});
-```
-
-### Full WrapFetchOptions
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `walletPrivateKey` | string / number[] / Uint8Array | Solana private key (base58 or byte array) |
-| `evmPrivateKey` | string | EVM private key (hex with 0x prefix) |
-| `preferredNetwork` | string | CAIP-2 network to prefer when multiple options exist |
-| `facilitatorUrl` | string | Override facilitator (default: `https://x402.dexter.cash`) |
-| `rpcUrls` | Record<string, string> | Custom RPC URLs by network |
-| `maxAmountAtomic` | string | Reject payments exceeding this amount (safety limit) |
-| `verbose` | boolean | Enable debug logging |
-| `accessPass` | AccessPassClientConfig | Prefer time-limited passes over per-request payments |
-| `onPaymentRequired` | (requirements: PaymentAccept) => boolean \| Promise<boolean> | Called before signing. Return false to reject the payment. |
-
-## Pattern 2: createX402Client (Full Control)
-
-More configuration options, multi-chain wallets, custom adapters:
-
-```typescript
-import { createX402Client, createKeypairWallet } from '@dexterai/x402/client';
-
-const wallet = await createKeypairWallet(process.env.SOLANA_PRIVATE_KEY!);
-const client = createX402Client({
-  wallets: { solana: wallet },
-  preferredNetwork: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
-  maxAmountAtomic: '100000', // Max $0.10 per request
-  verbose: true,
-});
-
-const response = await client.fetch('https://x402-api.example.com/data');
-```
-
-### X402ClientConfig
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `wallets` | WalletSet | Wallets per chain (`{ solana, evm }`) |
-| `adapters` | ChainAdapter[] | Custom chain adapters (default: Solana + EVM) |
-| `preferredNetwork` | string | CAIP-2 network to prefer |
-| `rpcUrls` | Record<string, string> | Custom RPC URLs |
-| `maxAmountAtomic` | string | Max payment per request |
-| `fetch` | typeof fetch | Custom fetch implementation |
-| `verbose` | boolean | Debug logging |
-| `accessPass` | AccessPassClientConfig | Access pass configuration |
-| `onPaymentRequired` | (requirements) => boolean \| Promise<boolean> | Pre-payment callback |
-| `maxRetries` | number | Retry attempts for transient failures (default 0). Safe: EIP-3009 nonces prevent double payments. |
-| `retryDelayMs` | number | Base delay between retries in ms (default 500, doubles each attempt) |
-
-### Multi-chain with EVM
-
-```typescript
-import { createX402Client, createKeypairWallet, createEvmKeypairWallet } from '@dexterai/x402/client';
-
-const client = createX402Client({
-  wallets: {
-    solana: await createKeypairWallet(process.env.SOLANA_PRIVATE_KEY!),
-    evm: await createEvmKeypairWallet(process.env.EVM_PRIVATE_KEY!),
+const result = await payAndFetch(
+  'https://api.example.com/paid/data',
+  { method: 'GET' },
+  wallets,
+  {
+    maxAmountAtomic: '100000', // at most $0.10 USDC for this call
+    solanaRpcUrl: process.env.SOLANA_RPC_URL,
   },
-});
+);
+
+if (!result.ok) {
+  if (result.reason === 'payment_unconfirmed') {
+    throw new Error(`Payment may have settled; reconcile before retrying: ${result.detail}`);
+  }
+  throw new Error(`Payment failed before delivery: ${result.reason}: ${result.detail ?? ''}`);
+}
+
+if (!result.response) {
+  // paid:true with no response means settlement was confirmed but the
+  // merchant did not answer. Never turn this into an automatic second pay.
+  throw new Error('Payment settled, but the merchant returned no response');
+}
+
+const data = await result.response.json();
+console.log(data);
 ```
 
-### Browser with wallet adapters
+`payAndFetch` handles x402 V1 and V2. It returns a discriminated `PayResult`
+instead of throwing for expected payment failures:
+
+- `ok: true, paid: false`: the endpoint returned without requiring payment.
+- `ok: true, paid: true`: payment settled; `response` can still be absent if
+  the merchant never answered after settlement.
+- `ok: false, reason: 'timeout'`: no authorization was sent; a retry can be
+  safe after reviewing the request.
+- `ok: false, reason: 'payment_unconfirmed'`: authorization was sent and may
+  have settled. Do not blindly retry.
+
+### `PayAndFetchOptions`
+
+| Option | Meaning |
+|---|---|
+| `maxAmountAtomic` | Maximum atomic USDC allowed for this call |
+| `timeoutMs` | Deadline before payment dispatch; timeout here means no payment was sent |
+| `responseTimeoutMs` | Deadline after dispatch; uncertainty here must be reconciled, not retried |
+| `solanaRpcUrl` | RPC used to build or confirm a Solana one-shot payment |
+| `tab` | Existing compatible `Tab`; only use one created through the V6 reservation contract |
+
+There is no `preferredNetwork` option. The SDK selects a payable option from
+the merchant challenge and the wallets you supply.
+
+## Application-owned fetch helper
+
+If the application wants fetch-like ergonomics, own the wrapper explicitly:
 
 ```typescript
-import { createX402Client } from '@dexterai/x402/client';
+import { createKeypairWallet, payAndFetch } from '@dexterai/x402/client';
 
-const client = createX402Client({
-  wallets: {
-    solana: phantomWallet,  // from @solana/wallet-adapter
-    evm: wagmiWallet,       // from wagmi useAccount()
-  },
-});
+const solana = await createKeypairWallet(process.env.SOLANA_PRIVATE_KEY!);
+
+export async function x402Fetch(url: string, init: RequestInit = {}) {
+  const result = await payAndFetch(url, init, { solana }, {
+    maxAmountAtomic: '1000000',
+    solanaRpcUrl: process.env.SOLANA_RPC_URL,
+  });
+  if (!result.ok) throw new Error(`${result.reason}: ${result.detail ?? ''}`);
+  if (!result.response) throw new Error('payment settled without a merchant response');
+  return result.response;
+}
 ```
 
-## Budget Accounts (Autonomous Agents)
+Do not import `wrapFetch` or `createX402Client`; both were removed. V6's
+canonical one-shot entry point is `payAndFetch`.
 
-Give an AI agent a spending budget with per-request and hourly limits:
+## Browser wallets
+
+Pass compatible Solana and EVM wallet adapters directly in the `WalletSet`.
+Browser code must not read server private-key environment variables.
+
+```typescript
+const result = await payAndFetch(url, init, {
+  solana: solanaWalletAdapter,
+  evm: evmWalletAdapter,
+}, { maxAmountAtomic: '100000' });
+```
+
+## Budget accounts
+
+`createBudgetAccount` remains available for an independent application-owned
+agent. It maintains an in-memory ledger and enforces total, per-request,
+hourly, and domain limits.
 
 ```typescript
 import { createBudgetAccount } from '@dexterai/x402/client';
@@ -128,94 +133,37 @@ import { createBudgetAccount } from '@dexterai/x402/client';
 const agent = createBudgetAccount({
   walletPrivateKey: process.env.SOLANA_PRIVATE_KEY!,
   budget: {
-    total: '50.00',       // $50 total budget
-    perRequest: '1.00',   // max $1 per request
-    perHour: '10.00',     // max $10/hour
+    total: '50.00',
+    perRequest: '1.00',
+    perHour: '10.00',
   },
-  allowedDomains: ['api.example.com', 'data.example.com'],
+  allowedDomains: ['api.example.com'],
 });
 
 const response = await agent.fetch('https://api.example.com/data');
-console.log(agent.spent);       // '$0.05'
-console.log(agent.remaining);   // '$49.95'
-console.log(agent.payments);    // 1
+console.log(agent.spent, agent.remaining, agent.ledger);
 ```
 
-### BudgetAccount properties
+This local budget is not a Dexter Wallet grant and does not prove continuing
+OpenDexter authority.
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `fetch` | typeof fetch | Payment-aware fetch with budget enforcement |
-| `spent` | string | Total spent (formatted, e.g., '$12.34') |
-| `remaining` | string | Remaining budget (formatted) |
-| `payments` | number | Number of payments made |
-| `spentAmount` | number | Total spent as raw number |
-| `remainingAmount` | number | Remaining as raw number |
-| `ledger` | PaymentRecord[] | Full payment history |
-
-## Payment Receipts
-
-Access typed payment receipts after a successful x402 call:
+## Receipts and sponsored recommendations
 
 ```typescript
-import { getPaymentReceipt } from '@dexterai/x402/client';
+import {
+  fireImpressionBeacon,
+  getPaymentReceipt,
+  getSponsoredRecommendations,
+} from '@dexterai/x402/client';
 
-const response = await x402Fetch(url);
 const receipt = getPaymentReceipt(response);
-if (receipt) {
-  console.log(receipt.transaction);  // tx hash
-  console.log(receipt.network);      // CAIP-2 network
-  console.log(receipt.payer);        // payer address
-}
+if (receipt) console.log(receipt.transaction, receipt.network, receipt.payer);
+
+const recommendations = getSponsoredRecommendations(response);
+if (recommendations) await fireImpressionBeacon(response);
 ```
 
-## Sponsored Access (Ads for Agents)
-
-Extract sponsored recommendations from x402 payment responses:
-
-```typescript
-import { getSponsoredRecommendations, fireImpressionBeacon } from '@dexterai/x402/client';
-
-const response = await x402Fetch(url);
-const recs = getSponsoredRecommendations(response);
-if (recs) {
-  for (const rec of recs) {
-    console.log(`${rec.sponsor}: ${rec.description} (${rec.resourceUrl})`);
-  }
-  await fireImpressionBeacon(response); // Confirm delivery to ad network
-}
-```
-
-## Access Passes
-
-Pay once for time-limited unlimited access instead of per-request:
-
-```typescript
-const x402Fetch = wrapFetch(fetch, {
-  walletPrivateKey: process.env.SOLANA_PRIVATE_KEY!,
-  accessPass: {
-    preferTier: '1h',       // Prefer the 1-hour tier
-    maxSpend: '2.00',       // Don't spend more than $2
-    autoRenew: true,        // Auto-purchase when expired
-  },
-});
-```
-
-### AccessPassClientConfig
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `enabled` | boolean | Enable access pass mode (default true when config present) |
-| `preferTier` | string | Preferred tier ID (e.g., '1h') |
-| `preferDuration` | number | Preferred custom duration in seconds |
-| `maxSpend` | string | Maximum willing to spend in USD |
-| `autoRenew` | boolean | Auto-purchase when expired (default true) |
-
-The client caches the JWT access pass per host and sends it as `Authorization: Bearer <jwt>` on subsequent requests.
-
-## API Discovery
-
-Search the Dexter marketplace for paid APIs:
+## Discovery
 
 ```typescript
 import { capabilitySearch } from '@dexterai/x402/client';
@@ -226,58 +174,34 @@ for (const api of result.strongResults) {
 }
 ```
 
-## Error Handling
+## Native Tabs
 
-```typescript
-import { X402Error } from '@dexterai/x402/client';
+Native Tabs live under `@dexterai/x402/tab`, not the one-shot client. V6 buyer
+tabs require all of the following:
 
-try {
-  const res = await x402Fetch(url);
-} catch (err) {
-  if (err instanceof X402Error) {
-    // err.code is one of the X402ErrorCode values
-    // err.details has additional context
-    switch (err.code) {
-      // Client errors
-      case 'insufficient_balance':          // Wallet needs more USDC
-      case 'no_matching_payment_option':    // No wallet for available chains
-      case 'amount_exceeds_max':            // Exceeds maxAmountAtomic
-      case 'payment_rejected':              // Server rejected the payment
-      case 'missing_fee_payer':             // Solana option missing feePayer
-      case 'unsupported_network':           // No adapter for the required network
-      case 'wallet_not_connected':          // Wallet not connected
-      case 'user_rejected_signature':       // User declined signing
-      case 'transaction_build_failed':      // Failed to build payment tx
-      case 'rpc_timeout':                   // RPC call timed out
-      case 'facilitator_timeout':           // Facilitator didn't respond
-      // Server errors
-      case 'facilitator_verify_failed':     // Facilitator rejected verification
-      case 'facilitator_settle_failed':     // Settlement failed on-chain
-      // Access pass errors
-      case 'access_pass_expired':           // Pass expired
-      case 'access_pass_tier_not_found':    // Requested tier unavailable
-      case 'access_pass_exceeds_max_spend': // Tier costs more than maxSpend
-    }
-  }
-}
-```
+- a context-bound high-bit V2 session grant;
+- `Tab.voucherVersion === 2`;
+- a `reserveFinalVoucherV2` backend that returns a complete finalized receipt;
+- the SDK adapter's independent finalized transaction and post-state check;
+- serialized access to one live tab per buyer/seller pair.
 
-## Exports
+Never return a boolean acknowledgement from the reservation callback, never
+reconstruct a historical low-bit grant, and never fall through to another
+payment rail after V2 issuance may have started.
 
-| Export | Description |
-|--------|-------------|
-| `wrapFetch` | Wrap any fetch with x402 auto-pay |
-| `createX402Client` | Full-featured client with multi-chain support |
-| `getPaymentReceipt` | Get typed payment receipt from a response |
-| `createKeypairWallet` | Create Solana wallet from private key (async) |
-| `createEvmKeypairWallet` | Create EVM wallet from private key (async) |
-| `createBudgetAccount` | Autonomous agent with spending controls |
-| `capabilitySearch` | Semantic search over the x402 marketplace |
-| `getSponsoredRecommendations` | Extract sponsored recs from payment response |
-| `getSponsoredAccessInfo` | Get full sponsored-access extension data |
-| `fireImpressionBeacon` | Confirm sponsored rec delivery to ad network |
-| `X402Error` | Error class with `.code` for programmatic handling |
-| `DEXTER_FACILITATOR_URL` | `https://x402.dexter.cash` |
-| `SOLANA_MAINNET` | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` |
-| `BASE_MAINNET` | `eip155:8453` |
-| `USDC_MINT` | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` |
+## Current exports
+
+| Export | Purpose |
+|---|---|
+| `payAndFetch` | Canonical V1/V2 one-shot payment dispatcher |
+| `createKeypairWallet` | Application-owned Solana wallet |
+| `createEvmKeypairWallet` | Application-owned EVM wallet |
+| `buildV1PaymentHeader` | Build one V1 header without sending; for callers that own the HTTP flow |
+| `createBudgetAccount` | In-memory application budget wrapper |
+| `getPaymentReceipt` | Read a typed receipt from a response |
+| `capabilitySearch` | Search the x402 marketplace |
+| `getSponsoredRecommendations` | Read sponsored recommendations |
+| `getSponsoredAccessInfo` | Read sponsored-access metadata |
+| `fireImpressionBeacon` | Confirm recommendation delivery |
+| `DEXTER_FACILITATOR_URL` | Default Dexter facilitator URL |
+| `SOLANA_MAINNET`, `BASE_MAINNET`, `USDC_MINT` | Canonical network/asset constants |

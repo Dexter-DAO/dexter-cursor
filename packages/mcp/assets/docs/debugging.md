@@ -1,181 +1,146 @@
 ---
 name: x402-debugging
-description: "Diagnose x402 payment failures: facilitator health, error codes, balance issues, settlement timeouts, and protocol mismatches. Trigger when a payment fails, a 402 response is unexpected, settlement times out, or the user reports an x402 error."
+description: "Diagnose x402 payment failures: facilitator health, PayResult failures, balance issues, settlement uncertainty, Native Tab V2 reservation errors, and protocol mismatches. Trigger when a payment fails, a 402 response is unexpected, settlement times out, or the user reports an x402 error."
 ---
 
 # x402 Debugging Guide
 
 This is generic `@dexterai/x402` SDK and protocol guidance. An SDK wallet is
-independent and is not the OpenDexter MCP runtime. For OpenDexter, never add a
-local signer or retry an uncertain `x402_fetch`; use the connected
-`x402_wallet` authority view and reconcile the same intent with
-`x402_status`.
+independent from OpenDexter: it is not the OpenDexter MCP runtime and must
+never become that runtime's local payment fallback. For OpenDexter, never add
+a local signer or retry an uncertain `x402_fetch`; use the connected authority
+view and query `x402_status` with the same opaque intent.
 
-## Quick Diagnosis Checklist
+## First checks
 
-1. **Is the facilitator healthy?** `curl https://x402.dexter.cash/healthz`
-2. **Does it support the network?** `curl https://x402.dexter.cash/supported`
-3. **Does the wallet have funds?** Check USDC balance (the facilitator pays tx fees on all chains)
-4. **Is the network format correct?** v2 uses CAIP-2 (`solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`), not `"solana"`
-5. **Is the client handling 402?** Must use `wrapFetch`, `createX402Client`, or manual PAYMENT-SIGNATURE flow
-6. **Is the right scheme used?** All chains support `exact`. Some EVM chains also support `upto`. Check `/supported` for the full list.
+1. Confirm Node 22 or newer.
+2. Confirm the tested pair is installed together:
+   `@dexterai/x402@6.0.0-rc.0` and `@dexterai/vault@0.43.1`.
+3. Check facilitator health: `curl https://x402.dexter.cash/healthz`.
+4. Check advertised networks: `curl https://x402.dexter.cash/supported`.
+5. Inspect the merchant's original `402`, including `PAYMENT-REQUIRED` and its
+   raw `accepts` entries.
+6. Confirm the application uses `payAndFetch`; V6 does not export `wrapFetch`
+   or `createX402Client`.
+7. Confirm the application-owned wallet supports an accepted chain and holds
+   enough USDC.
 
-## Common Issues and Fixes
+## Common failures
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| 402 but no payment prompt | Client not handling 402 responses | Use `wrapFetch()` or `createX402Client()` from `@dexterai/x402/client` |
-| Payment verification fails | Wrong network format | Use CAIP-2 for v2: `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` |
-| "Insufficient balance" | Wallet lacks USDC | SDK: inspect the application-owned wallet. OpenDexter: use connected `x402_wallet` |
-| Settlement timeout | Solana RPC congestion | Increase `maxTimeoutSeconds`, check RPC health, or use `maxRetries` |
-| "Missing fee payer" | Solana accept missing `extra.feePayer` | Facilitator must provide `feePayer` in the accept |
-| "No matching payment option" | No wallet for available chains | Add wallet for the required chain (Solana or EVM) |
-| Backpressure rejection | Too many concurrent settlements | Wait and retry, or reduce concurrent requests |
-| "Amount exceeds max" | `maxAmountAtomic` safety limit hit | Increase the limit or use a cheaper endpoint |
-| Payment rejected after signing | Server rejected the signed tx | Check `errorReason` in the 402 response body |
-| Access pass expired | JWT token past `exp` claim | Client auto-renews with `autoRenew: true` |
-| "Unsupported network" | SDK doesn't have an adapter for this chain | Add the appropriate wallet (Solana or EVM) |
-| "User rejected signature" | User declined wallet signing prompt | Prompt user to try again, don't auto-retry |
-| "Transaction build failed" | Failed to construct the payment tx | Check wallet connection, RPC health, token accounts |
-| BSC payment fails | BSC USDC may lack Permit2 approval | Check facilitator `/supported` for BSC-specific requirements |
+| Symptom | Meaning | Action |
+|---|---|---|
+| Raw 402 comes back unchanged | The application never used the V6 payment dispatcher | Call `payAndFetch()` with a compatible wallet set |
+| `unsupported_network` | No supplied wallet supports the accepted network | Supply the correct Solana or EVM wallet |
+| `insufficient_funds` | The application wallet cannot cover the quoted payment | Fund or switch the reviewed wallet |
+| `no_payment_options` | The challenge has no option payable by this client | Do not manufacture a different scheme or destination |
+| `budget_exceeded` | `maxAmountAtomic` rejected the quote | Increase only after explicit review |
+| `merchant_rejected` | Merchant rejected the authorization or request | Inspect `detail` and the merchant response; do not loop |
+| `settlement_failed` | Merchant-side facilitator failed after accepting the payment shape | Reconcile with the merchant/facilitator |
+| `timeout` | The pre-dispatch deadline elapsed; no payment authorization was sent | Check RPC/transport health; review before retrying |
+| `payment_unconfirmed` | Authorization was sent and payment may have settled | Never blind-retry; inspect chain and merchant state |
+| `error` | Unexpected parsing, wallet, RPC, or transport error | Use `detail` and determine whether dispatch occurred |
 
-## Facilitator Endpoints
+## Inspect `PayResult`
+
+```typescript
+import { createKeypairWallet, payAndFetch } from '@dexterai/x402/client';
+
+const solana = await createKeypairWallet(process.env.SOLANA_PRIVATE_KEY!);
+const result = await payAndFetch(
+  url,
+  { method: 'GET' },
+  { solana },
+  {
+    maxAmountAtomic: '100000',
+    timeoutMs: 15_000,
+    responseTimeoutMs: 120_000,
+    solanaRpcUrl: process.env.SOLANA_RPC_URL,
+  },
+);
+
+if (!result.ok) {
+  console.error({ reason: result.reason, detail: result.detail });
+} else if (result.paid) {
+  console.log({
+    amountAtomic: result.amountPaid,
+    network: result.network.caip2,
+    transaction: result.txSignature,
+    merchantResponded: Boolean(result.response),
+  });
+} else {
+  console.log('endpoint returned without payment');
+}
+```
+
+Do not log private keys or full signed payment payloads. There is no V6
+`verbose`, `maxRetries`, or `retryDelayMs` one-shot option. Own observability
+and recovery in the application.
+
+## Two timeout phases
+
+`timeoutMs` covers the unpaid probe and build/sign phase. A `timeout` result
+means the dispatcher did not send a payment authorization.
+
+`responseTimeoutMs` starts after dispatch. If the merchant does not answer,
+the SDK attempts an on-chain confirmation. It returns a confirmed paid result
+when proof is available; otherwise it returns `payment_unconfirmed`. A second
+call can create a second authorization, so uncertainty must be reconciled.
+
+## Solana one-shot checks
+
+- V2 challenges use a CAIP-2 identifier such as
+  `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`.
+- V1 Solana exact offers must include `extra.feePayer`.
+- The fee payer pays transaction fees only. It must not be the token transfer
+  authority, source, or destination.
+- Pass a reliable `solanaRpcUrl` for blockhash, token-account, and settlement
+  confirmation reads.
+- Verify the accepted asset, amount, and `payTo`; never rewrite them from a
+  different offer.
+
+## Native Tab V2 checks
+
+V6 buyer tabs are a separate contract under `@dexterai/x402/tab`:
+
+- A low-bit grant must throw `native_tab_v1_migration_required`. Settle or
+  revoke it through the deployment that opened it, then explicitly approve a
+  new context-bound V2 grant.
+- `Tab.voucherVersion` is required. Missing or invalid values fail closed.
+- `reserveFinalVoucherV2` must receive the exact signed claim and return a
+  complete voucher-bound receipt at Solana `finalized` commitment.
+- The SDK then independently reads the finalized transaction and coherent
+  post-state through its own connection. A provider receipt alone is not proof.
+- Once V2 issuance may have started, signing, provider, merchant-timeout, and
+  merchant-402 failures are terminal for that call. Do not roll back the claim
+  or fall through to exact.
+- Serialize one live tab per buyer/seller pair. The V6 runtime rejects
+  concurrent sign and close operations.
+
+Useful failure prefixes include:
+
+| Prefix | Meaning |
+|---|---|
+| `native_tab_v2_reservation_fence_required` | Reservation callback or independent verifier is absent |
+| `native_tab_v2_reservation_receipt_invalid` | Receipt does not match the exact claim/session/economic identity |
+| `native_tab_v2_solana_reservation_invalid:*` | Finalized transaction does not prove the required Vault instruction and binding memo |
+| `native_tab_v2_reservation_post_state_*` | Finalized Vault/Session state does not prove the exact reservation |
+| `native_tab_v1_migration_required` | Historical buyer grant cannot be reconstructed in V6 |
+| `tab_operation_in_flight` | The application used one tab concurrently |
+
+## Raw facilitator diagnostics
+
+Use manual endpoints only for diagnosis; do not mutate or settle on behalf of
+a user without the exact authorization and request in scope.
 
 ```bash
-# Health check
 curl https://x402.dexter.cash/healthz
-
-# Supported networks and schemes
 curl https://x402.dexter.cash/supported
-# Returns: { kinds: [...], extensions: [...], signers: { ... } }
-# kinds include: exact (all chains), upto (Base/Polygon/Arbitrum), bridge (Solana/Base)
 
-# Manual verification
 curl -X POST https://x402.dexter.cash/verify \
-  -H "Content-Type: application/json" \
-  -d '{"paymentPayload": {...}, "paymentRequirements": {...}}'
-
-# Manual settlement
-curl -X POST https://x402.dexter.cash/settle \
-  -H "Content-Type: application/json" \
+  -H 'content-type: application/json' \
   -d '{"paymentPayload": {...}, "paymentRequirements": {...}}'
 ```
 
-## Error Code Reference
-
-### Facilitator Errors (returned by /verify and /settle)
-
-| Code | Meaning |
-|------|---------|
-| `insufficient_funds` | Payer wallet lacks tokens |
-| `invalid_network` | Network not supported by facilitator |
-| `invalid_payload` | Malformed payment payload |
-| `invalid_scheme` | Scheme not supported |
-| `invalid_x402_version` | Wrong protocol version (expected 2) |
-| `invalid_transaction_state` | On-chain tx reverted |
-| `unexpected_verify_error` | Internal facilitator error during verify |
-| `unexpected_settle_error` | Internal facilitator error during settle |
-
-### EVM-Specific Errors
-
-| Code | Meaning |
-|------|---------|
-| `invalid_exact_evm_payload_signature` | Bad EIP-712 signature |
-| `invalid_exact_evm_payload_authorization_valid_after` | Auth not yet valid |
-| `invalid_exact_evm_payload_authorization_valid_before` | Auth expired |
-| `invalid_exact_evm_payload_authorization_value` | Amount too low |
-| `invalid_exact_evm_payload_recipient_mismatch` | `to` != `payTo` |
-
-### Solana-Specific Errors
-
-| Code | Meaning |
-|------|---------|
-| `invalid_exact_svm_payload_instruction_layout` | Wrong instruction order/count |
-| `invalid_exact_svm_payload_fee_payer_exposed` | Fee payer in instruction accounts |
-| `invalid_exact_svm_payload_destination_mismatch` | ATA doesn't match payTo/asset |
-| `invalid_exact_svm_payload_amount_mismatch` | Transfer amount != required |
-| `invalid_exact_svm_payload_compute_unit_exceeded` | CU price > 5 lamports |
-
-### SDK Error Codes (X402Error)
-
-These are thrown by the client SDK (`@dexterai/x402/client`):
-
-| Code | Context | Meaning |
-|------|---------|---------|
-| `missing_payment_required_header` | Client | Server sent 402 without PAYMENT-REQUIRED header |
-| `invalid_payment_required` | Client | Could not decode PAYMENT-REQUIRED header |
-| `unsupported_network` | Client | No adapter for the required chain |
-| `no_matching_payment_option` | Client | No connected wallet for available networks |
-| `missing_fee_payer` | Client | Solana option missing feePayer in extra |
-| `missing_decimals` | Client | Payment option missing decimals in extra |
-| `missing_amount` | Client | Payment option has no amount field |
-| `amount_exceeds_max` | Client | Payment exceeds maxAmountAtomic |
-| `insufficient_balance` | Client | Wallet USDC balance too low |
-| `wallet_missing_sign_transaction` | Client | Wallet doesn't implement signTransaction |
-| `wallet_not_connected` | Client | Wallet not connected |
-| `wallet_disconnected` | Client | Wallet disconnected during payment |
-| `user_rejected_signature` | Client | User declined the signing prompt |
-| `transaction_build_failed` | Client | Failed to construct the payment transaction |
-| `payment_rejected` | Client | Server rejected the signed payment |
-| `rpc_timeout` | Client | RPC call timed out |
-| `facilitator_timeout` | Client | Facilitator didn't respond in time |
-| `invalid_payment_signature` | Server | Could not decode client's payment signature |
-| `facilitator_verify_failed` | Server | Facilitator returned invalid for verify |
-| `facilitator_settle_failed` | Server | Settlement failed on-chain |
-| `facilitator_request_failed` | Server | HTTP request to facilitator failed |
-| `no_matching_requirement` | Server | Client's accepted option doesn't match any server requirement |
-| `access_pass_expired` | Access | Pass JWT has expired |
-| `access_pass_invalid` | Access | Pass JWT signature or claims invalid |
-| `access_pass_tier_not_found` | Access | Requested tier doesn't exist on the server |
-| `access_pass_exceeds_max_spend` | Access | Tier price exceeds client's maxSpend |
-
-## Debugging wrapFetch
-
-Enable verbose logging to see the full payment flow:
-
-```typescript
-const x402Fetch = wrapFetch(fetch, {
-  walletPrivateKey: process.env.SOLANA_PRIVATE_KEY!,
-  verbose: true, // Logs: request → 402 → balance check → sign → retry → result
-});
-```
-
-### Pre-payment callback
-
-Use `onPaymentRequired` to inspect or reject payments before signing:
-
-```typescript
-const x402Fetch = wrapFetch(fetch, {
-  walletPrivateKey: process.env.SOLANA_PRIVATE_KEY!,
-  onPaymentRequired: (requirements) => {
-    const amount = Number(requirements.amount) / 1e6;
-    console.log(`About to pay $${amount} on ${requirements.network}`);
-    return amount <= 1.0; // Reject payments over $1
-  },
-});
-```
-
-### Retry support
-
-For transient failures (network errors, 502/503), use retry:
-
-```typescript
-const client = createX402Client({
-  wallets,
-  maxRetries: 2,      // 2 retries after initial attempt
-  retryDelayMs: 500,  // 500ms, 1000ms between retries
-  verbose: true,
-});
-```
-
-This SDK retry option is not an OpenDexter recovery path. Never retry an
-uncertain OpenDexter fetch; query `x402_status` for the same intent instead.
-
-## Fee Payer Safety (Solana)
-
-The facilitator's fee payer must NOT:
-- Appear in any instruction's `accounts` array
-- Be the transfer `authority` or `source`
-- Be used for anything except paying transaction fees
-
-If you see `invalid_exact_svm_payload_fee_payer_exposed`, the transaction incorrectly includes the fee payer in an instruction.
+Preserve the original challenge, signed payload digest, merchant response,
+transaction signature, and timestamps. A health response proves service
+availability, not that a particular payment settled.

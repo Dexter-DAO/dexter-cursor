@@ -14,10 +14,14 @@ OPENDXTER_HOSTED_SOURCE_ROOT=../dexter-mcp \
   node --test tests/opendexter-package-contract.test.mjs
 ```
 
-The stable `@dexterai/opendexter@1.23.3` candidate pins the reconciled public
-train `@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`, and
-`@dexterai/x402-mcp-tools@0.8.2` through one canonical root lock. Public
-`1.23.2` is immutable on npm; `1.23.3` is not yet published. The protected
+The `@dexterai/opendexter@1.24.0-rc.0` source candidate pins
+`@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`,
+`@dexterai/x402-mcp-tools@0.9.0-rc.0`, `@dexterai/x402@6.0.0-rc.0`, and
+`@dexterai/vault@0.43.1` through one canonical Node.js 22 root lock. Public
+`1.23.3` is immutable on npm; neither the OpenDexter nor x402 MCP tools RC is
+published. The maintained discovery alias is also advanced to
+`@dexterai/x402-discovery@1.1.0-rc.0` and pins this exact OpenDexter candidate.
+Every RC manifest is `next`-only. The protected
 `opendexter-v1.23.0` tag records a workflow that stopped before artifact
 creation, upload, or npm publication; it is not a registry release. The
 checked-in public hosted receipt pins the accepted live MCP release at
@@ -26,8 +30,8 @@ checked-in public hosted receipt pins the accepted live MCP release at
 `43f40ec43fa81ff9f3c82e4dbb9dc700015341a4a86b80372cdde4713eacd3cd`, and
 descriptor SHA-256
 `52a10cdab9391abec0422c86616a10d3669ab0a16fba8a2d8082281a21624d7c`.
-This receipt refresh is source evidence only; it does not tag or publish the
-local package.
+This receipt refresh and the V6 migration are source evidence only; they do
+not tag, publish, deploy, or exercise the local package against a live seller.
 
 The local MCP exposes exactly seven hosted-runtime proxy tools. It never reads
 or creates a local signer for payment. Existing `wallet.json` files remain
