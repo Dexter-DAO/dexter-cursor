@@ -843,7 +843,7 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   const mcp = await readJson(resolve(repoRoot, "mcp.json"));
   assert.equal(workspace.packageManager, "npm@10.9.3");
   assert.equal(workspace.engines.node, ">=20");
-  assert.equal(pkg.version, "1.23.2");
+  assert.equal(pkg.version, "1.23.3");
   assert.equal(pkg.engines.node, ">=20");
   assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "1.30.0");
   assert.equal(pkg.dependencies["@modelcontextprotocol/ext-apps"], "1.7.5");
@@ -859,7 +859,7 @@ test("local package candidate pins its runtime and stdio discovery identity", as
     mcpServers: {
       opendexter: {
         command: "npx",
-        args: ["-y", "@dexterai/opendexter@1.23.2"],
+        args: ["-y", "@dexterai/opendexter@1.23.3"],
       },
     },
   });
@@ -867,15 +867,16 @@ test("local package candidate pins its runtime and stdio discovery identity", as
 
 test("release changelog carries stable hosted and candidate local identities", async () => {
   const changelog = await readFile(resolve(repoRoot, "CHANGELOG.md"), "utf8");
-  const currentRelease = changelog.slice(0, changelog.indexOf("## 2026-08-01"));
+  const currentRelease = changelog.slice(0, changelog.indexOf("## 2026-08-05"));
   assert.match(changelog, /Codex `0\.5\.0`/);
   assert.match(changelog, /Claude Code `2\.1\.0`/);
-  assert.match(currentRelease, /`@dexterai\/opendexter@1\.23\.2`/);
+  assert.match(currentRelease, /`@dexterai\/opendexter@1\.23\.3`/);
   assert.match(currentRelease, /`@dexterai\/mcp-instructions@2\.4\.1`/);
   assert.match(currentRelease, /`@dexterai\/x402-core@1\.5\.2`/);
   assert.match(currentRelease, /`@dexterai\/x402-mcp-tools@0\.8\.2`/);
-  assert.match(currentRelease, /remains unpublished/i);
-  assert.match(currentRelease, /hosted refresh remains pending/);
+  assert.match(currentRelease, /Public `@dexterai\/opendexter@1\.23\.2` is immutable on npm/);
+  assert.match(currentRelease, /`@dexterai\/opendexter@1\.23\.3`[\s\S]*remains\s+unpublished/i);
+  assert.match(currentRelease, /Re-materialized the public hosted receipt/);
 });
 
 test("release train freezes full descriptors and a post-deploy novice suite", async () => {
