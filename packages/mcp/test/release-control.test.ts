@@ -229,14 +229,14 @@ describe("coordinated publish policy", () => {
     const stableAttestation = attestation();
     stableAttestation.package = {
       ...stableAttestation.package,
-      version: "1.23.2",
+      version: "1.23.3",
       releaseChannel: "stable",
       distTag: "latest",
     };
     expect(verifyPublishPolicy({
       manifest: {
         name: "@dexterai/opendexter",
-        version: "1.23.2",
+        version: "1.23.3",
         publishConfig: { tag: "latest" },
       },
       attestation: stableAttestation,
@@ -698,7 +698,7 @@ describe("exact package provenance", () => {
     const locked = rootLock.packages?.["packages/mcp"];
 
     const exactTrain = {
-      version: "1.23.2",
+      version: "1.23.3",
       instructions: "2.4.1",
       core: "1.5.2",
       tools: "0.8.2",

@@ -187,7 +187,7 @@ describe("docs resources", () => {
 
   it("keeps the current release acceptance on the hosted opaque-intent contract", () => {
     expect(releaseAcceptance).toMatch(
-      /stable `@dexterai\/opendexter@1\.23\.2` source candidate/i,
+      /stable `@dexterai\/opendexter@1\.23\.3` source candidate/i,
     );
     expect(
       namedTools(releaseAcceptance).filter((name) => name !== "dexter_surface"),
@@ -196,7 +196,7 @@ describe("docs resources", () => {
     expect(releaseAcceptance).toContain("maxAmountAtomic");
     expect(releaseAcceptance).toMatch(/hosted governed runtime/i);
     expect(releaseAcceptance).toMatch(/never selected as a payer or fallback/i);
-    expect(releaseAcceptance).toMatch(/does not claim that `1\.23\.2` is published/i);
+    expect(releaseAcceptance).toMatch(/does not claim that `1\.23\.3` is published/i);
     for (const retired of RETIRED_PURCHASE_CONTRACT) {
       expect(releaseAcceptance).not.toContain(retired);
     }
@@ -255,7 +255,7 @@ describe("docs resources", () => {
 
   it("documents the pinned same-intent CLI status recovery command", () => {
     expect(packageReadme).toContain(
-      "npx @dexterai/opendexter@1.23.2 status",
+      "npx @dexterai/opendexter@1.23.3 status",
     );
     expect(packageReadme).toContain("--intent-id \"<same-opaque-intent-id>\"");
     expect(packageReadme).toContain("`noRetry`");

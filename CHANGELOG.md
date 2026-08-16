@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-16 — stable 1.23.3 governed x402 payment authority
+
+- Updated the connected wallet projection to accept only the hosted governed
+  payment-authority v2 contract: agent authority for Solana-mainnet USDC,
+  action `pay`, protocol `x402` version `2`, and the exact ordered scheme set
+  `exact`, `tab` for any valid x402 seller.
+- Kept the client fail-closed for owner authority, the legacy v1/`send`/
+  `x402-exact-v2` tuple, missing or future protocol versions, and partial,
+  reordered, Bridge, or otherwise widened scheme sets. Wallet balances and
+  connector authentication still never imply payment authority.
+- Re-materialized the public hosted receipt from current
+  `https://open.dexter.cash/health`; it reproduces the already accepted hosted
+  MCP commit, tree, source archive, and public tool/OAuth descriptor exactly.
+- Preserved the immutable dependency train at
+  `@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`, and
+  `@dexterai/x402-mcp-tools@0.8.2` through the canonical root lock.
+- Public `@dexterai/opendexter@1.23.2` is immutable on npm.
+  `@dexterai/opendexter@1.23.3` is the new source candidate and remains
+  unpublished until its protected release gates, clean install, and registry
+  reconciliation complete.
+
 ## 2026-08-05 — stable 1.23.2 governed-runtime convergence
 
 - Replaced the local OpenDexter payment executor with one OAuth-connected
@@ -18,10 +39,9 @@
 - Corrected method truth for hosted probes: non-GET `x402_check` and
   `x402_access` requests may cause seller-side effects and require separate
   explicit request authorization before any later payment approval.
-- Public `@dexterai/opendexter@1.23.1` remains immutable.
-  `@dexterai/opendexter@1.23.2` is the new source candidate and remains
-  unpublished until its protected release gates, clean installs, and registry
-  reconciliation complete.
+- Public `@dexterai/opendexter@1.23.1` remains immutable. Version `1.23.2`
+  completed its protected release gates and is now the immutable public npm
+  release superseded by the `1.23.3` source candidate above.
 
 ## 2026-08-04 — stable 1.23.1 release recovery
 

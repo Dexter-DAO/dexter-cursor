@@ -14,10 +14,10 @@ OPENDXTER_HOSTED_SOURCE_ROOT=../dexter-mcp \
   node --test tests/opendexter-package-contract.test.mjs
 ```
 
-The stable `@dexterai/opendexter@1.23.2` candidate pins the reconciled public
+The stable `@dexterai/opendexter@1.23.3` candidate pins the reconciled public
 train `@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`, and
 `@dexterai/x402-mcp-tools@0.8.2` through one canonical root lock. Public
-`1.23.1` remains immutable; `1.23.2` is not yet published. The protected
+`1.23.2` is immutable on npm; `1.23.3` is not yet published. The protected
 `opendexter-v1.23.0` tag records a workflow that stopped before artifact
 creation, upload, or npm publication; it is not a registry release. The
 checked-in public hosted receipt pins the accepted live MCP release at
