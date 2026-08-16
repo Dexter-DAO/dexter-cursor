@@ -220,7 +220,7 @@ describe("connect/wallet — refreshVaultToken", () => {
 describe("connect/wallet — governed runtime authority", () => {
   const NOW = Date.parse("2026-08-05T00:00:30.000Z");
   const exactEvidence = {
-    namespace: "dexter-governed-agent-surface-authority/v1",
+    namespace: "dexter-governed-agent-surface-authority/v2",
     mode: "bounded_payment_authority",
     active: true,
     inactiveReason: null,
@@ -238,8 +238,10 @@ describe("connect/wallet — governed runtime authority", () => {
     scopes: {
       network: "solana-mainnet",
       assetId: "usdc",
-      action: "send",
-      protocolId: "x402-exact-v2",
+      action: "pay",
+      protocolId: "x402",
+      protocolVersion: 2,
+      allowedSchemes: ["exact", "tab"],
       counterpartyScope: "any-valid-x402-seller",
     },
     capacity: {
@@ -266,7 +268,7 @@ describe("connect/wallet — governed runtime authority", () => {
     fallback: false,
   };
 
-  it("projects the exact v1 evidence tuple without inferring from balances", () => {
+  it("projects the exact v2 payment-authority tuple without inferring from balances", () => {
     const status = projectRuntimeAuthorityStatus({
       balances: { usdc: 12.34 },
       authority: exactEvidence,
@@ -290,7 +292,12 @@ describe("connect/wallet — governed runtime authority", () => {
         aggregateAmountAtomic: "7750000",
       },
       expiresAt: "2026-08-06T00:00:00.000Z",
-      scopes: { protocolId: "x402-exact-v2" },
+      scopes: {
+        action: "pay",
+        protocolId: "x402",
+        protocolVersion: 2,
+        allowedSchemes: ["exact", "tab"],
+      },
       activeRole: { status: "active", roleId: 7 },
       revocation: { revoked: false },
       fallback: { active: false, automatic: false },
@@ -299,7 +306,7 @@ describe("connect/wallet — governed runtime authority", () => {
       .toMatchObject({ status: "unavailable", active: null, grantId: null });
     expect(projectRuntimeAuthorityStatus({
       authority: {
-        namespace: "dexter-governed-agent-surface-authority/v1",
+        namespace: "dexter-governed-agent-surface-authority/v2",
         mode: "bounded_payment_authority",
         active: true,
       },
@@ -320,6 +327,76 @@ describe("connect/wallet — governed runtime authority", () => {
       status: "unavailable",
       active: null,
       reason: "governed_authority_evidence_incomplete",
+    });
+  });
+
+  it.each([
+    ["owner principal", {
+      ...exactEvidence,
+      principal: { ...exactEvidence.principal, actor: "owner" },
+    }],
+    ["legacy v1 evidence", {
+      ...exactEvidence,
+      namespace: "dexter-governed-agent-surface-authority/v1",
+    }],
+    ["ordinary send authority", {
+      ...exactEvidence,
+      scopes: { ...exactEvidence.scopes, action: "send" },
+    }],
+    ["legacy combined protocol name", {
+      ...exactEvidence,
+      scopes: { ...exactEvidence.scopes, protocolId: "x402-exact-v2" },
+    }],
+    ["missing protocol version", {
+      ...exactEvidence,
+      scopes: {
+        network: "solana-mainnet",
+        assetId: "usdc",
+        action: "pay",
+        protocolId: "x402",
+        allowedSchemes: ["exact", "tab"],
+        counterpartyScope: "any-valid-x402-seller",
+      },
+    }],
+    ["future protocol version", {
+      ...exactEvidence,
+      scopes: { ...exactEvidence.scopes, protocolVersion: 3 },
+    }],
+    ["missing scheme set", {
+      ...exactEvidence,
+      scopes: {
+        network: "solana-mainnet",
+        assetId: "usdc",
+        action: "pay",
+        protocolId: "x402",
+        protocolVersion: 2,
+        counterpartyScope: "any-valid-x402-seller",
+      },
+    }],
+    ["reordered scheme set", {
+      ...exactEvidence,
+      scopes: { ...exactEvidence.scopes, allowedSchemes: ["tab", "exact"] },
+    }],
+    ["Bridge scheme", {
+      ...exactEvidence,
+      scopes: { ...exactEvidence.scopes, allowedSchemes: ["exact", "tab", "bridge"] },
+    }],
+    ["future scheme", {
+      ...exactEvidence,
+      scopes: { ...exactEvidence.scopes, allowedSchemes: ["exact", "tab", "future"] },
+    }],
+    ["partial scheme set", {
+      ...exactEvidence,
+      scopes: { ...exactEvidence.scopes, allowedSchemes: ["exact"] },
+    }],
+    ["wrong seller scope", {
+      ...exactEvidence,
+      scopes: { ...exactEvidence.scopes, counterpartyScope: "named-seller" },
+    }],
+  ])("fails closed for %s", (_label, authority) => {
+    expect(projectRuntimeAuthorityStatus({ authority }, () => NOW)).toMatchObject({
+      status: "unavailable",
+      active: null,
     });
   });
 

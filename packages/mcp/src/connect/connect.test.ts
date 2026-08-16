@@ -234,7 +234,12 @@ describe("connect/connect — status + disconnect", () => {
           aggregateAmountAtomic: "7750000",
         },
         expiresAt: "2026-08-06T00:00:00.000Z",
-        scopes: { protocolId: "x402-exact-v2" },
+        scopes: {
+          action: "pay",
+          protocolId: "x402",
+          protocolVersion: 2,
+          allowedSchemes: ["exact", "tab"],
+        },
         activeRole: { status: "active", roleId: 7 },
         revocation: { revoked: false, manageUrl: "https://dexter.cash/wallet" },
         fallback: {
@@ -243,7 +248,7 @@ describe("connect/connect — status + disconnect", () => {
           active: false,
           automatic: false,
         },
-        evidenceNamespace: "dexter-governed-agent-surface-authority/v1",
+        evidenceNamespace: "dexter-governed-agent-surface-authority/v2",
         reason: null,
       }),
     });

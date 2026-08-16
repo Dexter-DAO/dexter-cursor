@@ -28,6 +28,13 @@ const TOKEN_PATH = "/api/connector/oauth/token";
 /** Bearer-authenticated read-only authority evidence; never accepts identity input. */
 export const GOVERNED_AUTHORITY_STATUS_PATH =
   "/api/connector/oauth/authority";
+/** Exact hosted authority contract accepted by this client. */
+export const GOVERNED_AGENT_SURFACE_AUTHORITY_NAMESPACE =
+  "dexter-governed-agent-surface-authority/v2" as const;
+export const GOVERNED_X402_PAYMENT_PROTOCOL_ID = "x402" as const;
+export const GOVERNED_X402_PAYMENT_PROTOCOL_VERSION = 2 as const;
+export const GOVERNED_X402_PAYMENT_ALLOWED_SCHEMES =
+  ["exact", "tab"] as const;
 /** The client_id the connector rail knows this CLI by (matches connect.ts). */
 const CLIENT_ID = "opendexter-cli";
 /**
@@ -135,6 +142,14 @@ function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function exactPaymentSchemes(value: unknown): boolean {
+  return Array.isArray(value)
+    && value.length === GOVERNED_X402_PAYMENT_ALLOWED_SCHEMES.length
+    && value.every(
+      (scheme, index) => scheme === GOVERNED_X402_PAYMENT_ALLOWED_SCHEMES[index],
+    );
+}
+
 /**
  * Project only the exact governed-authority evidence contract. A wallet
  * balance, connect token, or arbitrary `authority` object is never promoted to
@@ -154,7 +169,7 @@ export function projectRuntimeAuthorityStatus(
   const evidence = candidates
     .map(objectValue)
     .find((candidate) =>
-      candidate?.namespace === "dexter-governed-agent-surface-authority/v1"
+      candidate?.namespace === GOVERNED_AGENT_SURFACE_AUTHORITY_NAMESPACE
     ) ?? null;
   const fallback = {
     available: false as const,
@@ -228,7 +243,7 @@ export function projectRuntimeAuthorityStatus(
     typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
   const exactPrincipal =
     principal !== null
-    && stringValue(principal.actor) !== null
+    && principal.actor === "agent"
     && stringValue(principal.vaultPda) !== null
     && stringValue(principal.walletAddress) !== null
     && stringValue(principal.agentId) !== null;
@@ -274,8 +289,10 @@ export function projectRuntimeAuthorityStatus(
     && authorityUnexpired
     && scopesObject?.network === "solana-mainnet"
     && scopesObject.assetId === "usdc"
-    && scopesObject.action === "send"
-    && scopesObject.protocolId === "x402-exact-v2"
+    && scopesObject.action === "pay"
+    && scopesObject.protocolId === GOVERNED_X402_PAYMENT_PROTOCOL_ID
+    && scopesObject.protocolVersion === GOVERNED_X402_PAYMENT_PROTOCOL_VERSION
+    && exactPaymentSchemes(scopesObject.allowedSchemes)
     && scopesObject.counterpartyScope === "any-valid-x402-seller"
     && evidence.revoked === false
     && exactActiveRole
@@ -327,7 +344,7 @@ export function projectRuntimeAuthorityStatus(
       manageUrl: "https://dexter.cash/wallet",
     },
     fallback,
-    evidenceNamespace: "dexter-governed-agent-surface-authority/v1",
+    evidenceNamespace: GOVERNED_AGENT_SURFACE_AUTHORITY_NAMESPACE,
     reason:
       authorityExpired
         ? "governed_authority_expired"

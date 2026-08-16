@@ -328,7 +328,7 @@ describe("local MCP tool registration", () => {
       content: [{ type: "text" as const, text: "{}" }],
       structuredContent: toolName === "x402_wallet" ? {
         authority: {
-          namespace: "dexter-governed-agent-surface-authority/v1",
+          namespace: "dexter-governed-agent-surface-authority/v2",
           mode: "bounded_payment_authority",
           active: true,
           inactiveReason: null,
@@ -346,8 +346,10 @@ describe("local MCP tool registration", () => {
           scopes: {
             network: "solana-mainnet",
             assetId: "usdc",
-            action: "send",
-            protocolId: "x402-exact-v2",
+            action: "pay",
+            protocolId: "x402",
+            protocolVersion: 2,
+            allowedSchemes: ["exact", "tab"],
             counterpartyScope: "any-valid-x402-seller",
           },
           capacity: {
