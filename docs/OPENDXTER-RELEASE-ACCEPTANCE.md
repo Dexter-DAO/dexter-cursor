@@ -1,9 +1,10 @@
 # OpenDexter release acceptance map
 
-Status: `@dexterai/opendexter@1.24.0-rc.0` is a Node.js 22 x402 V6 source
-candidate. Public `1.23.3` is immutable on npm; `1.24.0-rc.0` and its
-`@dexterai/x402-mcp-tools@0.9.0-rc.0` companion have not been published. This
-document records inclusion and integration boundaries; it is not deployment,
+Status: `@dexterai/opendexter@1.24.0-rc.1` is a Node.js 22 x402 V6 source
+candidate. Public `1.23.3` is immutable on npm, and
+`@dexterai/x402-mcp-tools@0.9.0-rc.0` is published under `next` while `latest`
+remains `0.8.2`. OpenDexter `1.24.0-rc.1` is not yet published. This document
+records inclusion and integration boundaries; it is not deployment,
 registry-install, or live-host proof. The checked-in
 hosted receipt names the accepted public MCP release at
 `7e7b3d0d49459567fba66531e8e2f7daa83d5587`, tree
@@ -19,7 +20,11 @@ version `1.23.0` remains absent from npm. Public `1.23.1` is the immutable
 cache-invariant recovery release. Public `1.23.2` moved the local runtime to
 the hosted governed x402 authority exclusively. Public `1.23.3` kept that
 dependency train and recognizes only its exact v2 payment-authority contract.
-The `1.24.0-rc.0` source candidate adds the local x402 V6 and Native Tab V2
+The protected `opendexter-v1.24.0-rc.0` tag is also an immutable failed-release
+receipt: its workflow rejected a stale `latest` release-policy pin before
+building or publishing, and that npm version remains absent. The reviewed
+`1.24.0-rc.1` candidate binds its prerelease workflow explicitly to `next`.
+The `1.24.0-rc.1` source candidate adds the local x402 V6 and Native Tab V2
 migration without changing the accepted hosted MCP receipt.
 
 ## Frozen release-candidate surfaces
@@ -51,16 +56,17 @@ of the same hosted workflow files. Both point to the one hosted connector at
 or revives hosted card tools. Source packaging is not proof that an existing
 app-only ChatGPT installation has been updated, submitted, or published.
 
-The local package candidate is `@dexterai/opendexter@1.24.0-rc.0` on Node.js
+The local package candidate is `@dexterai/opendexter@1.24.0-rc.1` on Node.js
 22 or newer. Its coordinated source train is:
 
 - `@dexterai/mcp-instructions@2.4.1` — published and reconciled;
 - `@dexterai/x402-core@1.5.2` — published and reconciled;
 - `@dexterai/x402@6.0.0-rc.2` — published on the `next` dist-tag;
 - `@dexterai/vault@0.43.2` — published and required as x402's exact peer;
-- `@dexterai/x402-mcp-tools@0.9.0-rc.0` — source candidate, not published;
+- `@dexterai/x402-mcp-tools@0.9.0-rc.0` — published and reconciled under
+  `next`, with stable `latest` unchanged at `0.8.2`;
 - `@dexterai/opendexter@1.23.3` — published and immutable;
-- `@dexterai/opendexter@1.24.0-rc.0` — source candidate, not published;
+- `@dexterai/opendexter@1.24.0-rc.1` — source candidate, not published;
 - `@dexterai/x402-discovery@1.1.0-rc.0` — source alias candidate pinned to
   this exact OpenDexter candidate, not published.
 
@@ -70,15 +76,16 @@ eligible for `latest` while its version remains a prerelease.
 The clean source graph resolves MCP SDK `1.30.0`, MCP Apps extension `1.7.5`,
 and Zod `3.25.76`. The canonical root lock matches the local RC source and its
 published and source-candidate dependency versions. This is local release
-evidence, not proof that OpenDexter `1.24.0-rc.0` or x402 MCP tools
-`0.9.0-rc.0` exists in npm or is deployed in a user client.
+evidence for OpenDexter and registry evidence for x402 MCP tools; it is not
+proof that OpenDexter `1.24.0-rc.1` exists in npm or that either candidate is
+deployed in a user client.
 
 Earlier releases and candidates remain immutable registry bytes. The
-`1.24.0-rc.0` candidate requires the committed canonical root lock,
+`1.24.0-rc.1` candidate requires the committed canonical root lock,
 clean-archive `npm ci`,
 one exact packed artifact, full inventory/hash attestation, normal and
 scripts-disabled installs of that artifact, protected GitHub OIDC publication
-to `latest`, and post-publication registry-integrity proof. This source lane
+to `next`, and post-publication registry-integrity proof. This source lane
 does not tag or publish OpenDexter, and local builds do not claim publication.
 
 The local tarball carries the four current widget HTML entrypoints. They load
@@ -141,8 +148,8 @@ payment approval.
 
 Still requiring separate receipts:
 
-- publication and registry reconciliation of this exact `1.24.0-rc.0`
-  artifact and its `@dexterai/x402-mcp-tools@0.9.0-rc.0` dependency;
+- publication and registry reconciliation of this exact `1.24.0-rc.1`
+  artifact;
 - clean installation in supported clients;
 - a live authority projection proving the exact active grant and remaining
   capacity for the connected principal;
@@ -150,5 +157,5 @@ Still requiring separate receipts:
   revocation, and restart-persistence proof.
 
 Until those receipts exist, this document claims source-candidate behavior
-only. It does not claim that `1.24.0-rc.0` is published, that a live grant is
+only. It does not claim that `1.24.0-rc.1` is published, that a live grant is
 active, or that a paid acceptance run has succeeded.

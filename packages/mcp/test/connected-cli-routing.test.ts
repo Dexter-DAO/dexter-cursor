@@ -189,16 +189,16 @@ describe("connected CLI routing", () => {
     expect(output.recovery.argv).toEqual([
       "npx",
       "-y",
-      "@dexterai/opendexter@1.24.0-rc.0",
+      "@dexterai/opendexter@1.24.0-rc.1",
       "status",
       "--intent-id",
       intentId,
     ]);
     expect(output.recovery.command).toContain(
-      "npx -y @dexterai/opendexter@1.24.0-rc.0 status --intent-id",
+      "npx -y @dexterai/opendexter@1.24.0-rc.1 status --intent-id",
     );
     expect(output.recovery.command).toBe(
-      "npx -y @dexterai/opendexter@1.24.0-rc.0 status --intent-id "
+      "npx -y @dexterai/opendexter@1.24.0-rc.1 status --intent-id "
         + "'intent '\"'\"'quoted'\"'\"' $HOME `cmd` ; stop'",
     );
     expect(process.exitCode).toBe(1);

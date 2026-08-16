@@ -173,12 +173,24 @@ export function validateHostedReleaseConfig(config) {
   if (config.repository !== "Dexter-DAO/opendexter-ide") {
     fail("release repository is not canonical");
   }
-  same(config.package, {
+  exactKeys(config.package, [
+    "name",
+    "root",
+    "distTag",
+    "tagPrefix",
+  ], "package policy");
+  same({
+    name: config.package.name,
+    root: config.package.root,
+    tagPrefix: config.package.tagPrefix,
+  }, {
     name: "@dexterai/opendexter",
     root: "packages/mcp",
-    distTag: "latest",
     tagPrefix: "opendexter-v",
   }, "package policy");
+  if (!["latest", "next"].includes(config.package.distTag)) {
+    fail("package dist-tag policy is unsupported");
+  }
   same(config.runner, {
     label: "ubuntu-24.04",
     containerImage: "node:22.19.0-bookworm@sha256:"

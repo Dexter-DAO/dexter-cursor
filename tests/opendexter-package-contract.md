@@ -14,7 +14,7 @@ OPENDXTER_HOSTED_SOURCE_ROOT=../dexter-mcp \
   node --test tests/opendexter-package-contract.test.mjs
 ```
 
-The `@dexterai/opendexter@1.24.0-rc.0` source candidate pins
+The `@dexterai/opendexter@1.24.0-rc.1` source candidate pins
 `@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`,
 `@dexterai/x402-mcp-tools@0.9.0-rc.0`, `@dexterai/x402@6.0.0-rc.2`, and
 `@dexterai/vault@0.43.2` through one canonical Node.js 22 root lock. Public
