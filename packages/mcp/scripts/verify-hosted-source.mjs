@@ -9,7 +9,6 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, resolve } from "node:path";
@@ -39,7 +38,8 @@ const PORTFOLIO_PROJECTION_SOURCE_PATHS = Object.freeze([
 ]);
 const MATERIALIZATION_RECIPE =
   "mcp-source-owned-outer-receipt+sterile-bare-git-archive+npm-ci-ignore-scripts+workspace-build+source-materializer/v3";
-const HOSTED_MANIFEST_VERSION = "0.5.0";
+export const PUBLIC_HOSTED_MATERIALIZATION_RECIPE =
+  "accepted-public-health+canonical-mcp-git+sterile-source-materializer/v1";
 const FORBIDDEN_HOSTED_TOOL_NAMES = Object.freeze([
   "x402_pay",
   "x402_compose_skill",
@@ -872,7 +872,16 @@ export async function materializeArchivedPublicHostedSource({
   });
 }
 
-export function buildHostedContract({ descriptor, commit, tree, materialization }) {
+export function buildHostedContract({
+  descriptor,
+  commit,
+  tree,
+  materialization,
+  manifestVersion,
+}) {
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(manifestVersion ?? "")) {
+    fail("hosted manifest version is invalid");
+  }
   return {
     schemaVersion: 2,
     contractId: "opendexter-hosted-full-descriptor-v2",
@@ -890,7 +899,7 @@ export function buildHostedContract({ descriptor, commit, tree, materialization 
     materialization,
     mcp: {
       url: descriptor.oauth.resource,
-      manifestVersion: HOSTED_MANIFEST_VERSION,
+      manifestVersion,
       resource: descriptor.oauth.resource,
       protectedResourceMetadata: descriptor.oauth.protectedResourceMetadata,
       protectedResourcePaths: descriptor.oauth.protectedResourcePaths,
@@ -913,6 +922,25 @@ export function buildHostedContract({ descriptor, commit, tree, materialization 
   };
 }
 
+export function verifyEquivalentHostedContracts(pinned, privateVerified) {
+  if (pinned?.materialization?.recipe !== PUBLIC_HOSTED_MATERIALIZATION_RECIPE) {
+    fail("pinned hosted contract lacks the accepted public materialization receipt");
+  }
+  if (privateVerified?.materialization?.recipe !== MATERIALIZATION_RECIPE) {
+    fail("private hosted source verification recipe differs");
+  }
+  const pinnedComparable = structuredClone(pinned);
+  const privateComparable = structuredClone(privateVerified);
+  delete pinnedComparable.materialization.recipe;
+  delete privateComparable.materialization.recipe;
+  same(
+    pinnedComparable,
+    privateComparable,
+    "publicly pinned and privately verified hosted contracts",
+  );
+  return pinned;
+}
+
 export async function verifyHostedSource({
   sourceRoot,
   apiSourceRoot,
@@ -920,6 +948,9 @@ export async function verifyHostedSource({
   mode = "check",
   outerEnvironment = process.env,
 }) {
+  if (mode !== "check") {
+    fail("private hosted-source verification is check-only; use release:prepare-plugin");
+  }
   const { root, commit, tree, cleanEnvironment } = inspectHostedSourceCheckout({
     sourceRoot,
   });
@@ -943,19 +974,25 @@ export async function verifyHostedSource({
     commit,
     tree,
     materialization: archived.materialization,
+    manifestVersion: readJson(resolve(root, "package.json")).version,
   });
-  if (mode === "write") {
-    writeFileSync(contractPath, `${JSON.stringify(nextContract, null, 2)}\n`);
-  } else if (mode === "check") {
-    same(readJson(contractPath), nextContract, "pinned IDE hosted contract");
-  } else {
-    fail(`unknown hosted-source verification mode: ${mode}`);
-  }
-  return { commit, tree, descriptorPath: DESCRIPTOR_PATH, contract: nextContract };
+  const pinnedContract = verifyEquivalentHostedContracts(
+    readJson(contractPath),
+    nextContract,
+  );
+  return {
+    commit,
+    tree,
+    descriptorPath: DESCRIPTOR_PATH,
+    contract: pinnedContract,
+  };
 }
 
 function parseArgs(argv) {
-  const mode = argv.includes("--write") ? "write" : "check";
+  if (argv.includes("--write")) {
+    fail("private hosted-source verification is check-only; use release:prepare-plugin");
+  }
+  const mode = "check";
   const sourceIndex = argv.indexOf("--source");
   const apiSourceIndex = argv.indexOf("--api-source");
   const facilitatorSourceIndex = argv.indexOf("--facilitator-source");
@@ -989,8 +1026,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.me
       mode,
     });
     process.stdout.write(
-      `${mode === "write" ? "Pinned" : "Verified"} hosted descriptors at `
-        + `${result.commit}/${result.tree}.\n`,
+      `Verified hosted descriptors at ${result.commit}/${result.tree}.\n`,
     );
   } catch (error) {
     process.stderr.write(`OpenDexter hosted-source gate refused: ${error.message}\n`);

@@ -2,10 +2,11 @@
 
 ## 2026-08-16 — stable 1.23.3 governed x402 payment authority
 
-- Prepared one combined OpenDexter `0.6.0` plugin for ChatGPT and Codex with
+- Prepared one combined OpenDexter `0.6.1` plugin for ChatGPT and Codex with
   the current owner-created app binding, the hosted MCP descriptor, and the
   existing hosted skills in one package. This is source packaging only; the
-  prior app-only ChatGPT installation is not yet updated or published.
+  package must still be installed explicitly and source packaging does not
+  claim publisher submission or public availability.
 - Made the hosted OpenDexter workflow client-neutral and canonical for
   ChatGPT, Codex, and Claude Code. Claude `2.1.1` carries deterministic copies
   of the shared hosted files, while the materially different seven-tool local

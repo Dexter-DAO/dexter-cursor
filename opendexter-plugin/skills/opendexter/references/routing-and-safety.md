@@ -18,8 +18,8 @@ OAuth adds exactly seven tools, making the connected roster twelve:
 | --- | --- |
 | `x402_fetch` | Executes one approved API-custodied purchase intent |
 | `x402_status` | Reads the same purchase intent without redispatch |
-| `dexter_prepare_asset_action` | Persists and evaluates one exact governed action; does not sign or submit |
-| `dexter_execute_asset_action` | Executes one covered prepared governed intent |
+| `dexter_prepare_asset_action` | Persists and evaluates one exact governed action; current Send fails before intent creation |
+| `dexter_execute_asset_action` | Executes one successfully prepared covered governed intent |
 | `dexter_asset_action_status` | Reads durable action and finality evidence |
 | `dexter_reconcile_asset_action` | May mutate durable or chain state for the same intent under status gates |
 | `dexter_wallet_history` | Reads governed action history using an opaque cursor |
@@ -55,20 +55,24 @@ explanation and explicit confirmation before the external mutation.
 1. `dexter_portfolio` supplies the canonical server-approved `assetId`. A
    model-supplied symbol, mint, token program, network, or decimals never
    becomes authority.
-2. `dexter_prepare_asset_action` freezes exact Send, Buy, or Sell terms. Buy
-   amount is the USDC input budget in 6-decimal atomic units. Sell and Send
-   amount is selected-asset input using server-certified decimals.
-3. Covered reusable-mandate requests may proceed to
+2. For Send, Prepare is only an authoritative availability check. The pinned
+   current release returns `protected_agent_send_sdk_required` before capacity
+   reservation or intent creation. Stop there; never call Execute, status, or
+   reconciliation because no executable intent exists.
+3. For Buy or Sell, `dexter_prepare_asset_action` freezes the exact terms. Buy
+   amount is the USDC input budget in 6-decimal atomic units. Sell amount is
+   selected-asset input using server-certified decimals.
+4. Successfully prepared, covered reusable-mandate requests may proceed to
    `dexter_execute_asset_action`. Missing, insufficient, or unavailable
    authority stops for a separate owner enrollment, extension, or escalation
    ceremony.
-4. Execute receives only a new idempotency `operationId` and the prepared
+5. Execute receives only a new idempotency `operationId` and the prepared
    `intentId`. It receives no wallet, grant, plan, attempt, approval, or signing
    material.
-5. Uncertain execution goes to `dexter_asset_action_status`, never an automatic
+6. Uncertain execution goes to `dexter_asset_action_status`, never an automatic
    execute retry. Reconciliation uses `dexter_reconcile_asset_action` once on
    that same intent only when durable status requires it.
-6. `dexter_wallet_history` accepts only bounded pagination and a server-issued
+7. `dexter_wallet_history` accepts only bounded pagination and a server-issued
    opaque cursor; it never accepts a caller-selected wallet or authority.
 
 ## Failure and finality

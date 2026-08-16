@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
-  "version": "0.6.0",
-  "description": "Give ChatGPT and Codex a governed Dexter Wallet for x402 purchases and bounded Send, Buy, and Sell.",
+  "version": "0.6.1",
+  "description": "Give ChatGPT and Codex a governed Dexter Wallet for x402 purchases and supported bounded asset actions.",
   "author": {
     "name": "Dexter Labs Corporation",
     "email": "dev@dexter.cash",
@@ -33,7 +33,7 @@
       "Write"
     ],
     "shortDescription": "Governed payments and wallet actions in ChatGPT and Codex.",
-    "longDescription": "OpenDexter connects ChatGPT and Codex to the user's passkey-controlled Dexter Wallet. It discovers services, creates API-custodied purchase intents, reads the wallet and approved portfolio bound to the authenticated session, and executes only exact purchases or governed Send, Buy, and Sell requests covered by the user's reusable bounded authority.\n\nThe hosted 0.5.0 contract exposes five anonymous entry tools and promotes seven more after native OAuth, for exactly twelve connected tools. Assets are selected only by a canonical assetId from the server-approved portfolio. Owner enrollment, mandate extension, and escalation remain outside model-callable tools. There are no hidden compatibility, card, passkey-status, marketplace-composition, or authorize tools.\n\nWallet keys, passkey material, bearer tokens, signing material, and one-time codes never belong in the conversation. Ambiguous or post-dispatch results are inspected on the same intent and never retried automatically.",
+    "longDescription": "OpenDexter connects ChatGPT and Codex to the user's passkey-controlled Dexter Wallet. It discovers services, creates API-custodied purchase intents, reads the wallet and approved portfolio bound to the authenticated session, and executes exact purchases or currently supported governed Buy and Sell requests covered by the user's reusable bounded authority. Governed Send remains visible for compatibility and history, but the current runtime refuses it before creating an executable intent.\n\nThe hosted 0.5.0 contract exposes five anonymous entry tools and promotes seven more after native OAuth, for exactly twelve connected tools. Assets are selected only by a canonical assetId from the server-approved portfolio. Owner enrollment, mandate extension, and escalation remain outside model-callable tools. There are no hidden compatibility, card, passkey-status, marketplace-composition, or authorize tools.\n\nWallet keys, passkey material, bearer tokens, signing material, and one-time codes never belong in the conversation. Ambiguous or post-dispatch results are inspected on the same intent and never retried automatically.",
     "defaultPrompt": [
       "Do I have a Dexter Wallet?",
       "What is in my wallet, and what can I do with it?",
