@@ -15,7 +15,7 @@ view and query `x402_status` with the same opaque intent.
 
 1. Confirm Node 22 or newer.
 2. Confirm the tested pair is installed together:
-   `@dexterai/x402@6.0.0-rc.2` and `@dexterai/vault@0.43.2`.
+   `@dexterai/x402@6.0.0-rc.3` and `@dexterai/vault@0.43.2`.
 3. Check facilitator health: `curl https://x402.dexter.cash/healthz`.
 4. Check advertised networks: `curl https://x402.dexter.cash/supported`.
 5. Inspect the merchant's original `402`, including `PAYMENT-REQUIRED` and its

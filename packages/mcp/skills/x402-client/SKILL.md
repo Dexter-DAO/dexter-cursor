@@ -18,7 +18,7 @@ keys out of prompts, logs, tool output, and source control.
 Use Node 22 or newer and install the exact Vault peer with the SDK:
 
 ```bash
-npm install @dexterai/x402@6.0.0-rc.2 @dexterai/vault@0.43.2
+npm install @dexterai/x402@6.0.0-rc.3 @dexterai/vault@0.43.2
 ```
 
 ## Canonical one-shot payment

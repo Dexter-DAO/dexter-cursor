@@ -13,13 +13,13 @@ never creates or enables a local payment wallet.
 1. Run the guided installer:
 
 ```bash
-npx @dexterai/opendexter@1.24.0-rc.1 setup
+npx @dexterai/opendexter@1.24.0-rc.2 setup
 ```
 
 To target one client:
 
 ```bash
-npx @dexterai/opendexter@1.24.0-rc.1 install --client cursor
+npx @dexterai/opendexter@1.24.0-rc.2 install --client cursor
 ```
 
 Supported client names are `cursor`, `claude-code`, `codex`, `vscode`,
@@ -29,8 +29,8 @@ exact block instead of editing it.
 2. Connect the proxy to the hosted governed runtime:
 
 ```bash
-npx @dexterai/opendexter@1.24.0-rc.1 connect
-npx @dexterai/opendexter@1.24.0-rc.1 connect status
+npx @dexterai/opendexter@1.24.0-rc.2 connect
+npx @dexterai/opendexter@1.24.0-rc.2 connect status
 ```
 
 The connection stores an OAuth bearer. It does not by itself prove an active

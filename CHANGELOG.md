@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-17 — 1.24.0-rc.2 durable-seller compatibility candidate
+
+- Advanced the immutable prerelease train to
+  `@dexterai/x402-mcp-tools@0.9.0-rc.1`,
+  `@dexterai/opendexter@1.24.0-rc.2`, and
+  `@dexterai/x402-discovery@1.1.0-rc.1` for the exact
+  `@dexterai/x402@6.0.0-rc.3` dependency. The stable npm tags remain
+  unchanged.
+- Preserved the hosted accepted-production receipt as historical evidence.
+  The successor receipt and release bytes remain intentionally ungenerated
+  until the confirmed-fast API and compatible facilitator are live and proven.
+- This entry records source, lock, build, and test preparation only. It does
+  not publish a package, change a dist-tag, deploy a runtime, or perform a
+  payment.
+
 ## 2026-08-16 — 1.24.0-rc.1 x402 V6 migration candidate
 
 - Migrated the maintained local OpenDexter packages to Node.js 22 and the

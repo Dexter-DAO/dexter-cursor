@@ -23,8 +23,8 @@ Use Node.js 22 or newer. For this V6 release candidate, pin the coordinated
 package and its exact SDK/Vault pair:
 
 ```bash
-npm install @dexterai/x402-mcp-tools@0.9.0-rc.0 \
-  @dexterai/x402@6.0.0-rc.2 @dexterai/vault@0.43.2
+npm install @dexterai/x402-mcp-tools@0.9.0-rc.1 \
+  @dexterai/x402@6.0.0-rc.3 @dexterai/vault@0.43.2
 ```
 
 The RC is `next`-only; it is not a `latest` release until separate publication
