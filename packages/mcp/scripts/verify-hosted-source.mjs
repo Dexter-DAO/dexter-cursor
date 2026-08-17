@@ -208,7 +208,7 @@ function validateSourceContracts(sourceContracts) {
   }
   if (
     sourceContracts.api.consumerFixture.path
-      !== "tests/fixtures/governed-agent-reconcile-advanced-final-c3e32885.json"
+      !== "tests/fixtures/governed-agent-reconcile-advanced-final-6c243154.json"
     || sourceContracts.integratedApiRelease.governedContractCommit
       !== sourceContracts.api.commit
     || sourceContracts.integratedApiRelease.governedContractTree

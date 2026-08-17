@@ -155,7 +155,7 @@ function hostedDescriptorFixture() {
         tree: "b".repeat(40),
         consumerFixture: {
           path:
-            "tests/fixtures/governed-agent-reconcile-advanced-final-c3e32885.json",
+            "tests/fixtures/governed-agent-reconcile-advanced-final-6c243154.json",
           sha256: "c".repeat(64),
           canonicalBodyDigest: "d".repeat(64),
         },
@@ -700,8 +700,8 @@ test("release fixture is source-pinned to the exact hosted twelve", async () => 
   assert.equal(contract.contractId, "opendexter-hosted-full-descriptor-v2");
   assert.deepEqual(contract.source, {
     repository: "https://github.com/Dexter-DAO/dexter-mcp",
-    commit: "7e7b3d0d49459567fba66531e8e2f7daa83d5587",
-    tree: "ae18395cc5b4fab267cc50e6fd5a6aebdb662abc",
+    commit: "d16838641b4ea059072be1b33ba13f125b0fafe6",
+    tree: "285a74b01115b44bb1c3304a83a4e30b7e54bd14",
     descriptorPath: "release/open-tool-descriptors.json",
     descriptorMaterializerPath: "scripts/materialize-open-tool-descriptors.mjs",
     toolContractPath: "lib/open-tool-contracts.mjs",
@@ -710,11 +710,11 @@ test("release fixture is source-pinned to the exact hosted twelve", async () => 
   assert.equal(contract.sourceContracts.schemaVersion, 3);
   assert.equal(
     contract.sourceContracts.integratedApiRelease.commit,
-    "024caf0652fea0bb56123aaacd5c085e3c21190b",
+    "6c243154e9e06f4e40830300c4027721645a33cc",
   );
   assert.equal(
     contract.sourceContracts.facilitator.commit,
-    "801547315a59a48fc8dcb4d3e42e40c2ee5ac09e",
+    "fbfa45bc4c03c41f0eb9af84a6377ed6b29f2d55",
   );
   assert.equal(contract.mcp.url, "https://open.dexter.cash/mcp");
   assert.equal(contract.mcp.manifestVersion, "0.5.0");

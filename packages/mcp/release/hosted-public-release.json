@@ -7,10 +7,10 @@
   },
   "release": {
     "repository": "https://github.com/Dexter-DAO/dexter-mcp",
-    "commit": "7e7b3d0d49459567fba66531e8e2f7daa83d5587",
-    "tree": "ae18395cc5b4fab267cc50e6fd5a6aebdb662abc",
-    "artifactManifestSha256": "43f40ec43fa81ff9f3c82e4dbb9dc700015341a4a86b80372cdde4713eacd3cd",
-    "descriptorSha256": "52a10cdab9391abec0422c86616a10d3669ab0a16fba8a2d8082281a21624d7c",
+    "commit": "d16838641b4ea059072be1b33ba13f125b0fafe6",
+    "tree": "285a74b01115b44bb1c3304a83a4e30b7e54bd14",
+    "artifactManifestSha256": "60f32b07dae1630e93973f89fd2f8b729f5129228eeb3a373b7b1ff0aecc285f",
+    "descriptorSha256": "a21b9c0793044ff665d21b95b1dc0c7beddb82ab8989a6a465291d262037398b",
     "packageVersion": "0.5.0"
   },
   "source": {
@@ -22,8 +22,8 @@
     "recipe": "accepted-public-health+canonical-mcp-git+sterile-source-materializer/v1",
     "node": "v22.19.0",
     "npm": "10.9.3",
-    "packageLockSha256": "8593184a678394d9ee7786d84aa96f5e195e5cec11a6085e05b284014a409371",
-    "sourceArchiveSha256": "14dfe768b951e956a6280f2b4df0afce00fab8fef189bf816681ee82c5ecf795"
+    "packageLockSha256": "1e2659b0847211a063ca74e2a03a80e83ea21a9c82b9327b8a88d47ecbf776a1",
+    "sourceArchiveSha256": "96c59d5205263f87357149c90bd4ca235b734a3fe9a6e1fede7b704f2ec839db"
   },
   "publicDescriptor": {
     "schemaVersion": 2,
