@@ -329,4 +329,4 @@ console.log(formatModelPricing('gpt-4o'));  // human-readable pricing
 A paywalled API can take payment, but no agent will pay it until an agent can
 *find* it. Once the endpoint returns a valid 402, the next step is getting it
 into the OpenDexter / x402gle catalog — see the **x402-discoverable** skill
-(`npx @dexterai/opendexter@1.24.0-rc.2 audition <url> --json`).
+(`npx @dexterai/opendexter@1.24.0-rc.3 audition <url> --json`).

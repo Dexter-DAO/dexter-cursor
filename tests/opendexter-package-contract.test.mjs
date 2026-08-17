@@ -917,36 +917,36 @@ test("local package candidate pins its runtime and stdio discovery identity", as
   const mcp = await readJson(resolve(repoRoot, "mcp.json"));
   assert.equal(workspace.packageManager, "npm@10.9.3");
   assert.equal(workspace.engines.node, ">=22");
-  assert.equal(pkg.version, "1.24.0-rc.2");
+  assert.equal(pkg.version, "1.24.0-rc.3");
   assert.equal(pkg.engines.node, ">=22");
   assert.equal(pkg.dependencies["@modelcontextprotocol/sdk"], "1.30.0");
   assert.equal(pkg.dependencies["@modelcontextprotocol/ext-apps"], "1.7.5");
   assert.equal(pkg.dependencies.zod, "3.25.76");
   assert.equal(pkg.dependencies["@dexterai/x402-core"], "1.5.2");
-  assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.2");
-  assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.1");
-  assert.equal(pkg.dependencies["@dexterai/x402"], "6.0.0-rc.3");
-  assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.9.0-rc.1");
+  assert.equal(pkg.dependencies["@dexterai/vault"], "0.43.3-rc.1");
+  assert.equal(pkg.dependencies["@dexterai/mcp-instructions"], "2.4.2-rc.1");
+  assert.equal(pkg.dependencies["@dexterai/x402"], "6.0.0-rc.4");
+  assert.equal(pkg.dependencies["@dexterai/x402-mcp-tools"], "0.9.0-rc.2");
   assert.equal(pkg.publishConfig.tag, "next");
-  assert.equal(instructionsPkg.version, "2.4.1");
-  assert.equal(toolsPkg.version, "0.9.0-rc.1");
+  assert.equal(instructionsPkg.version, "2.4.2-rc.1");
+  assert.equal(toolsPkg.version, "0.9.0-rc.2");
   assert.equal(toolsPkg.engines.node, ">=22");
-  assert.equal(toolsPkg.dependencies["@dexterai/vault"], "0.43.2");
-  assert.equal(toolsPkg.dependencies["@dexterai/x402"], "6.0.0-rc.3");
+  assert.equal(toolsPkg.dependencies["@dexterai/vault"], "0.43.3-rc.1");
+  assert.equal(toolsPkg.dependencies["@dexterai/x402"], "6.0.0-rc.4");
   assert.equal(toolsPkg.dependencies["@dexterai/x402-core"], "1.5.2");
   assert.equal(toolsPkg.publishConfig.tag, "next");
-  assert.equal(discoveryPkg.version, "1.1.0-rc.1");
+  assert.equal(discoveryPkg.version, "1.1.0-rc.2");
   assert.equal(discoveryPkg.engines.node, ">=22");
   assert.equal(
     discoveryPkg.dependencies["@dexterai/opendexter"],
-    "1.24.0-rc.2",
+    "1.24.0-rc.3",
   );
   assert.equal(discoveryPkg.publishConfig.tag, "next");
   assert.deepEqual(mcp, {
     mcpServers: {
       opendexter: {
         command: "npx",
-        args: ["-y", "@dexterai/opendexter@1.24.0-rc.2"],
+        args: ["-y", "@dexterai/opendexter@1.24.0-rc.3"],
       },
     },
   });

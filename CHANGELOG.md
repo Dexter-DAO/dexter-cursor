@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-17 — 1.24.0-rc.3 canonical archive candidate
+
+- Advanced the coordinated source train to
+  `@dexterai/mcp-instructions@2.4.2-rc.1`,
+  `@dexterai/x402-mcp-tools@0.9.0-rc.2`,
+  `@dexterai/opendexter@1.24.0-rc.3`, and
+  `@dexterai/x402-discovery@1.1.0-rc.2` without changing stable tags.
+- Rebound the local and shared-tool packages to the canonical Vault successor
+  `@dexterai/vault@0.43.3-rc.1`. Runtime file contents and exports remain
+  unchanged; package version metadata and noncanonical archive modes are the
+  only release-level differences.
+- Pinned the package-metadata-only `@dexterai/x402@6.0.0-rc.4` successor so
+  x402 and every consumer resolve that same Vault version without a split
+  peer graph.
+- This entry records source and lock preparation. Publication, registry
+  reconciliation, hosted deployment, and a paid journey require their own
+  receipts.
+
 ## 2026-08-17 — 1.24.0-rc.2 durable-seller compatibility candidate
 
 - Advanced the immutable prerelease train to

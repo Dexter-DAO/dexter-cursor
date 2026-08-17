@@ -1,12 +1,11 @@
 # OpenDexter release acceptance map
 
-Status: `@dexterai/opendexter@1.24.0-rc.2` is a Node.js 22 x402 V6 source
-candidate for `@dexterai/x402@6.0.0-rc.3`. Public prereleases
-`@dexterai/opendexter@1.24.0-rc.1`,
-`@dexterai/x402-mcp-tools@0.9.0-rc.0`, and
-`@dexterai/x402-discovery@1.1.0-rc.0` are immutable on npm under `next`; their
-stable `latest` tags remain unchanged. The rc.2/rc.1 successor train in this
-source is not yet published. This document records inclusion and integration
+Status: `@dexterai/opendexter@1.24.0-rc.3` is a Node.js 22 x402 V6 source
+candidate for `@dexterai/x402@6.0.0-rc.4`. Public prereleases through
+OpenDexter rc.2, MCP tools rc.1, and discovery rc.1 are immutable on npm under
+`next`; their stable `latest` tags remain unchanged. The canonical archive
+successor train in this source is not yet published. This document records
+inclusion and integration
 boundaries; it is not deployment, registry-install, or live-host proof. The
 checked-in historical hosted receipt names the previously accepted MCP release at
 `7e7b3d0d49459567fba66531e8e2f7daa83d5587`, tree
@@ -14,10 +13,10 @@ checked-in historical hosted receipt names the previously accepted MCP release a
 `43f40ec43fa81ff9f3c82e4dbb9dc700015341a4a86b80372cdde4713eacd3cd`, and
 descriptor SHA-256
 `52a10cdab9391abec0422c86616a10d3669ab0a16fba8a2d8082281a21624d7c`. It is
-not acceptance for this successor. A fresh hosted receipt and release bytes
-must wait until the confirmed-fast API commit `6c243` and its compatible
-facilitator are live and proven; this source preparation does not generate
-either artifact.
+not acceptance for this successor. A fresh hosted receipt and release belongs
+to the hosted repository and must bind its own accepted API, facilitator,
+source, and artifact identities; this local source preparation does not
+generate that proof.
 
 The protected `opendexter-v1.23.0` tag is an immutable failed-release receipt.
 Its workflow stopped before artifact creation, upload, or npm publication, and
@@ -30,8 +29,9 @@ receipt: its workflow rejected a stale `latest` release-policy pin before
 building or publishing, and that npm version remains absent. The reviewed
 `1.24.0-rc.1` release binds its prerelease workflow explicitly to `next` and
 adds the local x402 V6 and Native Tab V2 migration. The rc.2 successor updates
-that client train to x402 rc.3 without changing or claiming the historical
-hosted MCP receipt.
+that client train to x402 rc.3. The rc.3 successor rebinds the coordinated
+packages to canonical archive-mode successors without changing runtime
+behavior or claiming the historical hosted MCP receipt.
 
 ## Frozen release-candidate surfaces
 
@@ -62,32 +62,36 @@ of the same hosted workflow files. Both point to the one hosted connector at
 or revives hosted card tools. Source packaging is not proof that an existing
 app-only ChatGPT installation has been updated, submitted, or published.
 
-The local package candidate is `@dexterai/opendexter@1.24.0-rc.2` on Node.js
+The local package candidate is `@dexterai/opendexter@1.24.0-rc.3` on Node.js
 22 or newer. Its coordinated source train is:
 
-- `@dexterai/mcp-instructions@2.4.1` — published and reconciled;
+- `@dexterai/mcp-instructions@2.4.2-rc.1` — source candidate;
 - `@dexterai/x402-core@1.5.2` — published and reconciled;
-- `@dexterai/x402@6.0.0-rc.3` — published on the `next` dist-tag;
-- `@dexterai/vault@0.43.2` — published and required as x402's exact peer;
-- `@dexterai/x402-mcp-tools@0.9.0-rc.1` — source candidate, not published;
+- `@dexterai/x402@6.0.0-rc.4` — published on the `next` dist-tag and pins the
+  exact canonical Vault successor;
+- `@dexterai/vault@0.43.3-rc.1` — published under `next`; runtime file contents
+  match the prior release while package metadata and archive modes are
+  canonicalized;
+- `@dexterai/x402-mcp-tools@0.9.0-rc.2` — source candidate, not published;
 - `@dexterai/opendexter@1.23.3` — published and immutable;
 - `@dexterai/opendexter@1.24.0-rc.1` — published and immutable under `next`;
-- `@dexterai/opendexter@1.24.0-rc.2` — source candidate, not published;
-- `@dexterai/x402-discovery@1.1.0-rc.1` — source alias candidate pinned to
+- `@dexterai/opendexter@1.24.0-rc.2` — published and immutable under `next`;
+- `@dexterai/opendexter@1.24.0-rc.3` — source candidate, not published;
+- `@dexterai/x402-discovery@1.1.0-rc.2` — source alias candidate pinned to
   this exact OpenDexter candidate, not published.
 
-All three RC package manifests are restricted to the `next` dist-tag. None is
+All successor prerelease manifests are restricted to the `next` dist-tag. None is
 eligible for `latest` while its version remains a prerelease.
 
 The clean source graph resolves MCP SDK `1.30.0`, MCP Apps extension `1.7.5`,
 and Zod `3.25.76`. The canonical root lock matches the local RC source and its
 published and source-candidate dependency versions. This is local release
 evidence for the successor workspace and registry evidence only for x402
-rc.3. It is not proof that the new MCP tools or OpenDexter candidates exist in
+rc.4 and Vault rc.1. It is not proof that the new MCP tools or OpenDexter candidates exist in
 npm or that either is deployed in a user client.
 
 Earlier releases and candidates remain immutable registry bytes. The
-`1.24.0-rc.2` candidate requires the committed canonical root lock,
+`1.24.0-rc.3` candidate requires the committed canonical root lock,
 clean-archive `npm ci`,
 one exact packed artifact, full inventory/hash attestation, normal and
 scripts-disabled installs of that artifact, protected GitHub OIDC publication
@@ -155,8 +159,9 @@ payment approval.
 Still requiring separate receipts:
 
 - publication and registry reconciliation of exact
-  `@dexterai/x402-mcp-tools@0.9.0-rc.1`, followed by this exact
-  `@dexterai/opendexter@1.24.0-rc.2` artifact;
+  `@dexterai/mcp-instructions@2.4.2-rc.1` and
+  `@dexterai/x402-mcp-tools@0.9.0-rc.2`, followed by this exact
+  `@dexterai/opendexter@1.24.0-rc.3` artifact;
 - clean installation in supported clients;
 - a live authority projection proving the exact active grant and remaining
   capacity for the connected principal;
@@ -164,5 +169,5 @@ Still requiring separate receipts:
   revocation, and restart-persistence proof.
 
 Until those receipts exist, this document claims source-candidate behavior
-only. It does not claim that `1.24.0-rc.2` is published, that a live grant is
+only. It does not claim that `1.24.0-rc.3` is published, that a live grant is
 active, or that a paid acceptance run has succeeded.

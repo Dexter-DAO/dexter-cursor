@@ -125,7 +125,7 @@ describe("local package distribution", () => {
       "utf8",
     );
 
-    expect(manifest.version).toBe("2.4.1");
+    expect(manifest.version).toBe("2.4.2-rc.1");
     expect(manifest.type).toBe("module");
     expect(manifest.main).toBe("dist/index.cjs");
     expect(manifest.module).toBe("dist/index.js");
@@ -143,10 +143,10 @@ describe("local package distribution", () => {
     );
     expect(manifest.scripts.prepublishOnly).toBe("npm run release:prepare");
     expect(manifest.scripts.release).toBe(
-      "npm publish --access public --tag latest",
+      "npm publish --access public --tag next",
     );
     expect(manifest.scripts.release).not.toContain("npm version");
-    expect(manifest.publishConfig).toEqual({ access: "public", tag: "latest" });
+    expect(manifest.publishConfig).toEqual({ access: "public", tag: "next" });
 
     expect(checker).toContain("EXPECTED_RUNTIME_EXPORTS");
     expect(checker).toContain("createRequire");
@@ -175,7 +175,7 @@ describe("local package distribution", () => {
       "node ./scripts/check-module-formats.mjs",
     ];
 
-    expect(manifest.version).toBe("0.9.0-rc.1");
+    expect(manifest.version).toBe("0.9.0-rc.2");
     expect(manifest.type).toBe("module");
     expect(manifest.main).toBe("dist/index.cjs");
     expect(manifest.module).toBe("dist/index.js");
@@ -186,8 +186,8 @@ describe("local package distribution", () => {
       require: "./dist/index.cjs",
     });
     expect(manifest.dependencies["@dexterai/x402-core"]).toBe("1.5.2");
-    expect(manifest.dependencies["@dexterai/vault"]).toBe("0.43.2");
-    expect(manifest.dependencies["@dexterai/x402"]).toBe("6.0.0-rc.3");
+    expect(manifest.dependencies["@dexterai/vault"]).toBe("0.43.3-rc.1");
+    expect(manifest.dependencies["@dexterai/x402"]).toBe("6.0.0-rc.4");
     expect(manifest.engines.node).toBe(">=22");
     expect(manifest.scripts.build).toContain("--format esm,cjs");
     expect(manifest.scripts.build).toContain("--no-sourcemap");
@@ -219,10 +219,10 @@ describe("local package distribution", () => {
     expect(manifest.version).toBe(pkg.version);
     expect(manifest.logo).toBe("assets/dexter-wordmark.svg");
     expect(existsSync(join(packageRoot, manifest.logo))).toBe(true);
-    expect(pkg.dependencies["@dexterai/mcp-instructions"]).toBe("2.4.1");
-    expect(pkg.dependencies["@dexterai/x402-mcp-tools"]).toBe("0.9.0-rc.1");
-    expect(pkg.dependencies["@dexterai/vault"]).toBe("0.43.2");
-    expect(pkg.dependencies["@dexterai/x402"]).toBe("6.0.0-rc.3");
+    expect(pkg.dependencies["@dexterai/mcp-instructions"]).toBe("2.4.2-rc.1");
+    expect(pkg.dependencies["@dexterai/x402-mcp-tools"]).toBe("0.9.0-rc.2");
+    expect(pkg.dependencies["@dexterai/vault"]).toBe("0.43.3-rc.1");
+    expect(pkg.dependencies["@dexterai/x402"]).toBe("6.0.0-rc.4");
     expect(pkg.dependencies["@dexterai/x402-core"]).toBe("1.5.2");
     expect(pkg.dependencies["@modelcontextprotocol/sdk"]).toBe("1.30.0");
     expect(pkg.dependencies.zod).toBe("3.25.76");
