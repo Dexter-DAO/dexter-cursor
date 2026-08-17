@@ -14,13 +14,14 @@ OPENDXTER_HOSTED_SOURCE_ROOT=../dexter-mcp \
   node --test tests/opendexter-package-contract.test.mjs
 ```
 
-The `@dexterai/opendexter@1.24.0-rc.2` source candidate pins
-`@dexterai/mcp-instructions@2.4.1`, `@dexterai/x402-core@1.5.2`,
-`@dexterai/x402-mcp-tools@0.9.0-rc.1`, `@dexterai/x402@6.0.0-rc.3`, and
-`@dexterai/vault@0.43.2` through one canonical Node.js 22 root lock. Public
-`1.23.3` and `1.24.0-rc.1` are immutable on npm; neither successor candidate
-is published. The maintained discovery alias is also advanced to
-`@dexterai/x402-discovery@1.1.0-rc.1` and pins this exact OpenDexter candidate.
+The `@dexterai/opendexter@1.24.0-rc.3` source candidate pins
+`@dexterai/mcp-instructions@2.4.2-rc.1`, `@dexterai/x402-core@1.5.2`,
+`@dexterai/x402-mcp-tools@0.9.0-rc.2`, `@dexterai/x402@6.0.0-rc.4`, and
+`@dexterai/vault@0.43.3-rc.1` through one canonical Node.js 22 root lock.
+Earlier published releases and prereleases remain immutable on npm; this
+successor source does not itself prove publication. The maintained discovery
+alias is also advanced to `@dexterai/x402-discovery@1.1.0-rc.2` and pins this
+exact OpenDexter candidate.
 Every RC manifest is `next`-only. The protected
 `opendexter-v1.23.0` tag records a workflow that stopped before artifact
 creation, upload, or npm publication; it is not a registry release. The

@@ -23,7 +23,7 @@ x402-protocol:
   `/utils` exports.
 - `@dexterai/opendexter` is different: it is a local proxy to the hosted
   governed runtime and is configured with
-  `npx @dexterai/opendexter@1.24.0-rc.2 setup` followed by `opendexter connect`.
+  `npx @dexterai/opendexter@1.24.0-rc.3 setup` followed by `opendexter connect`.
 - The OpenDexter MCP roster is exactly `x402_search`, `x402_check`,
   `x402_fetch`, `x402_status`, `x402_access`, `x402_wallet`, and
   `dexter_portfolio`.

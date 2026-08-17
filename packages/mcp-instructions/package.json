@@ -1,6 +1,6 @@
 {
   "name": "@dexterai/mcp-instructions",
-  "version": "2.4.1",
+  "version": "2.4.2-rc.1",
   "description": "Shared MCP server instructions for the OpenDexter / Dexter x402 Gateway. Single source of truth consumed by both the hosted server (open.dexter.cash/mcp) and the npm-installable local server (@dexterai/opendexter).",
   "type": "module",
   "main": "dist/index.cjs",
@@ -25,7 +25,7 @@
     "test": "vitest run",
     "release:prepare": "npm run typecheck && npm test && npm run build && node ./scripts/check-module-formats.mjs",
     "prepublishOnly": "npm run release:prepare",
-    "release": "npm publish --access public --tag latest"
+    "release": "npm publish --access public --tag next"
   },
   "keywords": [
     "x402",
@@ -44,7 +44,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "latest"
+    "tag": "next"
   },
   "repository": {
     "type": "git",
