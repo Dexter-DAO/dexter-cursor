@@ -55,8 +55,8 @@ verification recipes may differ. Publication also waits for the single
 
 It checks:
 
-- the source-pinned exact twelve-tool contract, including the anonymous five
-  and seven OAuth-promoted tools;
+- the source-pinned exact twelve-tool contract, with OAuth required before tool
+  discovery;
 - combined ChatGPT/Codex and Claude manifest/MCP/marketplace shapes;
 - the three hosted-contract skills in both packages;
 - absence of old card, local-wallet, pairing, and npm-latest routes from active
@@ -102,10 +102,14 @@ OPENDXTER_HOSTED_LIVE_BEARER="$RELEASE_INJECTED_OPENDEXTER_BEARER" \
 ```
 
 The connected run requires the exact twelve-tool roster and current security,
-annotation, visibility, input, and output schemas. It reads the bound wallet,
-complete canonical-asset portfolio, one governed-history page, and the same
-x402 intent after a connected price check. A connected `x402_check` persists a
-quote intent, but the gate never calls `x402_fetch`, governed prepare, execute,
-or reconcile, never signs or submits a transaction, and never moves money.
+annotation, visibility, input, and output schemas. It makes one read-only
+Indexter query with explicit price, result-limit, paid-only, rerank, and ordering
+controls. The gate confirms the applied price and ordering controls, ranking
+status, tier counts, and discovery's no-payment policy. It also reads the bound
+wallet, complete canonical-asset portfolio, one governed-history page, and the
+same x402 intent after a connected price check. A connected `x402_check`
+persists a quote intent, but the gate never calls `x402_fetch`, governed prepare,
+execute, or reconcile, never signs or submits a transaction, and never moves
+money.
 Without the bearer, output is explicitly `complete: false`; it is transport
 evidence only, not a complete hosted acceptance receipt.

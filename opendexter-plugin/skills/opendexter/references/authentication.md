@@ -33,6 +33,13 @@ initialization is refused at the transport layer with HTTP 401,
 `Cache-Control: no-store`, and a Bearer challenge containing
 `resource_metadata` and `scope`.
 
+That initial HTTP 401 happens before a tool session or tool list exists. Let
+the host surface its native OpenDexter Connect action and complete OAuth before
+reloading discovery. An established connection whose authorization has become
+stale can instead return `authentication_required` from a protected tool; let
+the host resume OAuth and retry that same tool once. Do not describe the
+initial transport challenge as a tool-level `authentication_required` result.
+
 ## Native client action
 
 Use the client action already surfaced for the configured MCP:
@@ -44,9 +51,10 @@ Use the client action already surfaced for the configured MCP:
 Never relay a personalized MCP URL, pairing URL, enrollment link, bearer token,
 or one-time credential through the conversation.
 
-After the user completes native OAuth, retry the blocked discovery or tool call once.
-If it still challenges, stop and report connector OAuth as the failed layer.
-Do not switch to enrollment or create a second connector.
+After initial native OAuth, reload tool discovery once. After resuming OAuth on
+an established connection, retry the same blocked tool once. If either still
+challenges, stop and report connector OAuth as the failed layer. Do not switch
+to enrollment or create a second connector.
 
 For a valid OAuth session whose wallet is not ready, use `dexter_wallet` and the
 hosted wallet UI. The user completes the passkey ceremony on Dexter's secure

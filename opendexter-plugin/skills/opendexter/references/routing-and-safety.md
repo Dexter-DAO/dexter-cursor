@@ -26,12 +26,24 @@ product roster.
 
 ## Purchase route
 
-1. Unknown provider: `indexter_search`.
+1. Unknown provider: call `indexter_search` with the user's actual job. Use
+   `maxPriceUsdc` and `minPriceUsdc` only as hard bounds on the primary USDC API
+   invocation price, and use `paidOnly: true` only when every result must have a
+   known positive price. Confirm those returned values in
+   `appliedConstraints`. Use `sortBy: relevance`, `price_asc`, or `price_desc`
+   and confirm `appliedOrdering`. Price ordering stays inside each
+   relevance tier, so strong results remain ahead of related results and ties
+   preserve prior relevance order. If `rankingMode` is `degraded`, disclose the returned
+   `degradedMessage`. Keep product and order budgets in the natural-language
+   query, and check the selected endpoint because alternate `chains[]` prices
+   may differ.
 2. Known exact URL or selected result: fresh `x402_check` with the exact method
    and raw request body. A non-GET check requires explicit confirmation after
    explaining that the provider may process the request before any payment.
-3. A paid check returns one API-custodied opaque intent without executing it.
-   Stop if the response has no `intentId`.
+3. A purchasable paid result has `quoteOnly=false` and one API-custodied opaque
+   `intentId` without executing it. A `quoteOnly=true` result has no executable
+   intent; report purchase as unavailable for that checked quote and never call
+   `x402_fetch`. Stop if a `quoteOnly=false` result lacks `intentId`.
 4. Paid execution: disclose the exact terms and ceiling, then call
    `x402_fetch` once with only `intentId` and `maxAmountAtomic`.
 5. Uncertain or nonfinal outcome: call `x402_status` on the same intent and do
@@ -48,27 +60,42 @@ explanation and explicit confirmation before the external mutation.
 
 ## Governed asset route
 
-1. `dexter_wallet_portfolio` supplies the canonical server-approved `assetId`. A
-   model-supplied symbol, mint, token program, network, or decimals never
-   becomes authority.
+1. Send and non-stock Buy or Sell use the canonical `assetId` from an approved
+   `dexter_wallet_portfolio` holding or `approvedActionTarget` whose requested
+   action is available. A model-supplied symbol, mint, token program, network,
+   or decimals never becomes authority. A natural-language stock Buy or Sell
+   instead uses the user's exact human company name as `companyQuery`; Dexter
+   resolves and freezes the current approved catalog product. Never substitute
+   a remembered or portfolio-derived stock `assetId`, symbol, or mint.
 2. For Send, Prepare is only an authoritative availability check. The pinned
    current release returns `protected_agent_send_sdk_required` before capacity
    reservation or intent creation. Stop there; never call Execute, status, or
    reconciliation because no executable intent exists.
-3. For Buy or Sell, `dexter_prepare_asset_action` freezes the exact terms. Buy
-   amount is the USDC input budget in 6-decimal atomic units. Sell amount is
-   selected-asset input using server-certified decimals.
-4. Successfully prepared, covered reusable-mandate requests may proceed to
+3. `dexter_prepare_asset_action` freezes the exact Buy or Sell terms. A
+   non-stock Buy uses `assetId` plus `amountAtomic`; a dollar-budget stock Buy
+   uses `companyQuery` plus `amountAtomic`. The amount is the exact USDC input
+   budget in 6-decimal base units. A share-target stock Buy uses `companyQuery`
+   plus human decimal `shareQuantity` and may add `maximumSpendAtomic` as a
+   6-decimal USDC ceiling. Never combine `amountAtomic` with `shareQuantity` or
+   use `maximumSpendAtomic` without `shareQuantity`.
+4. Stock `shareQuantity` is an underlying-share-equivalent minimum-receive
+   target and may overfill slightly. Confirm an at-least target before Prepare
+   when the user asks for an exact or no-more-than share count. Stock Sell uses
+   `companyQuery` plus direct token `amountAtomic` with server-certified
+   decimals and never accepts `shareQuantity`. Non-stock Sell and Send use
+   `assetId` plus `amountAtomic`; Send has no memo. The exact Prepare result is
+   the authority on current runtime capability.
+5. Successfully prepared, covered reusable-mandate requests may proceed to
    `dexter_execute_asset_action`. Missing, insufficient, or unavailable
    authority stops for a separate owner enrollment, extension, or escalation
    ceremony.
-5. Execute receives only a new idempotency `operationId` and the prepared
+6. Execute receives only a new idempotency `operationId` and the prepared
    `intentId`. It receives no wallet, grant, plan, attempt, approval, or signing
    material.
-6. Uncertain execution goes to `dexter_asset_action_status`, never an automatic
+7. Uncertain execution goes to `dexter_asset_action_status`, never an automatic
    execute retry. Reconciliation uses `dexter_reconcile_asset_action` once on
    that same intent only when durable status requires it.
-7. `dexter_wallet_history` accepts only bounded pagination and a server-issued
+8. `dexter_wallet_history` accepts only bounded pagination and a server-issued
    opaque cursor; it never accepts a caller-selected wallet or authority.
 
 ## Failure and finality

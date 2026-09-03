@@ -523,7 +523,7 @@ test("tree-pure archive ignores hidden and local attribute injection", async (t)
   assert.equal(await readFile(resolve(extracted, "kept.txt"), "utf8"), "$Format:%H$\n");
 });
 
-test("hosted descriptor binds exact schemas and optional OAuth to finalized source", () => {
+test("hosted descriptor binds exact schemas and the OAuth-required twelve-tool roster to finalized source", () => {
   const committed = hostedDescriptorFixture();
   assert.deepEqual(validateHostedDescriptor(committed), committed);
   assert.deepEqual(
@@ -1030,6 +1030,28 @@ test("release train freezes full descriptors and a post-deploy novice suite", as
   const check = suite.cases.find(({ id }) => id === "hosted-check-known-endpoint");
   assert.equal(check.expectedConsequence, "durable-quote-intent");
   assert.deepEqual(check.forbiddenTools, ["x402_fetch"]);
+  const pricedSearch = suite.cases.find(
+    ({ id }) => id === "hosted-discover-paid-service-by-price",
+  );
+  assert.deepEqual(pricedSearch.requiredTools, ["indexter_search"]);
+  assert.deepEqual(pricedSearch.forbiddenTools, ["x402_fetch"]);
+  assert.equal(pricedSearch.expectedConsequence, "filtered-ranked-read");
+  const stockBudget = suite.cases.find(
+    ({ id }) => id === "hosted-stock-buy-dollar-budget",
+  );
+  assert.deepEqual(stockBudget.requiredTools, [
+    "dexter_prepare_asset_action",
+    "dexter_execute_asset_action",
+  ]);
+  const stockShares = suite.cases.find(
+    ({ id }) => id === "hosted-stock-buy-share-quantity",
+  );
+  assert.deepEqual(stockShares.requiredTools, [
+    "dexter_prepare_asset_action",
+    "dexter_execute_asset_action",
+  ]);
+  assert.match(stockShares.prompt, /quarter share/i);
+  assert.match(stockShares.prompt, /spend no more than fifty dollars/i);
   const unavailableSend = suite.cases.find(
     ({ id }) => id === "hosted-send-currently-unavailable",
   );
@@ -1174,8 +1196,8 @@ test("both formats route one OAuth-required twelve-tool roster", async () => {
     assert.match(routing, /OAuth is required[\s\S]*exactly twelve tools/i);
     assert.doesNotMatch(umbrella, /anonymous roster|OAuth adds exactly seven/i);
     assert.doesNotMatch(routing, /five entry tools|OAuth adds exactly seven/i);
-    assert.match(routing, /Buy[\s\S]*USDC input budget[\s\S]*6-decimal atomic units/i);
-    assert.match(routing, /Sell amount[\s\S]*selected-asset input/i);
+    assert.match(routing, /Buy[\s\S]*USDC input[\s\S]*6-decimal base units/i);
+    assert.match(routing, /Stock Sell[\s\S]*direct token `amountAtomic`/i);
     assert.match(
       routing,
       /Send[\s\S]*protected_agent_send_sdk_required[\s\S]*no executable intent/i,
@@ -1184,6 +1206,49 @@ test("both formats route one OAuth-required twelve-tool roster", async () => {
     for (const retired of RETIRED_HOSTED_TOOLS) {
       assert.doesNotMatch(umbrella, new RegExp(`\\b${retired}\\b`), retired);
       assert.doesNotMatch(routing, new RegExp(`\\b${retired}\\b`), retired);
+    }
+  }
+});
+
+test("both formats preserve current Indexter and governed-stock semantics", async () => {
+  for (const root of [codexRoot, claudeRoot]) {
+    const umbrella = await readFile(
+      resolve(root, "skills/opendexter/SKILL.md"),
+      "utf8",
+    );
+    const routing = await readFile(
+      resolve(root, "skills/opendexter/references/routing-and-safety.md"),
+      "utf8",
+    );
+    for (const text of [umbrella, routing]) {
+      for (const token of [
+        "maxPriceUsdc",
+        "minPriceUsdc",
+        "paidOnly",
+        "appliedConstraints",
+        "sortBy",
+        "appliedOrdering",
+        "rankingMode",
+        "degradedMessage",
+        "quoteOnly=false",
+        "quoteOnly=true",
+        "companyQuery",
+        "shareQuantity",
+        "maximumSpendAtomic",
+      ]) {
+        assert.match(text, new RegExp(token));
+      }
+      assert.match(text, /relevance\s+tier/i);
+      assert.match(text, /strong result/i);
+      assert.match(text, /related result/i);
+      assert.match(text, /quoteOnly=false[\s\S]*intentId/i);
+      assert.match(text, /quoteOnly=true[\s\S]*no executable intent/i);
+      assert.match(text, /natural-language stock Buy or Sell/i);
+      assert.match(text, /portfolio-derived[\s\S]{0,20}(?:stock )?`assetId`/i);
+      assert.match(text, /minimum-receive/i);
+      assert.match(text, /overfill/i);
+      assert.match(text, /Stock Sell[\s\S]*amountAtomic/i);
+      assert.match(text, /(?:does not accept|never accepts) `shareQuantity`/i);
     }
   }
 });
@@ -1198,6 +1263,8 @@ test("both package auth references preserve the three distinct OAuth identities"
     assert.match(auth, /`https:\/\/mcp\.dexter\.cash\/mcp`/);
     assert.match(auth, /`https:\/\/dexter\.cash`/);
     assert.doesNotMatch(auth, /`https:\/\/mcp\.dexter\.cash`/);
+    assert.match(auth, /initial HTTP 401[\s\S]*before a tool session or tool list exists/i);
+    assert.match(auth, /established connection[\s\S]*authentication_required/i);
   }
 });
 

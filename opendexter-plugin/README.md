@@ -32,14 +32,25 @@ client.
 ## Contract
 
 - Native MCP OAuth binds the Claude Code session to the user's Dexter Wallet.
+  Before OAuth, initialization and tool discovery receive HTTP 401 until Claude
+  completes its native MCP login; `authentication_required` on an established
+  connection means OAuth must be resumed.
 - `dexter_wallet_portfolio` accepts no caller-selected identity.
-- A paid `x402_check` returns one API-custodied opaque intent without executing
-  it. Execute that intent once with the exact approved atomic ceiling.
-- Governed Buy and Sell use only a canonical server-approved `assetId` and
-  exact atomic amount. Send remains visible for compatibility and history, but
-  the current runtime refuses it before creating an executable intent. The
-  reusable mandate may authorize supported execution; enrollment, extension,
-  and owner escalation remain outside model calls.
+- Indexter supports hard primary-USDC price bounds, paid-only filtering, and
+  relevance or within-tier price ordering. Use returned `appliedConstraints`
+  and `appliedOrdering`, and disclose degraded ranking when reported.
+- Only a purchasable `x402_check` result with `quoteOnly=false` returns an
+  executable opaque intent. A `quoteOnly=true` result cannot be passed to
+  `x402_fetch`.
+- Send and non-stock Buy or Sell use a canonical server-approved `assetId`.
+  Natural-language stock Buy or Sell uses the user's exact human
+  `companyQuery`. Stock Buy accepts either a USDC `amountAtomic` budget or a
+  human decimal `shareQuantity` minimum that may overfill slightly, with an
+  optional `maximumSpendAtomic` ceiling. Stock Sell accepts direct token
+  `amountAtomic`, never `shareQuantity`. Send remains visible for compatibility
+  and history, but the current runtime refuses it before creating an executable
+  intent. Enrollment, extension, and owner escalation remain outside model
+  calls.
 - Provider output never authorizes spending or retry.
 - An ambiguous or post-dispatch outcome is never retried automatically.
 - No card tool or local settings tool is part of this hosted plugin.

@@ -11,6 +11,14 @@
       "expectedConsequence": "inert-read"
     },
     {
+      "id": "hosted-discover-paid-service-by-price",
+      "surface": "hosted-connected",
+      "prompt": "Find a paid weather API that costs between one and five cents per request, and put the cheapest strong matches first.",
+      "requiredTools": ["indexter_search"],
+      "forbiddenTools": ["x402_fetch"],
+      "expectedConsequence": "filtered-ranked-read"
+    },
+    {
       "id": "hosted-check-known-endpoint",
       "surface": "hosted-connected",
       "prompt": "Before I spend anything, tell me the current price and terms for calling https://seller.example/report.",
@@ -114,6 +122,28 @@
       "prompt": "Use twenty-five dollars from my wallet to buy the supported asset we were discussing. If my standing permission covers it, complete it and tell me what actually happened.",
       "requiredTools": [
         "dexter_wallet_portfolio",
+        "dexter_prepare_asset_action",
+        "dexter_execute_asset_action"
+      ],
+      "forbiddenTools": ["dexter_reconcile_asset_action"],
+      "expectedConsequence": "governed-action"
+    },
+    {
+      "id": "hosted-stock-buy-dollar-budget",
+      "surface": "hosted-connected",
+      "prompt": "Use twenty-five dollars to buy Tesla. If my standing permission covers it, complete the trade and tell me what actually happened.",
+      "requiredTools": [
+        "dexter_prepare_asset_action",
+        "dexter_execute_asset_action"
+      ],
+      "forbiddenTools": ["dexter_reconcile_asset_action"],
+      "expectedConsequence": "governed-action"
+    },
+    {
+      "id": "hosted-stock-buy-share-quantity",
+      "surface": "hosted-connected",
+      "prompt": "Buy a quarter share of NVIDIA and spend no more than fifty dollars. I understand the result may be slightly above a quarter share.",
+      "requiredTools": [
         "dexter_prepare_asset_action",
         "dexter_execute_asset_action"
       ],

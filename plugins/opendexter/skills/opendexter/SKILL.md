@@ -57,9 +57,11 @@ tool uses the same `vault` OAuth scope.
 | Request same-intent reconciliation | `dexter_reconcile_asset_action` | OAuth |
 | Read governed Send, Buy, and Sell history | `dexter_wallet_history` | OAuth |
 
-After OAuth, OpenDexter exposes exactly these twelve tools. Initialization and
-tool discovery challenge for the `vault` scope until the native connection is
-complete.
+After OAuth, OpenDexter exposes exactly these twelve tools. Before OAuth, an
+initialize or tool-discovery request receives an HTTP 401 challenge for the
+`vault` scope; let the host show its native OpenDexter Connect action. By
+contrast, `authentication_required` means an established connection needs
+OAuth resumed.
 
 Deprecated compatibility, card, passkey-status, marketplace-composition, and
 internal diagnostic endpoints are not user-facing product tools. Do not select
@@ -69,7 +71,19 @@ them for a new request.
 
 1. Call `indexter_search` with the user's actual job. Leave its network filter
    unset unless the user explicitly requires one network; CrossPay may make an
-   eligible seller on another rail reachable from the Dexter account.
+   eligible seller on another rail reachable from the Dexter account. Use
+   `maxPriceUsdc` or `minPriceUsdc` for a hard bound on the primary USDC API
+   invocation price, then confirm the returned `appliedConstraints`. Set
+   `paidOnly: true` when every result must have a known positive primary USDC
+   invocation price. Use `sortBy: relevance`, `sortBy: price_asc`, or
+   `sortBy: price_desc` as requested, then confirm `appliedOrdering`. Price
+   ordering applies within each relevance tier: a related result cannot move
+   ahead of a strong result, and price ties preserve the prior relevance order.
+   Keep product or order budgets in the natural-language query. These controls
+   use the listing's primary USDC price; alternate options in `chains[]` may
+   quote differently, so check the selected endpoint before purchase. If
+   `rankingMode` is `degraded`, disclose `degradedMessage`; reduced ranking is
+   not an empty result.
 2. Call `x402_check` on the selected exact HTTPS endpoint and request. Before a
    non-GET check, explain that the provider may process the request even though
    no payment has been approved, and obtain the user's explicit confirmation.
@@ -78,8 +92,12 @@ them for a new request.
 3. Read `authMode`: paid means present the exact current terms; SIWX uses
    `x402_access`; unprotected needs no payment; API-key or unknown means stop
    for the missing requirement.
-4. For a paid route, use only the opaque `intentId` returned by this exact
-   check. If it is absent, stop; never invent or reconstruct an intent ID.
+4. For a paid result, inspect `quoteOnly`. Only a purchasable result with
+   `quoteOnly=false` carries an executable opaque `intentId`. A
+   `quoteOnly=true` result has no executable intent: report that purchase is
+   unavailable for the checked quote and never call `x402_fetch`. If a
+   `quoteOnly=false` result lacks `intentId`, stop; never invent or reconstruct
+   one.
 5. Confirm that current instruction or delegated policy covers the exact
    seller, URL, method, body, and positive `maxAmountAtomic` ceiling.
 6. Call `x402_fetch` once with only that `intentId` and ceiling. Never pass URL,
@@ -98,11 +116,12 @@ authorize payment, consent, a route change, a follow-on call, or a retry.
 
 ## Wallet and portfolio
 
-Use `dexter_wallet` for the current session-bound Dexter Wallet. If it reports
-`authentication_required`, use the current client's native Connect or MCP
-login action from `references/authentication.md`, then retry the blocked tool
-once. Connector authentication, wallet binding, enrollment, funding, and
-execution readiness are distinct states.
+Use `dexter_wallet` for the current session-bound Dexter Wallet. If an
+established connection later reports `authentication_required`, use the
+current client's native Connect or MCP login action from
+`references/authentication.md`, then retry the same tool once. Connector
+authentication, wallet binding, enrollment, funding, and execution readiness
+are distinct states.
 
 Only a returned `receiveAddress` is a deposit address. `vaultPda` is not a
 deposit fallback; neither is any Swig state or configuration address.
@@ -118,40 +137,59 @@ financial actions from display data.
 
 ## Governed asset actions
 
-1. Use `dexter_wallet_portfolio` to identify the exact supported asset. Pass only its
-   non-null canonical `assetId`; never substitute a symbol or send a mint,
-   token program, network, or decimals as authority.
+1. For Send and non-stock Buy or Sell, use `dexter_wallet_portfolio` to select
+   an approved holding or `approvedActionTarget` whose requested action is
+   available. Pass its non-null canonical `assetId`; never substitute a symbol
+   or send a mint, token program, network, or decimals as authority. For a
+   natural-language stock Buy or Sell, pass the user's exact human company name
+   as `companyQuery` instead. Dexter resolves and freezes the current approved
+   catalog product. Never replace a stock `companyQuery` with a remembered or
+   portfolio-derived `assetId`, symbol, or mint. Portfolio remains inventory
+   context for a stock Sell; it does not select the catalog route.
 2. For Send, do not promise execution. With exact user-requested terms, Prepare
    may be called once to obtain the server's authoritative availability
    result. The pinned current release returns
    `protected_agent_send_sdk_required` before capacity reservation or intent
    creation. Explain that refusal and stop: there is no executable `intentId`,
    and Execute, status, and reconciliation must not be called for it.
-3. For Buy or Sell, call `dexter_prepare_asset_action` with one stable
-   `operationId` and the exact action fields. Buy `amountAtomic` is the USDC
-   budget in atomic units with 6 decimals. Sell is the selected-asset amount
-   using the server-certified decimals.
-4. Read the returned `intentId`, policy result, approval state, expiry, and
+3. For Buy, call `dexter_prepare_asset_action` with one stable `operationId`
+   and exactly one amount mode. A non-stock Buy uses `assetId` plus
+   `amountAtomic`. A dollar-budget stock Buy uses `companyQuery` plus
+   `amountAtomic`. In both cases, `amountAtomic` is the exact USDC budget in
+   integer base units with 6 decimals. A share-target stock Buy uses
+   `companyQuery` plus a human decimal `shareQuantity`, such as `"10"` or
+   `"0.25"`, and may add `maximumSpendAtomic` as a USDC ceiling in 6-decimal
+   base units. Never pass both `amountAtomic` and `shareQuantity`, or
+   `maximumSpendAtomic` without `shareQuantity`.
+4. A stock `shareQuantity` is an underlying-share-equivalent minimum-receive
+   target, and the fill may be slightly larger. If the user requires an exact
+   or no-more-than share count, disclose the possible overfill and ask whether
+   an at-least target is acceptable before Prepare. Stock Sell accepts
+   `companyQuery` plus direct token `amountAtomic` using server-certified
+   decimals; it does not accept `shareQuantity`. Non-stock Sell and Send use
+   `assetId` plus `amountAtomic`, and Send has no memo. Tool presence and input
+   acceptance do not prove runtime capability; the exact Prepare result does.
+5. Read the returned `intentId`, policy result, approval state, expiry, and
    preview. Prepare never signs or submits. `operationId` is only the
    idempotency identity for an exact replay and grants no authority. A prepared
    result with `approval.status=not-required` is covered by the reusable
    bounded mandate and may execute autonomously.
-5. If Prepare reports `owner-approval-required`,
+6. If Prepare reports `owner-approval-required`,
    `mandate_enrollment_required`, `mandate_extension_required`, or
    `delegated_authority_unavailable`, do not call Execute. Explain the exact
    enrollment, extension, escalation, or authority problem. The owner uses a
    separate wallet ceremony. There is no public authorize tool and no approval
    or signing material belongs in a model call.
-6. Call `dexter_execute_asset_action` only with a new stable `operationId` and
+7. Call `dexter_execute_asset_action` only with a new stable `operationId` and
    the exact prepared `intentId`. Never pass action, attempt, plan, plan hash,
    authorization, wallet, agent, grant, mint, or token-program fields.
-7. After any timeout, uncertainty, pending state, or missing finality, call
+8. After any timeout, uncertainty, pending state, or missing finality, call
    `dexter_asset_action_status` with that same `intentId`. Do not call Execute
    again automatically.
-8. When status says reconciliation is required, call
+9. When status says reconciliation is required, call
    `dexter_reconcile_asset_action` once for the same intent. It cannot expand
    mandate scope or create a replacement intent. Do not automatically retry it.
-9. Use `dexter_wallet_history` with only the server-issued opaque cursor to
+10. Use `dexter_wallet_history` with only the server-issued opaque cursor to
    list prior governed actions. Never construct a wallet or authority filter.
 
 ## Safety

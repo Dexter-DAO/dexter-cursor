@@ -10,6 +10,17 @@
 - Native MCP OAuth now completes before tool discovery. The authenticated
   server exposes one twelve-tool roster; the prior anonymous five-tool surface
   and seven-tool promotion split no longer apply.
+- Clarified that initialization and discovery first receive the transport's
+  HTTP 401 challenge, while `authentication_required` belongs to an established
+  connection that needs OAuth resumed.
+- Documented Indexter's confirmed price bounds, paid-only filter, relevance-tier
+  ordering, and degraded-ranking disclosure.
+- Corrected purchase guidance: only a purchasable `quoteOnly=false` check
+  returns an executable intent; `quoteOnly=true` does not.
+- Corrected governed-action routing: natural-language stock Buy and Sell use
+  `companyQuery`, including Buy budget or minimum-share modes and Stock Sell's
+  direct-token amount, while ordinary approved assets continue to use
+  `assetId`.
 - This entry records hosted plugin source and guidance. Marketplace publication
   and installed-client refresh require separate evidence.
 

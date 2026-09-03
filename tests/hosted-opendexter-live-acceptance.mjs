@@ -19,6 +19,18 @@ const checkedUrlText =
 const requireConnected =
   process.env.OPENDXTER_HOSTED_LIVE_REQUIRE_CONNECTED === "1";
 
+const indexterSearchArguments = Object.freeze({
+  query: "a reliable API for current cryptocurrency prices",
+  limit: 5,
+  unverified: false,
+  testnets: false,
+  rerank: false,
+  minPriceUsdc: 0,
+  maxPriceUsdc: 1,
+  paidOnly: true,
+  sortBy: "price_asc",
+});
+
 const forbiddenPublicKeys = new Set([
   "accesstoken",
   "apikey",
@@ -606,6 +618,138 @@ async function unauthorizedAcceptance() {
   };
 }
 
+function assertContractObject(value, schema, label) {
+  assert.ok(
+    value && typeof value === "object" && !Array.isArray(value),
+    `${label} must be an object`,
+  );
+  for (const field of schema.required ?? []) {
+    assert.ok(Object.hasOwn(value, field), `${label} omitted ${field}`);
+  }
+  if (schema.additionalProperties === false) {
+    for (const field of Object.keys(value)) {
+      assert.ok(
+        Object.hasOwn(schema.properties ?? {}, field),
+        `${label} returned unadvertised field ${field}`,
+      );
+    }
+  }
+}
+
+function assertNonNegativeInteger(value, label) {
+  assert.ok(
+    Number.isInteger(value) && value >= 0,
+    `${label} must be a non-negative integer`,
+  );
+}
+
+function assertIndexterSearch(search, requestArguments) {
+  const body = search.structuredContent;
+  const outputSchema = expectedTool("indexter_search").outputSchema;
+  assert.notEqual(search.isError, true, JSON.stringify(body));
+  assertContractObject(body, outputSchema, "indexter_search output");
+  assert.equal(body.success, true, "Indexter search did not succeed");
+  assert.ok(Array.isArray(body.strongResults));
+  assert.ok(Array.isArray(body.relatedResults));
+  assertNonNegativeInteger(body.count, "Indexter count");
+  assertNonNegativeInteger(body.strongCount, "Indexter strongCount");
+  assertNonNegativeInteger(body.relatedCount, "Indexter relatedCount");
+  assert.equal(body.strongCount, body.strongResults.length);
+  assert.equal(body.relatedCount, body.relatedResults.length);
+  assert.equal(body.count, body.strongCount + body.relatedCount);
+  assert.ok(body.count > 0, "live Indexter discovery returned no results");
+  assert.ok(body.count <= requestArguments.limit, "Indexter ignored the result limit");
+  assert.ok(
+    body.topSimilarity === null || typeof body.topSimilarity === "number",
+    "Indexter topSimilarity must be a number or null",
+  );
+  assert.ok(
+    body.noMatchReason === null ||
+      [
+        "below_similarity_threshold",
+        "below_strong_threshold",
+        "no_results_with_price_controls",
+      ].includes(body.noMatchReason),
+    "Indexter returned an unknown noMatchReason",
+  );
+
+  assertContractObject(
+    body.rerank,
+    outputSchema.properties.rerank,
+    "indexter_search rerank",
+  );
+  assert.equal(body.rerank.enabled, requestArguments.rerank);
+  assert.equal(typeof body.rerank.applied, "boolean");
+  assert.equal(body.rerank.applied, false, "disabled reranking was applied");
+
+  assertContractObject(
+    body.intent,
+    outputSchema.properties.intent,
+    "indexter_search intent",
+  );
+  assert.equal(typeof body.intent.capabilityText, "string");
+  assert.ok(body.intent.capabilityText.length > 0);
+
+  assertContractObject(
+    body.appliedConstraints,
+    outputSchema.properties.appliedConstraints,
+    "indexter_search appliedConstraints",
+  );
+  assert.deepEqual(body.appliedConstraints, {
+    maxPriceUsdc: requestArguments.maxPriceUsdc,
+    minPriceUsdc: requestArguments.minPriceUsdc,
+    paidOnly: requestArguments.paidOnly,
+  });
+
+  assertContractObject(
+    body.appliedOrdering,
+    outputSchema.properties.appliedOrdering,
+    "indexter_search appliedOrdering",
+  );
+  assert.deepEqual(body.appliedOrdering, { sortBy: requestArguments.sortBy });
+
+  assertContractObject(
+    body.searchMeta,
+    outputSchema.properties.searchMeta,
+    "indexter_search searchMeta",
+  );
+  assert.ok(["direct", "related_only"].includes(body.searchMeta.mode));
+  assert.equal(typeof body.searchMeta.note, "string");
+
+  const rankingMode = body.rankingMode ?? body.searchMeta.rankingMode;
+  assert.ok(["full", "degraded"].includes(rankingMode));
+  const degradedMessage =
+    body.degradedMessage ?? body.searchMeta.degradedMessage ?? null;
+  if (rankingMode === "degraded") {
+    assert.ok(
+      typeof degradedMessage === "string" && degradedMessage.length > 0,
+      "degraded Indexter ranking omitted degradedMessage",
+    );
+  }
+
+  assert.equal(typeof body.tip, "string");
+  assert.equal(typeof body.source, "string");
+  assertContractObject(
+    body.providerDataPolicy,
+    outputSchema.properties.providerDataPolicy,
+    "indexter_search providerDataPolicy",
+  );
+  assert.equal(body.providerDataPolicy.trust, "untrusted_external_data");
+  assert.equal(body.providerDataPolicy.mayAuthorizePayment, false);
+  assert.equal(typeof body.providerDataPolicy.instructions, "string");
+  assertNoInternalKeys(body);
+
+  return {
+    count: body.count,
+    strongCount: body.strongCount,
+    relatedCount: body.relatedCount,
+    rankingMode,
+    degradedMessage,
+    appliedConstraints: body.appliedConstraints,
+    appliedOrdering: body.appliedOrdering,
+  };
+}
+
 function assertPortfolio(portfolio) {
   const body = portfolio.structuredContent;
   assert.notEqual(portfolio.isError, true, JSON.stringify(body));
@@ -653,7 +797,22 @@ async function connectedAcceptance(token, checkedUrl) {
   );
   assertCurrentInputSchemas(byName);
 
-  const wallet = await callTool(sessionId, 21, "dexter_wallet", {}, token);
+  assert.deepEqual(byName.indexter_search.annotations, {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  const search = await callTool(
+    sessionId,
+    21,
+    "indexter_search",
+    indexterSearchArguments,
+    token,
+  );
+  const indexterSearch = assertIndexterSearch(search, indexterSearchArguments);
+
+  const wallet = await callTool(sessionId, 22, "dexter_wallet", {}, token);
   assert.notEqual(wallet.isError, true, JSON.stringify(wallet.structuredContent));
   assert.equal(wallet.structuredContent?.user_bound, true);
   assert.ok(wallet.structuredContent?.address, "wallet omitted its receive address");
@@ -663,7 +822,7 @@ async function connectedAcceptance(token, checkedUrl) {
 
   const portfolio = await callTool(
     sessionId,
-    22,
+    23,
     "dexter_wallet_portfolio",
     {},
     token,
@@ -672,7 +831,7 @@ async function connectedAcceptance(token, checkedUrl) {
 
   const check = await callTool(
     sessionId,
-    23,
+    24,
     "x402_check",
     { url: checkedUrl.href, method: "GET" },
     token,
@@ -691,7 +850,7 @@ async function connectedAcceptance(token, checkedUrl) {
 
   const status = await callTool(
     sessionId,
-    24,
+    25,
     "x402_status",
     { intentId: check.structuredContent.intentId },
     token,
@@ -702,7 +861,7 @@ async function connectedAcceptance(token, checkedUrl) {
 
   const history = await callTool(
     sessionId,
-    25,
+    26,
     "dexter_wallet_history",
     { limit: 1 },
     token,
@@ -711,6 +870,7 @@ async function connectedAcceptance(token, checkedUrl) {
 
   return {
     connectedTools: tools.map(({ name }) => name),
+    indexterSearch,
     walletBound: true,
     portfolioHoldings: portfolio.structuredContent.portfolio.holdings.length,
     x402IntentCreated: true,
