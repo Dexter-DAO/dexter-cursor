@@ -1,23 +1,19 @@
 # Hosted routing and safety
 
-## Discovery surfaces
+## Authenticated tool roster
 
-Before OAuth, the server lists exactly five entry tools:
-
-| Tool | Authentication | Consequence |
-| --- | --- | --- |
-| `x402_search` | none | Discovery only; never pays |
-| `x402_check` | optional OAuth | Anonymous quote or authenticated request custody; non-GET probes may mutate the provider |
-| `x402_access` | none | Wallet-proof request; may mutate the provider |
-| `x402_wallet` | OAuth on call | Connect entry before authorization; session-bound wallet data after authorization |
-| `dexter_portfolio` | OAuth on call | Connect entry before authorization; governed portfolio after authorization |
-
-OAuth adds exactly seven tools, making the connected roster twelve:
+OAuth is required before MCP initialization and tool discovery. After OAuth,
+the server lists exactly twelve tools:
 
 | Tool | Consequence |
 | --- | --- |
+| `indexter_search` | Discovers services and resources; never pays |
+| `x402_check` | Inspects or custodies one exact request; non-GET probes may mutate the provider |
 | `x402_fetch` | Executes one approved API-custodied purchase intent |
 | `x402_status` | Reads the same purchase intent without redispatch |
+| `x402_access` | Sends a wallet-proof request; may mutate the provider |
+| `dexter_wallet` | Reads the session-bound wallet, readiness, and activity |
+| `dexter_wallet_portfolio` | Reads the governed portfolio and available actions |
 | `dexter_prepare_asset_action` | Persists and evaluates one exact governed action; current Send fails before intent creation |
 | `dexter_execute_asset_action` | Executes one successfully prepared covered governed intent |
 | `dexter_asset_action_status` | Reads durable action and finality evidence |
@@ -30,12 +26,12 @@ product roster.
 
 ## Purchase route
 
-1. Unknown provider: `x402_search`.
+1. Unknown provider: `indexter_search`.
 2. Known exact URL or selected result: fresh `x402_check` with the exact method
    and raw request body. A non-GET check requires explicit confirmation after
    explaining that the provider may process the request before any payment.
-3. Anonymous paid quote: Connect, then repeat the same check once to obtain an
-   API-custodied opaque intent.
+3. A paid check returns one API-custodied opaque intent without executing it.
+   Stop if the response has no `intentId`.
 4. Paid execution: disclose the exact terms and ceiling, then call
    `x402_fetch` once with only `intentId` and `maxAmountAtomic`.
 5. Uncertain or nonfinal outcome: call `x402_status` on the same intent and do
@@ -52,7 +48,7 @@ explanation and explicit confirmation before the external mutation.
 
 ## Governed asset route
 
-1. `dexter_portfolio` supplies the canonical server-approved `assetId`. A
+1. `dexter_wallet_portfolio` supplies the canonical server-approved `assetId`. A
    model-supplied symbol, mint, token program, network, or decimals never
    becomes authority.
 2. For Send, Prepare is only an authoritative availability check. The pinned

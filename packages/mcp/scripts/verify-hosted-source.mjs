@@ -31,6 +31,8 @@ const SOURCE_CONTRACTS_KIND = "opendexter-source-contracts/v3";
 const EXPECTED_API_REPOSITORY = "https://github.com/Dexter-DAO/dexter-api";
 const EXPECTED_FACILITATOR_REPOSITORY =
   "https://github.com/Dexter-DAO/dexter-facilitator";
+const API_CONSUMER_FIXTURE_PATH =
+  "tests/fixtures/governed-agent-reconcile-advanced-final-fa0701b6.json";
 const PORTFOLIO_PROJECTION_SOURCE_PATHS = Object.freeze([
   "src/portfolio/approvedActionTargets.ts",
   "src/routes/passkeyMcpBinding.ts",
@@ -207,8 +209,7 @@ function validateSourceContracts(sourceContracts) {
     fail("hosted descriptor MCP source repository is unexpected");
   }
   if (
-    sourceContracts.api.consumerFixture.path
-      !== "tests/fixtures/governed-agent-reconcile-advanced-final-6c243154.json"
+    sourceContracts.api.consumerFixture.path !== API_CONSUMER_FIXTURE_PATH
     || sourceContracts.integratedApiRelease.governedContractCommit
       !== sourceContracts.api.commit
     || sourceContracts.integratedApiRelease.governedContractTree
@@ -284,7 +285,7 @@ function validateOAuth(oauth) {
     "challengeRequiredParameters",
   ], "hosted descriptor oauth");
   same(oauth, {
-    mode: "mixed",
+    mode: "required",
     resource: "https://open.dexter.cash/mcp",
     protectedResourceMetadata:
       "https://open.dexter.cash/.well-known/oauth-protected-resource/mcp",
@@ -297,12 +298,7 @@ function validateOAuth(oauth) {
       "https://mcp.dexter.cash/.well-known/oauth-authorization-server/mcp",
     tokenIssuer: "https://dexter.cash",
     scopesSupported: ["vault"],
-    challengeRequiredParameters: [
-      "resource_metadata",
-      "scope",
-      "error",
-      "error_description",
-    ],
+    challengeRequiredParameters: ["resource_metadata", "scope"],
   }, "hosted descriptor OAuth contract");
 }
 

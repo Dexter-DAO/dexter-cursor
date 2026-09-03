@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-03: hosted plugin roster update
+
+- Advanced the ChatGPT and Codex plugin to `0.6.2` and the Claude Code hosted
+  plugin to `2.1.2` for the deployed OpenDexter roster.
+- Updated the public names to `indexter_search`, `dexter_wallet`, and
+  `dexter_wallet_portfolio`. The x402 check, purchase, access, governed-action,
+  and history names remain unchanged.
+- Native MCP OAuth now completes before tool discovery. The authenticated
+  server exposes one twelve-tool roster; the prior anonymous five-tool surface
+  and seven-tool promotion split no longer apply.
+- This entry records hosted plugin source and guidance. Marketplace publication
+  and installed-client refresh require separate evidence.
+
 ## 2026-08-17 — 1.24.0-rc.3 canonical archive candidate
 
 - Advanced the coordinated source train to

@@ -7,13 +7,13 @@ OpenDexter rc.2, MCP tools rc.1, and discovery rc.1 are immutable on npm under
 successor train in this source is not yet published. This document records
 inclusion and integration
 boundaries; it is not deployment, registry-install, or live-host proof. The
-checked-in historical hosted receipt names the previously accepted MCP release at
-`7e7b3d0d49459567fba66531e8e2f7daa83d5587`, tree
-`ae18395cc5b4fab267cc50e6fd5a6aebdb662abc`, artifact-manifest SHA-256
-`43f40ec43fa81ff9f3c82e4dbb9dc700015341a4a86b80372cdde4713eacd3cd`, and
+checked-in hosted receipt names the current accepted MCP release at
+`b76d2ecc2765cc610b2af29830009850f610c5dd`, tree
+`78d745ffc2479abbd4ee14429a5b3dcf88b57b3f`, artifact-manifest SHA-256
+`162143ac6b240f70410e614f485d0f07864b0fdd67e1b11c61af5ead7706f2a8`, and
 descriptor SHA-256
-`52a10cdab9391abec0422c86616a10d3669ab0a16fba8a2d8082281a21624d7c`. It is
-not acceptance for this successor. A fresh hosted receipt and release belongs
+`57ab75549457933ad2c43a6836dece165edccbfa9358a0929f7e38c418573647`. It is
+hosted production-source evidence, not acceptance for this local successor. A hosted receipt and release belongs
 to the hosted repository and must bind its own accepted API, facilitator,
 source, and artifact identities; this local source preparation does not
 generate that proof.
@@ -43,8 +43,8 @@ The local npm/stdio product exposes exactly seven operation names:
 `x402_search`, `x402_check`, `x402_fetch`, `x402_status`, `x402_access`,
 `x402_wallet`, and `dexter_portfolio`. The local runtime proxies those exact
 operations to the hosted governed runtime; it does not mount a local signer or
-payment executor. Hosted OpenDexter exposes five anonymous entry tools and
-twelve after OAuth: the common x402/wallet/portfolio operations plus five
+payment executor. Hosted OpenDexter requires OAuth before initialization and
+then exposes exactly twelve tools: the common x402/wallet/portfolio operations plus five
 governed asset tools for prepare, execute, status, reconciliation, and history.
 
 Neither surface registers a hidden paid-call alias, compose/promote route,

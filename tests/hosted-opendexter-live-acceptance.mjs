@@ -199,10 +199,6 @@ function assertVaultChallengeHeader(header, label) {
     `${label} challenge points at the wrong protected resource`,
   );
   assert.equal(params.scope, contract.mcp.scope, `${label} challenge scope drifted`);
-  assert.ok(
-    ["insufficient_scope", "invalid_token"].includes(params.error),
-    `${label} challenge has an unsupported OAuth error`,
-  );
 }
 
 function expectedTool(name) {
@@ -266,13 +262,24 @@ function assertToolDescriptors(tools, expectedRoster, label) {
 
 function assertCurrentInputSchemas(byName) {
   const ordinaryShapes = {
-    x402_search: ["query", "network", "limit", "unverified", "testnets", "rerank"],
+    indexter_search: [
+      "query",
+      "network",
+      "limit",
+      "unverified",
+      "testnets",
+      "rerank",
+      "minPriceUsdc",
+      "maxPriceUsdc",
+      "paidOnly",
+      "sortBy",
+    ],
     x402_check: ["url", "method", "body"],
     x402_fetch: ["intentId", "maxAmountAtomic"],
     x402_status: ["intentId"],
-    x402_access: ["url", "method", "body", "network"],
-    x402_wallet: [],
-    dexter_portfolio: [],
+    x402_access: ["url", "method", "body"],
+    dexter_wallet: [],
+    dexter_wallet_portfolio: [],
   };
   for (const [name, fields] of Object.entries(ordinaryShapes)) {
     assertExactProperties(byName[name].inputSchema, fields, name);
@@ -281,36 +288,47 @@ function assertCurrentInputSchemas(byName) {
   const prepare = byName.dexter_prepare_asset_action.inputSchema;
   const branches = prepare?.anyOf ?? prepare?.oneOf;
   assert.ok(Array.isArray(branches), "prepare must remain a strict action union");
-  assert.equal(branches.length, 3, "prepare must expose Send, Buy, and Sell");
-  const byAction = Object.fromEntries(
-    branches.map((branch) => [branch?.properties?.action?.const, branch]),
-  );
-  assert.deepEqual(sorted(Object.keys(byAction)), ["buy", "sell", "send"]);
+  assert.equal(branches.length, 6, "prepare must expose the six governed request shapes");
+  const branchesFor = (action) =>
+    branches.filter((branch) => branch?.properties?.action?.const === action);
+  const [send] = branchesFor("send");
+  const buys = branchesFor("buy");
+  const sells = branchesFor("sell");
+  assert.equal(branchesFor("send").length, 1);
+  assert.equal(buys.length, 3);
+  assert.equal(sells.length, 2);
   assertStrictObject(
-    byAction.send,
+    send,
     ["operationId", "action", "assetId", "amountAtomic", "destinationOwner"],
     ["operationId", "action", "assetId", "amountAtomic", "destinationOwner"],
     "prepare/send",
   );
-  for (const action of ["buy", "sell"]) {
-    assertStrictObject(
-      byAction[action],
-      [
-        "operationId",
-        "action",
-        "assetId",
-        "amountAtomic",
-        "memo",
-        "maxSlippageBps",
-        "maxPriceImpactBps",
-      ],
-      ["operationId", "action", "assetId", "amountAtomic"],
-      `prepare/${action}`,
-    );
+  const byFields = (items, requiredFields) => items.find((branch) =>
+    requiredFields.every((field) => Object.hasOwn(branch.properties, field))
+  );
+  for (const [label, branch, properties, required] of [
+    ["prepare/buy asset", byFields(buys, ["assetId", "amountAtomic"]),
+      ["operationId", "action", "assetId", "amountAtomic", "memo", "maxSlippageBps", "maxPriceImpactBps"],
+      ["operationId", "action", "assetId", "amountAtomic"]],
+    ["prepare/buy company budget", byFields(buys, ["companyQuery", "amountAtomic"]),
+      ["operationId", "action", "companyQuery", "amountAtomic", "memo", "maxSlippageBps", "maxPriceImpactBps"],
+      ["operationId", "action", "companyQuery", "amountAtomic"]],
+    ["prepare/buy company shares", byFields(buys, ["companyQuery", "shareQuantity"]),
+      ["operationId", "action", "companyQuery", "shareQuantity", "maximumSpendAtomic", "memo", "maxSlippageBps", "maxPriceImpactBps"],
+      ["operationId", "action", "companyQuery", "shareQuantity"]],
+    ["prepare/sell asset", byFields(sells, ["assetId", "amountAtomic"]),
+      ["operationId", "action", "assetId", "amountAtomic", "memo", "maxSlippageBps", "maxPriceImpactBps"],
+      ["operationId", "action", "assetId", "amountAtomic"]],
+    ["prepare/sell company", byFields(sells, ["companyQuery", "amountAtomic"]),
+      ["operationId", "action", "companyQuery", "amountAtomic", "memo", "maxSlippageBps", "maxPriceImpactBps"],
+      ["operationId", "action", "companyQuery", "amountAtomic"]],
+  ]) {
+    assert.ok(branch, `${label} branch is missing`);
+    assertStrictObject(branch, properties, required, label);
   }
-  assert.equal(byAction.send.properties.amountAtomic.maxLength, 20);
-  assert.equal(byAction.send.properties.assetId.maxLength, 128);
-  assert.equal(byAction.send.properties.destinationOwner.maxLength, 44);
+  assert.equal(send.properties.amountAtomic.maxLength, 20);
+  assert.equal(send.properties.assetId.maxLength, 128);
+  assert.equal(send.properties.destinationOwner.maxLength, 44);
 
   assertStrictObject(
     byName.dexter_execute_asset_action.inputSchema,
@@ -363,6 +381,7 @@ function assertCurrentInputSchemas(byName) {
       "preview",
       "account",
       "execution",
+      "stockRuntime",
     ],
     "prepare output",
   );
@@ -381,6 +400,7 @@ function assertCurrentInputSchemas(byName) {
       "attribution",
       "business",
       "evidenceDigest",
+      "tradeSummary",
     ],
     "execute output",
   );
@@ -411,8 +431,8 @@ function validatePinnedContract() {
   assert.equal(contract.contractId, "opendexter-hosted-full-descriptor-v2");
   assert.equal(new URL(contract.mcp.url).protocol, "https:");
   assert.equal(contract.mcp.resource, contract.mcp.url);
-  assert.equal(contract.anonymousToolNames.length, 5);
-  assert.equal(contract.oauthPromotedToolNames.length, 7);
+  assert.equal(contract.anonymousToolNames.length, 0);
+  assert.equal(contract.oauthPromotedToolNames.length, 12);
   assert.equal(contract.connectedToolNames.length, 12);
   assert.deepEqual(
     contract.tools.map(({ name }) => name),
@@ -451,8 +471,9 @@ async function request({ body, sessionId = null, token = null }) {
   };
 }
 
-async function initialize() {
+async function initialize(token) {
   const response = await request({
+    token,
     body: {
       jsonrpc: "2.0",
       id: 1,
@@ -475,6 +496,7 @@ async function initialize() {
     contract.mcp.manifestVersion,
   );
   const initialized = await request({
+    token,
     sessionId: response.sessionId,
     body: { jsonrpc: "2.0", method: "notifications/initialized" },
   });
@@ -522,22 +544,6 @@ async function callTool(sessionId, id, name, args, token = null) {
   );
 }
 
-function assertToolLevelAuthChallenge(result, tool) {
-  assert.equal(result.isError, true, `${tool} should challenge before OAuth`);
-  assert.equal(result.structuredContent?.mode, "authentication_required");
-  assert.equal(result.structuredContent?.user_bound, false);
-  assert.equal(result.structuredContent?.status, 401);
-  assert.equal(result.structuredContent?.next_action, "connect_opendexter");
-  assert.notEqual(
-    result.structuredContent?.reason,
-    "not_enrolled",
-    `${tool} cannot claim wallet non-enrollment before connector OAuth`,
-  );
-  const challenges = result._meta?.["mcp/www_authenticate"];
-  assert.ok(Array.isArray(challenges) && challenges.length === 1);
-  assertVaultChallengeHeader(challenges[0], tool);
-}
-
 function assertTransportAuthChallenge(response, tool) {
   assert.equal(response.status, 401, `${tool} must be challenged before dispatch`);
   assert.equal(response.cacheControl, "no-store");
@@ -574,61 +580,29 @@ async function metadataAcceptance() {
   assert.ok(authorizationServer.scopes_supported.includes(contract.mcp.scope));
 }
 
-async function anonymousAcceptance(checkedUrl) {
-  const sessionId = await initialize();
-  const tools = await listTools(sessionId, 2);
-  assertToolDescriptors(tools, contract.anonymousToolNames, "anonymous");
-
-  const search = await callTool(sessionId, 3, "x402_search", {
-    query: "a reliable API for current cryptocurrency prices",
-    limit: 5,
-  });
-  assert.notEqual(search.isError, true);
-  const searchBody = search.structuredContent;
-  const results = [
-    ...(searchBody?.strongResults ?? []),
-    ...(searchBody?.relatedResults ?? []),
-  ];
-  assert.ok(results.length > 0, "live discovery returned no results");
-  assert.ok(results.some((entry) => entry.verified === true));
-  assert.equal(searchBody?.providerDataPolicy?.mayAuthorizePayment, false);
-
-  const check = await callTool(sessionId, 4, "x402_check", {
-    url: checkedUrl.href,
-    method: "GET",
-  });
-  assert.notEqual(check.isError, true);
-  assert.equal(check.structuredContent?.authMode, "paid");
-  assert.equal(check.structuredContent?.quoteOnly, true);
-  assert.equal(check.structuredContent?.intentId, null);
-  assert.equal(check.structuredContent?.checkedRequest?.url, checkedUrl.href);
-  assert.equal(check.structuredContent?.checkedRequest?.method, "GET");
-  assert.equal(check.structuredContent?.checkedRequest?.requestBound, true);
-  assert.ok(check.structuredContent?.paymentOptions?.length > 0);
-  assertNoInternalKeys(check.structuredContent);
-
-  const wallet = await callTool(sessionId, 5, "x402_wallet", {});
-  assertToolLevelAuthChallenge(wallet, "x402_wallet");
-  const portfolio = await callTool(sessionId, 6, "dexter_portfolio", {});
-  assertToolLevelAuthChallenge(portfolio, "dexter_portfolio");
-
-  const governedRead = await rpcRaw(
-    sessionId,
-    7,
-    "tools/call",
-    { name: "dexter_wallet_history", arguments: { limit: 1 } },
-  );
-  assertTransportAuthChallenge(governedRead, "dexter_wallet_history");
-
-  return {
-    serverVersion: contract.mcp.manifestVersion,
-    anonymousTools: tools.map(({ name }) => name),
-    discoveryResults: results.length,
-    quotedOptions: check.structuredContent.paymentOptions.length,
-    connectChallenges: {
-      toolLevel: ["x402_wallet", "dexter_portfolio"],
-      transportLevel: ["dexter_wallet_history"],
+async function unauthorizedAcceptance() {
+  const response = await request({
+    body: {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: {
+          name: "opendexter-hosted-live-acceptance",
+          version: "2.0.0",
+        },
+      },
     },
+  });
+  assertTransportAuthChallenge(response, "initialize");
+  assert.equal(response.sessionId, null);
+  return {
+    status: response.status,
+    cacheControl: response.cacheControl,
+    challengedMethod: "initialize",
+    requiredScope: contract.mcp.scope,
   };
 }
 
@@ -670,7 +644,7 @@ function assertGovernedHistory(history) {
 }
 
 async function connectedAcceptance(token, checkedUrl) {
-  const sessionId = await initialize();
+  const sessionId = await initialize(token);
   const tools = await listTools(sessionId, 20, token);
   const byName = assertToolDescriptors(
     tools,
@@ -679,7 +653,7 @@ async function connectedAcceptance(token, checkedUrl) {
   );
   assertCurrentInputSchemas(byName);
 
-  const wallet = await callTool(sessionId, 21, "x402_wallet", {}, token);
+  const wallet = await callTool(sessionId, 21, "dexter_wallet", {}, token);
   assert.notEqual(wallet.isError, true, JSON.stringify(wallet.structuredContent));
   assert.equal(wallet.structuredContent?.user_bound, true);
   assert.ok(wallet.structuredContent?.address, "wallet omitted its receive address");
@@ -687,7 +661,13 @@ async function connectedAcceptance(token, checkedUrl) {
   assert.equal(wallet.structuredContent?.vault?.receiveAddress, wallet.structuredContent.address);
   assertNoInternalKeys(wallet.structuredContent);
 
-  const portfolio = await callTool(sessionId, 22, "dexter_portfolio", {}, token);
+  const portfolio = await callTool(
+    sessionId,
+    22,
+    "dexter_wallet_portfolio",
+    {},
+    token,
+  );
   assertPortfolio(portfolio);
 
   const check = await callTool(
@@ -741,21 +721,25 @@ async function connectedAcceptance(token, checkedUrl) {
 
 async function main() {
   validatePinnedContract();
-  assert.ok(
-    checkedUrlText,
-    "OPENDXTER_HOSTED_LIVE_QUOTE_URL must name a current approved paid GET endpoint",
-  );
-  const checkedUrl = new URL(checkedUrlText);
-  assert.equal(checkedUrl.protocol, "https:", "quote target must use HTTPS");
   if (requireConnected) {
     assert.ok(
       accessToken,
       "OPENDXTER_HOSTED_LIVE_REQUIRE_CONNECTED=1 requires OPENDXTER_HOSTED_LIVE_BEARER",
     );
   }
+  if (accessToken) {
+    assert.ok(
+      checkedUrlText,
+      "OPENDXTER_HOSTED_LIVE_QUOTE_URL is required for connected acceptance",
+    );
+  }
+  const checkedUrl = checkedUrlText ? new URL(checkedUrlText) : null;
+  if (checkedUrl) {
+    assert.equal(checkedUrl.protocol, "https:", "quote target must use HTTPS");
+  }
 
   await metadataAcceptance();
-  const anonymous = await anonymousAcceptance(checkedUrl);
+  const unauthorized = await unauthorizedAcceptance();
   const connected = accessToken
     ? await connectedAcceptance(accessToken, checkedUrl)
     : { skipped: "set OPENDXTER_HOSTED_LIVE_BEARER for connected acceptance" };
@@ -766,7 +750,7 @@ async function main() {
     contractId: contract.contractId,
     sourceCommit: contract.source.commit,
     endpoint,
-    anonymous,
+    unauthorized,
     connected,
   }, null, 2));
 }

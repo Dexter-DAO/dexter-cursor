@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultCasesPath = resolve(here, "opendexter-novice-routing-cases.json");
-const TOOL_NAME = /\b(?:x402_[a-z_]+|dexter_[a-z_]+)\b/i;
+const TOOL_NAME = /\b(?:indexter_[a-z_]+|x402_[a-z_]+|dexter_[a-z_]+)\b/i;
 const MAGIC_LANGUAGE = /\b(?:intentId|operationId|maxAmountAtomic|amountAtomic|tool name|call the tool)\b/i;
 
 function fail(message) {

@@ -3,11 +3,10 @@
 OpenDexter gives Claude Code a governed Dexter Wallet through the hosted MCP at
 `https://open.dexter.cash/mcp`.
 
-Version `2.1.1` targets hosted manifest `0.5.0`. Before OAuth the public
-product exposes five entry tools for discovery, exact-term inspection,
-wallet-proof access, wallet connection, and portfolio connection. OAuth
-promotes seven protected purchase and governed-action tools, making the
-connected roster exactly twelve. No compatibility, card, passkey-status,
+Version `2.1.2` targets hosted manifest `0.5.0`. Native MCP OAuth completes
+before tool discovery. The authenticated product exposes one twelve-tool
+roster for Indexter discovery, x402 access and purchases, Dexter Wallet reads,
+and governed asset actions. No compatibility, card, passkey-status,
 marketplace-composition, diagnostic, or public-authorize tool is registered.
 
 ## Install
@@ -33,10 +32,9 @@ client.
 ## Contract
 
 - Native MCP OAuth binds the Claude Code session to the user's Dexter Wallet.
-- `dexter_portfolio` accepts no caller-selected identity.
-- An anonymous paid check is quote-only. Repeat the same check after OAuth to
-  create one API-custodied opaque intent, then execute it once with the exact
-  approved atomic ceiling.
+- `dexter_wallet_portfolio` accepts no caller-selected identity.
+- A paid `x402_check` returns one API-custodied opaque intent without executing
+  it. Execute that intent once with the exact approved atomic ceiling.
 - Governed Buy and Sell use only a canonical server-approved `assetId` and
   exact atomic amount. Send remains visible for compatibility and history, but
   the current runtime refuses it before creating an executable intent. The

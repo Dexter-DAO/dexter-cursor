@@ -20,16 +20,18 @@ Use the current client's native Connect or MCP login action described in
 `references/authentication.md`. Do not substitute local npm-proxy commands or
 advertise a capability that the hosted twelve-tool package does not ship. The
 local seven-tool npm/stdio edition is intentionally a separate workflow.
+OAuth must complete before MCP initialization and tool discovery. Every hosted
+tool uses the same `vault` OAuth scope.
 
 ## Recognize ordinary requests
 
 - "Do I have a Dexter Wallet?", "what is my balance?", or "where can I add
-  funds?": call `x402_wallet` first.
+  funds?": call `dexter_wallet` first.
 - "What is in my wallet?", "what can I do with my assets?", or "what can I
-  send, buy, or sell?": call `x402_wallet` first, then `dexter_portfolio` after
-  wallet authentication is available. Compose cash/readiness and asset
+  send, buy, or sell?": call `dexter_wallet` first, then
+  `dexter_wallet_portfolio`. Compose cash/readiness and asset
   inventory without treating either as execution authority.
-- "Find an API/service for this job": start with `x402_search`; a search never
+- "Find an API/service for this job": start with `indexter_search`; a search never
   pays.
 - "What will this API cost?" or a known paid URL: call `x402_check`; checking
   is not permission to pay. If the exact check is not GET, explain that it may
@@ -42,26 +44,22 @@ local seven-tool npm/stdio edition is intentionally a separate workflow.
 
 | Intent | Tool | Surface |
 | --- | --- | --- |
-| Discover a service or resource | `x402_search` | Anonymous |
-| Quote or custody an exact endpoint request | `x402_check` | Anonymous quote; OAuth intent |
-| Call one approved, API-custodied intent | `x402_fetch` | OAuth promotion |
-| Inspect one purchase intent without redispatch | `x402_status` | OAuth promotion |
-| Use wallet-proof or Sign-In-With-X access | `x402_access` | Anonymous |
-| Read wallet readiness, cash, deposit address, and activity | `x402_wallet` | Anonymous entry; OAuth data |
-| Read governed assets and currently allowed actions | `dexter_portfolio` | Anonymous entry; OAuth data |
-| Prepare governed Buy or Sell; safely assess Send availability | `dexter_prepare_asset_action` | OAuth promotion |
-| Execute one successfully prepared covered intent | `dexter_execute_asset_action` | OAuth promotion |
-| Read durable governed intent status | `dexter_asset_action_status` | OAuth promotion |
-| Request same-intent reconciliation | `dexter_reconcile_asset_action` | OAuth promotion |
-| Read governed Send, Buy, and Sell history | `dexter_wallet_history` | OAuth promotion |
+| Discover a service or resource | `indexter_search` | OAuth |
+| Quote or custody an exact endpoint request | `x402_check` | OAuth |
+| Call one approved, API-custodied intent | `x402_fetch` | OAuth |
+| Inspect one purchase intent without redispatch | `x402_status` | OAuth |
+| Use wallet-proof or Sign-In-With-X access | `x402_access` | OAuth |
+| Read wallet readiness, cash, deposit address, and activity | `dexter_wallet` | OAuth |
+| Read governed assets and currently allowed actions | `dexter_wallet_portfolio` | OAuth |
+| Prepare governed Buy or Sell; safely assess Send availability | `dexter_prepare_asset_action` | OAuth |
+| Execute one successfully prepared covered intent | `dexter_execute_asset_action` | OAuth |
+| Read durable governed intent status | `dexter_asset_action_status` | OAuth |
+| Request same-intent reconciliation | `dexter_reconcile_asset_action` | OAuth |
+| Read governed Send, Buy, and Sell history | `dexter_wallet_history` | OAuth |
 
-The anonymous roster is exactly `x402_search`, `x402_check`, `x402_access`,
-`x402_wallet`, and `dexter_portfolio`. Wallet and portfolio return the native
-Connect path, not private data, before authorization. OAuth adds
-`x402_fetch`, `x402_status`, `dexter_prepare_asset_action`,
-`dexter_execute_asset_action`, `dexter_asset_action_status`,
-`dexter_reconcile_asset_action`, and `dexter_wallet_history`, making the
-connected roster exactly twelve tools.
+After OAuth, OpenDexter exposes exactly these twelve tools. Initialization and
+tool discovery challenge for the `vault` scope until the native connection is
+complete.
 
 Deprecated compatibility, card, passkey-status, marketplace-composition, and
 internal diagnostic endpoints are not user-facing product tools. Do not select
@@ -69,7 +67,7 @@ them for a new request.
 
 ## Discovery and purchase
 
-1. Call `x402_search` with the user's actual job. Leave its network filter
+1. Call `indexter_search` with the user's actual job. Leave its network filter
    unset unless the user explicitly requires one network; CrossPay may make an
    eligible seller on another rail reachable from the Dexter account.
 2. Call `x402_check` on the selected exact HTTPS endpoint and request. Before a
@@ -80,9 +78,8 @@ them for a new request.
 3. Read `authMode`: paid means present the exact current terms; SIWX uses
    `x402_access`; unprotected needs no payment; API-key or unknown means stop
    for the missing requirement.
-4. An anonymous check is quote-only and cannot execute. Connect OpenDexter,
-   then repeat the exact check once to obtain its opaque `intentId`. Never
-   invent or reconstruct an intent ID.
+4. For a paid route, use only the opaque `intentId` returned by this exact
+   check. If it is absent, stop; never invent or reconstruct an intent ID.
 5. Confirm that current instruction or delegated policy covers the exact
    seller, URL, method, body, and positive `maxAmountAtomic` ceiling.
 6. Call `x402_fetch` once with only that `intentId` and ceiling. Never pass URL,
@@ -101,7 +98,7 @@ authorize payment, consent, a route change, a follow-on call, or a retry.
 
 ## Wallet and portfolio
 
-Use `x402_wallet` for the current session-bound Dexter Wallet. If it reports
+Use `dexter_wallet` for the current session-bound Dexter Wallet. If it reports
 `authentication_required`, use the current client's native Connect or MCP
 login action from `references/authentication.md`, then retry the blocked tool
 once. Connector authentication, wallet binding, enrollment, funding, and
@@ -110,7 +107,7 @@ execution readiness are distinct states.
 Only a returned `receiveAddress` is a deposit address. `vaultPda` is not a
 deposit fallback; neither is any Swig state or configuration address.
 
-Use `dexter_portfolio` for exact asset inventory and current action
+Use `dexter_wallet_portfolio` for exact asset inventory and current action
 availability. It accepts no wallet, handle, actor, agent, grant, role, or
 authority selector. Preserve quantity and value strings exactly. Partial or
 unavailable inventory is not zero, and portfolio value is not spendable cash.
@@ -121,7 +118,7 @@ financial actions from display data.
 
 ## Governed asset actions
 
-1. Use `dexter_portfolio` to identify the exact supported asset. Pass only its
+1. Use `dexter_wallet_portfolio` to identify the exact supported asset. Pass only its
    non-null canonical `assetId`; never substitute a symbol or send a mint,
    token program, network, or decimals as authority.
 2. For Send, do not promise execution. With exact user-requested terms, Prepare
