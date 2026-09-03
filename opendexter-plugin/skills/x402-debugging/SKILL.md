@@ -7,11 +7,15 @@ description: "Diagnose hosted OpenDexter x402, OAuth, wallet-binding, intent, pr
 
 Identify the failed layer before retrying:
 
-1. **Connector discovery**: the host cannot list the OpenDexter tools.
-2. **OAuth connection**: a protected tool returns `authentication_required`.
+1. **Connector registration**: the host cannot reach the canonical OpenDexter
+   endpoint or discover its OAuth metadata.
+2. **OAuth connection**: the initial initialize or tool-discovery request gets
+   an HTTP 401 before tools appear, or an established connection later returns
+   `authentication_required`.
 3. **Wallet binding**: OAuth succeeded, but no ready Dexter Wallet is bound.
-4. **Quote or intent custody**: `x402_check` cannot obtain requirements, or an
-   anonymous quote has no executable `intentId`.
+4. **Quote or intent custody**: an authorized `x402_check` cannot obtain
+   requirements, or a purchasable `quoteOnly=false` result has no executable
+   `intentId`. A `quoteOnly=true` result is non-purchasable by design.
 5. **Hosted authority**: the same intent needs consent before execution.
 6. **Payment build**: requirements exist, but payment proof was not constructed.
 7. **Dispatch or validation**: proof was sent and rejected.
@@ -25,15 +29,18 @@ one another.
 
 ## Safe response
 
-- For `authentication_required`, let the host show Connect, complete native
-  OAuth, and retry the same tool once.
-- For wallet-not-ready, call `x402_wallet`; do not invent or surface a
+- For the initial HTTP 401, use the host's native OpenDexter Connect action on
+  `https://open.dexter.cash/mcp`, complete OAuth, and reload the tool list once.
+- If an established connection later returns `authentication_required`, let
+  the host resume OAuth and retry the same tool once.
+- For wallet-not-ready, call `dexter_wallet`; do not invent or surface a
   personalized connector or legacy pairing URL.
 - For insufficient funds, use the returned `receiveAddress`. Never use
   `vaultPda` or Swig state as a deposit fallback.
 - For quote-above-limit, stop and request a new explicit ceiling from the user.
-- For `quoteOnly`, Connect and repeat the same exact check; do not invent an
-  intent ID.
+- For `quoteOnly=true`, report that the checked quote has no executable intent
+  and do not call `x402_fetch`. For `quoteOnly=false` without an `intentId`,
+  stop and preserve the same request; do not invent an intent ID.
 - For hosted consent, preserve the same `intentId`, complete the returned
   Dexter consent surface, and resume only that intent.
 - For malformed requirements or build failure, preserve `intentId`, stage, and

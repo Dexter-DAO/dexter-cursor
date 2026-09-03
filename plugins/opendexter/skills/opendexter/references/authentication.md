@@ -26,11 +26,19 @@ success does not mean the wallet is enrolled, bound, funded, active, or ready.
 The authorization-server issuer and access-token issuer are deliberately
 different identities. Do not rewrite either one.
 
-Each protected tool advertises canonical `securitySchemes` and the
-back-compatibility `_meta.securitySchemes` mirror. A runtime challenge is an
-error result with `isError: true` and `_meta["mcp/www_authenticate"]`; the
-Bearer challenge includes `resource_metadata`, `scope`, `error`, and
-`error_description`.
+OAuth is required before MCP initialization and tool discovery. Each hosted
+tool advertises canonical `securitySchemes` and the
+back-compatibility `_meta.securitySchemes` mirror. An unauthenticated
+initialization is refused at the transport layer with HTTP 401,
+`Cache-Control: no-store`, and a Bearer challenge containing
+`resource_metadata` and `scope`.
+
+That initial HTTP 401 happens before a tool session or tool list exists. Let
+the host surface its native OpenDexter Connect action and complete OAuth before
+reloading discovery. An established connection whose authorization has become
+stale can instead return `authentication_required` from a protected tool; let
+the host resume OAuth and retry that same tool once. Do not describe the
+initial transport challenge as a tool-level `authentication_required` result.
 
 ## Native client action
 
@@ -43,10 +51,11 @@ Use the client action already surfaced for the configured MCP:
 Never relay a personalized MCP URL, pairing URL, enrollment link, bearer token,
 or one-time credential through the conversation.
 
-After the user completes native OAuth, retry the blocked protected tool once.
-If it still challenges, stop and report connector OAuth as the failed layer.
-Do not switch to enrollment or create a second connector.
+After initial native OAuth, reload tool discovery once. After resuming OAuth on
+an established connection, retry the same blocked tool once. If either still
+challenges, stop and report connector OAuth as the failed layer. Do not switch
+to enrollment or create a second connector.
 
-For a valid OAuth session whose wallet is not ready, use `x402_wallet` and the
+For a valid OAuth session whose wallet is not ready, use `dexter_wallet` and the
 hosted wallet UI. The user completes the passkey ceremony on Dexter's secure
 surface; the model never handles passkey material.

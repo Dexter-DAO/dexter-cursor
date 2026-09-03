@@ -26,11 +26,11 @@ Every RC manifest is `next`-only. The protected
 `opendexter-v1.23.0` tag records a workflow that stopped before artifact
 creation, upload, or npm publication; it is not a registry release. The
 checked-in public hosted receipt pins the accepted live MCP release at
-`7e7b3d0d49459567fba66531e8e2f7daa83d5587`, tree
-`ae18395cc5b4fab267cc50e6fd5a6aebdb662abc`, artifact-manifest SHA-256
-`43f40ec43fa81ff9f3c82e4dbb9dc700015341a4a86b80372cdde4713eacd3cd`, and
+`b76d2ecc2765cc610b2af29830009850f610c5dd`, tree
+`78d745ffc2479abbd4ee14429a5b3dcf88b57b3f`, artifact-manifest SHA-256
+`162143ac6b240f70410e614f485d0f07864b0fdd67e1b11c61af5ead7706f2a8`, and
 descriptor SHA-256
-`52a10cdab9391abec0422c86616a10d3669ab0a16fba8a2d8082281a21624d7c`.
+`57ab75549457933ad2c43a6836dece165edccbfa9358a0929f7e38c418573647`.
 This receipt refresh and the V6 migration are source evidence only; they do
 not tag, publish, deploy, or exercise the local package against a live seller.
 
@@ -55,8 +55,8 @@ verification recipes may differ. Publication also waits for the single
 
 It checks:
 
-- the source-pinned exact twelve-tool contract, including the anonymous five
-  and seven OAuth-promoted tools;
+- the source-pinned exact twelve-tool contract, with OAuth required before tool
+  discovery;
 - combined ChatGPT/Codex and Claude manifest/MCP/marketplace shapes;
 - the three hosted-contract skills in both packages;
 - absence of old card, local-wallet, pairing, and npm-latest routes from active
@@ -70,26 +70,25 @@ It checks:
   symlinks or special files.
 
 The automated test does not change a client configuration, connect to the
-hosted MCP, complete OAuth, or make a payment. Publication, installation, and
-fresh anonymous/connected live discovery remain separate release gates.
+hosted MCP, complete OAuth, or make a payment. Publication, installation, the
+unauthenticated transport challenge, and authenticated live discovery remain
+separate release gates.
 
 ## Hosted non-paying live acceptance
 
 The hosted gate is intentionally not part of the default test command and
-refuses to make any network request unless the operator opts in. Point it at a
-current, approved HTTPS GET endpoint that is expected to return an x402 quote:
+refuses to make any network request unless the operator opts in. The
+unauthenticated run checks metadata and confirms that initialization is denied
+before tool discovery:
 
 ```bash
 OPENDXTER_HOSTED_LIVE_RUN=1 \
-OPENDXTER_HOSTED_LIVE_QUOTE_URL='<current approved paid GET endpoint>' \
   node tests/hosted-opendexter-live-acceptance.mjs
 ```
 
-That anonymous run reads the endpoint, version, five-tool roster, OAuth
-metadata, tool contracts, and retired-tool denylist from the source-pinned
-`hosted-contract.json`. It then checks live discovery, a quote-only GET, the
-wallet and portfolio Connect results, and the governed-history HTTP challenge.
-It does not use a stale built-in quote endpoint.
+That run reads the OAuth metadata from the source-pinned
+`hosted-contract.json` and verifies the exact HTTP 401 initialization
+challenge. It cannot list or call tools without OAuth.
 
 For the complete connected proof, inject a current test authorization through
 the release secret mechanism; never paste or commit it:
@@ -103,10 +102,14 @@ OPENDXTER_HOSTED_LIVE_BEARER="$RELEASE_INJECTED_OPENDEXTER_BEARER" \
 ```
 
 The connected run requires the exact twelve-tool roster and current security,
-annotation, visibility, input, and output schemas. It reads the bound wallet,
-complete canonical-asset portfolio, one governed-history page, and the same
-x402 intent after a connected price check. A connected `x402_check` persists a
-quote intent, but the gate never calls `x402_fetch`, governed prepare, execute,
-or reconcile, never signs or submits a transaction, and never moves money.
-Without the bearer, output is explicitly `complete: false`; it is anonymous
+annotation, visibility, input, and output schemas. It makes one read-only
+Indexter query with explicit price, result-limit, paid-only, rerank, and ordering
+controls. The gate confirms the applied price and ordering controls, ranking
+status, tier counts, and discovery's no-payment policy. It also reads the bound
+wallet, complete canonical-asset portfolio, one governed-history page, and the
+same x402 intent after a connected price check. A connected `x402_check`
+persists a quote intent, but the gate never calls `x402_fetch`, governed prepare,
+execute, or reconcile, never signs or submits a transaction, and never moves
+money.
+Without the bearer, output is explicitly `complete: false`; it is transport
 evidence only, not a complete hosted acceptance receipt.

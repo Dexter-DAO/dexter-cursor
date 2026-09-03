@@ -1,8 +1,8 @@
 {
   "name": "opendexter",
   "displayName": "OpenDexter",
-  "version": "2.1.1",
-  "description": "Give Claude Code a governed Dexter Wallet for x402 purchases and bounded Send, Buy, and Sell.",
+  "version": "2.1.2",
+  "description": "Give Claude Code a governed Dexter Wallet for x402 purchases and supported bounded asset actions.",
   "author": {
     "name": "Dexter",
     "email": "dev@dexter.cash"
