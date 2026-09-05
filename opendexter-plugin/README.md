@@ -3,7 +3,7 @@
 OpenDexter gives Claude Code a governed Dexter Wallet through the hosted MCP at
 `https://open.dexter.cash/mcp`.
 
-Version `2.1.3` uses the hosted contract recorded with this plugin. Native MCP OAuth completes
+Version `2.1.4` uses the hosted contract recorded with this plugin. Native MCP OAuth completes
 before tool discovery. The authenticated server registers thirteen tools: twelve model-callable
 tools for Indexter discovery, x402 access and purchases, Dexter Wallet reads,
 and governed asset actions, plus app-only `indexter_discover` for UI

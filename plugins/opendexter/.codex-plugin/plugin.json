@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
-  "version": "0.6.3",
-  "description": "Give ChatGPT and Codex a governed Dexter Wallet for Indexter service discovery, x402 purchases and supported bounded asset actions.",
+  "version": "0.6.4",
+  "description": "Discover services and providers with Indexter, and use a governed Dexter Wallet in ChatGPT and Codex.",
   "author": {
     "name": "Dexter Labs Corporation",
     "email": "dev@dexter.cash",
@@ -35,7 +35,7 @@
       "Read",
       "Write"
     ],
-    "shortDescription": "Governed payments and wallet actions in ChatGPT and Codex.",
+    "shortDescription": "Discover services and use Dexter Wallet in ChatGPT and Codex.",
     "longDescription": "OpenDexter connects ChatGPT and Codex to the user's passkey-controlled Dexter Wallet. It discovers services, creates API-custodied purchase intents, reads the wallet and approved portfolio bound to the authenticated session, and executes exact purchases or currently supported governed Buy and Sell requests covered by the user's reusable bounded authority. Governed Send remains visible for compatibility and history, but the current runtime refuses it before creating an executable intent.\n\nNative MCP OAuth completes before tool discovery. Before OAuth, initialization and discovery receive an HTTP 401 native Connect challenge; authentication_required on an established connection means OAuth must be resumed. The hosted server registers thirteen authenticated tools: twelve model-callable tools and app-only indexter_discover for UI continuations. Call indexter_search once with the complete request; the server chooses overview, named-provider browsing, or concrete task search. Actors remain catalog-only. Indexter can apply confirmed primary-USDC price bounds, paid-only filtering, and relevance or within-tier price ordering, with explicit degraded-ranking disclosure. Only a purchasable check creates an executable opaque intent; a quote-only result does not. Send and non-stock Buy or Sell select a canonical assetId from an approved portfolio record. Natural-language stock Buy or Sell uses the user's exact human companyQuery and Dexter's current catalog selection. Stock Buy supports a USDC budget or a human share-quantity minimum that may overfill slightly; Stock Sell accepts only direct token amount. Owner enrollment, mandate extension, and escalation remain outside model-callable tools. There are no hidden compatibility, card, passkey-status, marketplace-composition, or authorize tools.\n\nWallet keys, passkey material, bearer tokens, signing material, and one-time codes never belong in the conversation. Ambiguous or post-dispatch results are inspected on the same intent and never retried automatically.",
     "defaultPrompt": [
       "Do I have a Dexter Wallet?",

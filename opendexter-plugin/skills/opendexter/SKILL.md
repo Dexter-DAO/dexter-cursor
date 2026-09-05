@@ -1,6 +1,6 @@
 ---
 name: opendexter
-description: "Use for any request about a Dexter Wallet or wallet balance, readiness, activity, deposit address, assets, allowed actions, Indexter discovery, provider offerings, Apify Actors, x402 services or payments, paid or wallet-gated APIs, or requests involving Send, Buy, or Sell, including current availability. Trigger even when the user says only 'my wallet', 'do I have a wallet?', 'pay for this', asks what Indexter offers, names a provider to explore, or describes an API job without naming OpenDexter. An explicit request to use a different wallet stays with that wallet."
+description: "Use for discovery, things to do, services/providers/Actors, Dexter Wallet, payments and assets."
 ---
 
 # OpenDexter
