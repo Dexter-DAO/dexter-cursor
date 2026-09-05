@@ -3,7 +3,8 @@
 ## Authenticated tool roster
 
 OAuth is required before MCP initialization and tool discovery. After OAuth,
-the server lists exactly twelve tools:
+the server registers thirteen tools. These twelve are model-callable;
+`indexter_discover` is app-only for bounded UI continuations:
 
 | Tool | Consequence |
 | --- | --- |
@@ -26,20 +27,32 @@ product roster.
 
 ## Purchase route
 
-1. Unknown provider: call `indexter_search` with the user's actual job. Use
-   `maxPriceUsdc` and `minPriceUsdc` only as hard bounds on the primary USDC API
-   invocation price, and use `paidOnly: true` only when every result must have a
-   known positive price. Confirm those returned values in
-   `appliedConstraints`. Use `sortBy: relevance`, `price_asc`, or `price_desc`
-   and confirm `appliedOrdering`. Price ordering stays inside each
-   relevance tier, so strong results remain ahead of related results and ties
-   preserve prior relevance order. If `rankingMode` is `degraded`, disclose the returned
-   `degradedMessage`. Keep product and order budgets in the natural-language
-   query, and check the selected endpoint because alternate `chains[]` prices
-   may differ.
-2. Known exact URL or selected result: fresh `x402_check` with the exact method
-   and raw request body. A non-GET check requires explicit confirmation after
-   explaining that the provider may process the request before any payment.
+1. Call `indexter_search` once with the complete user request. Broad or ambiguous
+   prompts produce an overview; provider questions browse that provider; concrete
+   jobs use task search. Avoid category fan-out and model calls to
+   `indexter_discover`. Task price bounds and `paidOnly` apply to primary USDC
+   API invocation prices. The server validates these controls; ordering stays
+   within relevance tiers. Keep order budgets in the query.
+   Surface returned `degraded_ranking` warnings. Task results stop at twelve
+   without pagination. Discovery needs no separate wallet call.
+2. Read the selected endpoint's `action.kind` and sanitized `requestInput`.
+   `endpoint_unavailable` stops the continuation. `check_endpoint` permits an
+   exact check; `review_endpoint` requires review of the request fields and
+   `action.safety` first, including for GET. Obtain missing required values
+   without inventing them. If `checkMayAffectProvider`,
+   `checkMayCreateProviderReservation`, or `confirmationRequired` is true,
+   explain the consequence and obtain explicit confirmation before checking.
+   Every non-GET check requires that confirmation too.
+
+   Bind the check to the exact `action.resourceId` and method. When
+   `action.resourceUrl` is non-null, use that public URL as the endpoint base
+   and apply only the query or path inputs declared by `requestInput`. When
+   the URL is null, pass only the stable `action.resourceId` as endpoint
+   identity; Dexter resolves the private route server-side. Never invent or
+   expose that route. Construct the request from the declared field names,
+   types, locations, and requiredness using the user's values. Pass any body
+   as the exact raw JSON string; preserve existing request bytes without
+   parsing, normalizing, reformatting, or reserializing them.
 3. A purchasable paid result has `quoteOnly=false` and one API-custodied opaque
    `intentId` without executing it. A `quoteOnly=true` result has no executable
    intent; report purchase as unavailable for that checked quote and never call

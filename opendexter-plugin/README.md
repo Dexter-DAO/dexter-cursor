@@ -3,10 +3,12 @@
 OpenDexter gives Claude Code a governed Dexter Wallet through the hosted MCP at
 `https://open.dexter.cash/mcp`.
 
-Version `2.1.2` targets hosted manifest `0.5.0`. Native MCP OAuth completes
-before tool discovery. The authenticated product exposes one twelve-tool
-roster for Indexter discovery, x402 access and purchases, Dexter Wallet reads,
-and governed asset actions. No compatibility, card, passkey-status,
+Version `2.1.3` uses the hosted contract recorded with this plugin. Native MCP OAuth completes
+before tool discovery. The authenticated server registers thirteen tools: twelve model-callable
+tools for Indexter discovery, x402 access and purchases, Dexter Wallet reads,
+and governed asset actions, plus app-only `indexter_discover` for UI
+continuations. `indexter_search` routes one complete request to an overview,
+provider browsing, or task results. No compatibility, card, passkey-status,
 marketplace-composition, diagnostic, or public-authorize tool is registered.
 
 ## Install
@@ -37,8 +39,8 @@ client.
   connection means OAuth must be resumed.
 - `dexter_wallet_portfolio` accepts no caller-selected identity.
 - Indexter supports hard primary-USDC price bounds, paid-only filtering, and
-  relevance or within-tier price ordering. Use returned `appliedConstraints`
-  and `appliedOrdering`, and disclose degraded ranking when reported.
+  relevance or within-tier price ordering. The server validates these controls;
+  disclose degraded ranking when reported.
 - Only a purchasable `x402_check` result with `quoteOnly=false` returns an
   executable opaque intent. A `quoteOnly=true` result cannot be passed to
   `x402_fetch`.

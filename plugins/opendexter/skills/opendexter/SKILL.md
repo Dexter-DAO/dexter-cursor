@@ -1,6 +1,6 @@
 ---
 name: opendexter
-description: "Use for any request about a Dexter Wallet or wallet balance, readiness, activity, deposit address, assets, allowed actions, x402 services or payments, paid or wallet-gated APIs, or requests involving Send, Buy, or Sell, including current availability. Trigger even when the user says only 'my wallet', 'do I have a wallet?', 'pay for this', or describes a paid API job without naming OpenDexter, unless they explicitly name a different wallet or provider."
+description: "Use for any request about a Dexter Wallet or wallet balance, readiness, activity, deposit address, assets, allowed actions, Indexter discovery, provider offerings, Apify Actors, x402 services or payments, paid or wallet-gated APIs, or requests involving Send, Buy, or Sell, including current availability. Trigger even when the user says only 'my wallet', 'do I have a wallet?', 'pay for this', asks what Indexter offers, names a provider to explore, or describes an API job without naming OpenDexter. An explicit request to use a different wallet stays with that wallet."
 ---
 
 # OpenDexter
@@ -18,7 +18,7 @@ micro-skills.
 
 Use the current client's native Connect or MCP login action described in
 `references/authentication.md`. Do not substitute local npm-proxy commands or
-advertise a capability that the hosted twelve-tool package does not ship. The
+advertise a capability that the hosted tool roster does not ship. The
 local seven-tool npm/stdio edition is intentionally a separate workflow.
 OAuth must complete before MCP initialization and tool discovery. Every hosted
 tool uses the same `vault` OAuth scope.
@@ -31,8 +31,9 @@ tool uses the same `vault` OAuth scope.
   send, buy, or sell?": call `dexter_wallet` first, then
   `dexter_wallet_portfolio`. Compose cash/readiness and asset
   inventory without treating either as execution authority.
-- "Find an API/service for this job": start with `indexter_search`; a search never
-  pays.
+- "What can Indexter do?", "show me Apify offerings", or "find an API for this
+  job": call `indexter_search` once with the complete request. Discovery never
+  pays and does not require a separate wallet call.
 - "What will this API cost?" or a known paid URL: call `x402_check`; checking
   is not permission to pay. If the exact check is not GET, explain that it may
   submit the request to the provider and obtain explicit confirmation first.
@@ -44,7 +45,7 @@ tool uses the same `vault` OAuth scope.
 
 | Intent | Tool | Surface |
 | --- | --- | --- |
-| Discover a service or resource | `indexter_search` | OAuth |
+| Explore Indexter, browse a provider, or find a service | `indexter_search` | OAuth |
 | Quote or custody an exact endpoint request | `x402_check` | OAuth |
 | Call one approved, API-custodied intent | `x402_fetch` | OAuth |
 | Inspect one purchase intent without redispatch | `x402_status` | OAuth |
@@ -57,7 +58,10 @@ tool uses the same `vault` OAuth scope.
 | Request same-intent reconciliation | `dexter_reconcile_asset_action` | OAuth |
 | Read governed Send, Buy, and Sell history | `dexter_wallet_history` | OAuth |
 
-After OAuth, OpenDexter exposes exactly these twelve tools. Before OAuth, an
+After OAuth, OpenDexter registers thirteen tools. The twelve tools above are
+model-callable. `indexter_discover` is app-only: native UI uses it for bounded
+discovery continuations, while the model always starts with `indexter_search`.
+Before OAuth, an
 initialize or tool-discovery request receives an HTTP 401 challenge for the
 `vault` scope; let the host show its native OpenDexter Connect action. By
 contrast, `authentication_required` means an established connection needs
@@ -69,26 +73,52 @@ them for a new request.
 
 ## Discovery and purchase
 
-1. Call `indexter_search` with the user's actual job. Leave its network filter
-   unset unless the user explicitly requires one network; CrossPay may make an
-   eligible seller on another rail reachable from the Dexter account. Use
-   `maxPriceUsdc` or `minPriceUsdc` for a hard bound on the primary USDC API
-   invocation price, then confirm the returned `appliedConstraints`. Set
-   `paidOnly: true` when every result must have a known positive primary USDC
-   invocation price. Use `sortBy: relevance`, `sortBy: price_asc`, or
-   `sortBy: price_desc` as requested, then confirm `appliedOrdering`. Price
-   ordering applies within each relevance tier: a related result cannot move
-   ahead of a strong result, and price ties preserve the prior relevance order.
-   Keep product or order budgets in the natural-language query. These controls
-   use the listing's primary USDC price; alternate options in `chains[]` may
-   quote differently, so check the selected endpoint before purchase. If
-   `rankingMode` is `degraded`, disclose `degradedMessage`; reduced ranking is
-   not an empty result.
-2. Call `x402_check` on the selected exact HTTPS endpoint and request. Before a
-   non-GET check, explain that the provider may process the request even though
-   no payment has been approved, and obtain the user's explicit confirmation.
-   Then pass `body` as the exact raw JSON string. Do not parse, normalize,
-   reformat, or reserialize it.
+1. Call `indexter_search` once with the user's complete natural-language request.
+   The server chooses overview for broad or ambiguous prompts, provider for a
+   named-provider question, and task for a concrete job. Do not fan out into
+   category searches, invent synonyms, or call app-only `indexter_discover`.
+   Leave the network filter unset unless the user requires a seller on one
+   network; compatible server-side settlement may make another network
+   reachable. Put API invocation-price bounds in `maxPriceUsdc` or
+   `minPriceUsdc`, and set `paidOnly: true` for a known positive primary USDC
+   invocation price. Use `sortBy: relevance`, `price_asc`, or `price_desc` as
+   requested. These controls apply only to the task route; keep product and
+   order budgets in the query. The server validates these controls and keeps
+   price ordering within each relevance tier. Task
+   results are capped at twelve and do not paginate. Surface a returned
+   `degraded_ranking` warning; reduced ranking is not an empty result.
+
+   Featured placement is editorial, and catalog counts describe coverage.
+   `delivered_recently`, `terms_checked`, and `no_current_confirmation` carry
+   different evidence. Keep providers, endpoints, and Actors distinct. Actors
+   retain stable IDs, separate provider and publisher identity, and
+   `catalogOnly: true`; catalog presence grants no execution or payment
+   readiness. Actor schemas hydrate lazily through catalog detail. An endpoint
+   with `endpoint_unavailable` and `input_contract_unavailable` remains a
+   discovery result; its null `requestInput` cannot support a check or purchase.
+2. Read the selected endpoint's `action.kind` and sanitized `requestInput`.
+   `endpoint_unavailable` stops the continuation. `check_endpoint` permits an
+   exact check; `review_endpoint` requires review of the request fields and
+   `action.safety` first, including for GET. Obtain missing required values
+   without inventing them. If `checkMayAffectProvider`,
+   `checkMayCreateProviderReservation`, or `confirmationRequired` is true,
+   explain the consequence and obtain explicit confirmation before checking.
+   Every non-GET check requires that confirmation too.
+
+   Bind the check to the exact `action.resourceId` and method. When
+   `action.resourceUrl` is non-null, use that public URL as the endpoint base
+   and apply only the query or path inputs declared by `requestInput`. When
+   the URL is null, pass only the stable `action.resourceId` as endpoint
+   identity; Dexter resolves the private route server-side. Never invent or
+   expose that route. Construct the request from the declared field names,
+   types, locations, and requiredness using the user's values. Pass any body
+   as the exact raw JSON string; preserve existing request bytes without
+   parsing, normalizing, reformatting, or reserializing them.
+
+   For a body field with type `array`, use `items.type`, `minItems`, and
+   `maxItems` to review a JSON array. Preserve omitted optional fields
+   separately from an explicit empty array. Check item types and bounds before
+   forming the request; preserve the final raw body bytes for the exact check.
 3. Read `authMode`: paid means present the exact current terms; SIWX uses
    `x402_access`; unprotected needs no payment; API-key or unknown means stop
    for the missing requirement.
