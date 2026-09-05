@@ -1,8 +1,8 @@
 {
   "name": "opendexter",
   "displayName": "OpenDexter",
-  "version": "2.1.2",
-  "description": "Give Claude Code a governed Dexter Wallet for x402 purchases and supported bounded asset actions.",
+  "version": "2.1.3",
+  "description": "Give Claude Code a governed Dexter Wallet for Indexter service discovery, x402 purchases and supported bounded asset actions.",
   "author": {
     "name": "Dexter",
     "email": "dev@dexter.cash"
@@ -17,6 +17,9 @@
     "mpp",
     "paid-apis",
     "passkey-wallet",
-    "solana"
+    "solana",
+    "indexter",
+    "api-discovery",
+    "apify"
   ]
 }
