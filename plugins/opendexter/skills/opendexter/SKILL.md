@@ -96,6 +96,12 @@ them for a new request.
    readiness. Actor schemas hydrate lazily through catalog detail. An endpoint
    with `endpoint_unavailable` and `input_contract_unavailable` remains a
    discovery result; its null `requestInput` cannot support a check or purchase.
+
+   Report listed prices and input fields as catalog information. A fresh
+   documentation or endpoint check requires a separate tool call to that
+   document or exact endpoint in the current run. Use a documentation link
+   only if it was returned by the catalog or by an actual lookup; never
+   construct one from a provider name or endpoint.
 2. Read the selected endpoint's `action.kind` and sanitized `requestInput`.
    `endpoint_unavailable` stops the continuation. `check_endpoint` permits an
    exact check; `review_endpoint` requires review of the request fields and
