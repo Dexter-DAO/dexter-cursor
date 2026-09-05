@@ -1,7 +1,7 @@
 {
   "name": "opendexter",
   "displayName": "OpenDexter",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "description": "Discover services and providers with Indexter, and use a governed Dexter Wallet in Claude Code.",
   "author": {
     "name": "Dexter",
